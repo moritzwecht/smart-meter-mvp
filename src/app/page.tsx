@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Plus, Settings, TrendingUp, Zap, Flame, Droplets } from "lucide-react";
 import { MeterCard } from "@/components/MeterCard";
-import { QuickAddDialog } from "@/components/QuickAddDialog";
+import { AddReadingDialog } from "@/components/AddReadingDialog";
 import { AddMeterDialog } from "@/components/AddMeterDialog";
 import { getMeters, addReading, addMeter, deleteMeter, updateMeter } from "./actions";
 import { calculateStats } from "@/lib/calculations";
@@ -13,9 +13,9 @@ import { motion } from "framer-motion";
 export default function Dashboard() {
   const [meters, setMeters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
+  const [isAddReadingOpen, setIsAddReadingOpen] = useState(false);
   const [isAddMeterOpen, setIsAddMeterOpen] = useState(false);
-  const [preselectedMeterId, setPreselectedMeterId] = useState<number | null>(null);
+  const [selectedMeterForReading, setSelectedMeterForReading] = useState<any | null>(null);
   const [editingMeter, setEditingMeter] = useState<any | null>(null);
 
   const loadMeters = async () => {
@@ -33,11 +33,6 @@ export default function Dashboard() {
   useEffect(() => {
     loadMeters();
   }, []);
-
-  const handleQuickAdd = (meterId?: number) => {
-    setPreselectedMeterId(meterId || null);
-    setIsQuickAddOpen(true);
-  };
 
   const totalMonthlyCost = meters.reduce((acc, meter) => {
     const stats = calculateStats(meter.type, meter.readings, meter.monthlyPayment, meter.unitPrice);
@@ -79,9 +74,9 @@ export default function Dashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row justify-between items-center gap-8"
+          className="glass rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row justify-center items-center gap-12"
         >
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 items-center md:items-start">
             <p className="text-sm font-medium text-foreground/40 uppercase tracking-widest">Monatliche Kosten (Prognose)</p>
             <div className="flex items-baseline gap-3">
               <h2 className="text-5xl font-black">{formatCurrency(totalMonthlyCost)}</h2>
@@ -91,20 +86,12 @@ export default function Dashboard() {
 
           <div className="h-px md:h-12 w-full md:w-px bg-foreground/10" />
 
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 items-center md:items-start">
             <p className="text-sm font-medium text-foreground/40 uppercase tracking-widest">Abschlagszahlungen</p>
             <div className="flex items-baseline gap-3">
               <h2 className="text-3xl font-bold">{formatCurrency(totalMonthlyPayments)}</h2>
             </div>
           </div>
-
-          <button
-            onClick={() => setIsQuickAddOpen(true)}
-            className="w-full md:w-auto px-8 py-5 bg-foreground text-background rounded-2xl font-black text-lg flex items-center justify-center gap-3 hover:scale-105 transition-all shadow-xl active:scale-95 translate-y-2 md:translate-y-0"
-          >
-            <Zap className="fill-current w-5 h-5" />
-            QUICK ADD
-          </button>
         </motion.div>
 
         {/* Meters Grid */}
@@ -128,7 +115,10 @@ export default function Dashboard() {
                   lastReading={lastReading?.value}
                   lastReadingDate={lastReading ? new Date(lastReading.date) : undefined}
                   stats={stats}
-                  onAddReading={() => handleQuickAdd(meter.id)}
+                  onAddReading={() => {
+                    setSelectedMeterForReading(meter);
+                    setIsAddReadingOpen(true);
+                  }}
                   onEdit={() => {
                     setEditingMeter(meter);
                     setIsAddMeterOpen(true);
@@ -162,11 +152,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <QuickAddDialog
-        isOpen={isQuickAddOpen}
-        onClose={() => setIsQuickAddOpen(false)}
-        meters={meters}
-        preselectedMeterId={preselectedMeterId}
+      <AddReadingDialog
+        isOpen={isAddReadingOpen}
+        onClose={() => setIsAddReadingOpen(false)}
+        meter={selectedMeterForReading}
         onSave={async (id, val) => {
           await addReading(id, val);
           loadMeters();
