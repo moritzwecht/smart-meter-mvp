@@ -27,31 +27,34 @@ function VerifyContent() {
     }, [searchParams, router]);
 
     return (
-        <div className="text-center">
-            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4 mx-auto" />
+        <div className="p-8 border-2 border-black space-y-6">
+            <div className="font-mono text-xs uppercase tracking-widest opacity-50">Auth Verification</div>
 
             {success && (
-                <div className="space-y-2">
-                    <h1 className="text-2xl font-bold text-green-600">Erfolgreich verifiziert!</h1>
-                    <p className="text-slate-500">Du wirst gleich weitergeleitet...</p>
+                <div className="space-y-4">
+                    <h1 className="text-xl font-black uppercase text-green-600">Verified.</h1>
+                    <p className="font-mono text-sm italic">Redirecting to root...</p>
                 </div>
             )}
 
             {error && (
-                <div className="space-y-4">
-                    <h1 className="text-2xl font-bold text-red-600">Hoppla!</h1>
-                    <p className="text-slate-500">{error}</p>
+                <div className="space-y-6">
+                    <h1 className="text-xl font-black uppercase text-red-600">Error.</h1>
+                    <p className="font-mono text-sm border-l-4 border-red-600 pl-4 py-2 bg-red-50">{error}</p>
                     <button
                         onClick={() => router.push("/")}
-                        className="px-6 py-2 bg-slate-100 rounded-xl font-medium"
+                        className="px-6 py-2 border border-black font-bold uppercase text-xs tracking-widest hover:bg-black hover:text-white"
                     >
-                        Zurück zum Login
+                        Go to Login
                     </button>
                 </div>
             )}
 
             {!success && !error && (
-                <h1 className="text-2xl font-bold">Verifiziere Login...</h1>
+                <div className="flex items-center gap-4">
+                    <div className="w-4 h-4 bg-black animate-pulse" />
+                    <h1 className="text-lg font-bold uppercase tracking-widest">Processing...</h1>
+                </div>
             )}
         </div>
     );

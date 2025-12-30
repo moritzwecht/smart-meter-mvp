@@ -27,11 +27,11 @@ export default function Dashboard() {
 
   if (!session) {
     return (
-      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-sm space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <main className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm border border-black p-8 space-y-6">
           <div className="text-center">
-            <h1 className="text-4xl font-extrabold tracking-tight mb-2">ArmbrustTracker</h1>
-            <p className="text-slate-500">Willkommen zurück!</p>
+            <h1 className="text-2xl font-black uppercase tracking-tighter mb-1">ArmbrustTracker</h1>
+            <p className="text-sm border-t border-black/10 pt-1">WIREFRAME v0.1</p>
           </div>
           <LoginForm />
         </div>
@@ -40,24 +40,24 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-white dark:bg-slate-950 p-6 md:p-24 flex flex-col gap-8">
-      <header className="flex justify-between items-center w-full max-w-4xl mx-auto">
+    <main className="min-h-screen p-6 md:p-12 max-w-4xl mx-auto space-y-12">
+      <header className="flex justify-between items-end border-b-2 border-black pb-4">
         <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-slate-500">Eingeloggt als {session.email}</p>
+          <h1 className="text-3xl font-black uppercase tracking-tighter">ArmbrustTracker</h1>
+          <p className="font-mono text-sm opacity-50">USER: {session.email}</p>
         </div>
         <button
           onClick={() => logoutAction()}
-          className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-950 transition-colors"
+          className="px-4 py-2 border border-black text-xs font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-colors"
         >
-          Abmelden
+          Logout
         </button>
       </header>
 
-      <div className="w-full max-w-4xl mx-auto border-2 border-dashed border-slate-100 dark:border-slate-800 rounded-[2.5rem] p-12 flex flex-col items-center justify-center text-center gap-4">
-        <p className="text-slate-400">Hier werden bald deine Zählerstände erscheinen.</p>
-        <button className="px-6 py-3 bg-primary text-white rounded-2xl font-bold">
-          Zähler hinzufügen
+      <div className="border-4 border-black p-12 flex flex-col items-center justify-center text-center gap-6">
+        <p className="font-bold uppercase tracking-widest opacity-30">No Data Available</p>
+        <button className="px-8 py-4 bg-black text-white font-bold uppercase tracking-widest hover:opacity-80">
+          Add Meter (+)
         </button>
       </div>
     </main>
