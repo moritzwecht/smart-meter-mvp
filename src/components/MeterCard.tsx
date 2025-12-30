@@ -92,7 +92,14 @@ export function MeterCard({
                 {lastReadingDate && (
                     <p className="text-xs text-foreground/40 flex items-center gap-1 mt-1">
                         <Clock className="w-3 h-3" />
-                        {lastReadingDate.toLocaleDateString("de-DE")}
+                        {lastReadingDate.toLocaleString("de-DE", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                        })}
+                        <span className="ml-1 uppercase text-[10px] opacity-50">Uhr</span>
                     </p>
                 )}
             </div>
