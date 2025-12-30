@@ -54,53 +54,59 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
     return (
         <AnimatePresence>
             {isOpen && (
-                <>
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 pointer-events-none">
+                    {/* Backdrop */}
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        className="fixed inset-0 bg-slate-950/60 backdrop-blur-md pointer-events-auto"
                     />
 
+                    {/* Dialog Container */}
                     <motion.div
-                        initial={{ scale: 0.9, opacity: 0, x: "-50%", y: "-50%" }}
-                        animate={{ scale: 1, opacity: 1, x: "-50%", y: "-50%" }}
-                        exit={{ scale: 0.9, opacity: 0, x: "-50%", y: "-50%" }}
-                        className="fixed top-1/2 left-1/2 w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl z-[60] overflow-hidden"
+                        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                        animate={{ scale: 1, opacity: 1, y: 0 }}
+                        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                        className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl overflow-hidden pointer-events-auto border border-white/20"
                     >
-                        <div className="p-8">
+                        <div className="p-8 sm:p-10 max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center mb-8">
-                                <h2 className="text-2xl font-bold">Neuer Zähler</h2>
-                                <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                                <h2 className="text-2xl font-black">Neuer Zähler</h2>
+                                <button
+                                    onClick={onClose}
+                                    className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl hover:bg-slate-200 transition-all text-slate-500"
+                                >
                                     <X className="w-6 h-6" />
                                 </button>
                             </div>
 
                             <div className="flex flex-col gap-6">
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-medium text-foreground/50">Name des Zählers</label>
+                                    <label className="text-sm font-bold text-slate-400 uppercase tracking-widest">Name</label>
                                     <input
                                         type="text"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         placeholder="z.B. Hauptzähler"
-                                        className="w-full p-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl focus:ring-2 focus:ring-primary/20 transition-all"
+                                        className="w-full p-5 bg-slate-50 dark:bg-slate-800/40 border-none rounded-2xl focus:ring-4 focus:ring-primary/10 transition-all font-bold"
                                     />
                                 </div>
 
                                 <div className="flex flex-col gap-2">
-                                    <label className="text-sm font-medium text-foreground/50">Zählertyp</label>
+                                    <label className="text-sm font-bold text-slate-400 uppercase tracking-widest">Typ</label>
                                     <div className="grid grid-cols-3 gap-3">
                                         {(["ELECTRICITY", "GAS", "WATER"] as const).map((t) => (
                                             <button
                                                 key={t}
                                                 onClick={() => handleTypeChange(t)}
                                                 className={cn(
-                                                    "py-3 rounded-xl border-2 transition-all font-medium text-sm",
+                                                    "py-4 rounded-2xl border-2 transition-all font-black text-xs uppercase tracking-tighter",
                                                     type === t
-                                                        ? "border-primary bg-primary text-white"
-                                                        : "border-slate-100 dark:border-slate-800 bg-transparent text-foreground/40"
+                                                        ? "border-primary bg-primary text-white shadow-lg shadow-primary/20"
+                                                        : "border-slate-100 dark:border-slate-800 bg-transparent text-slate-400"
                                                 )}
                                             >
                                                 {t === "ELECTRICITY" ? "Strom" : t === "GAS" ? "Gas" : "Wasser"}
@@ -111,44 +117,44 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium text-foreground/50">Einheit</label>
+                                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest">Einheit</label>
                                         <input
                                             type="text"
                                             value={unit}
                                             onChange={(e) => setUnit(e.target.value)}
-                                            className="w-full p-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl focus:ring-2 focus:ring-primary/20 transition-all font-mono"
+                                            className="w-full p-5 bg-slate-50 dark:bg-slate-800/40 border-none rounded-2xl focus:ring-4 focus:ring-primary/10 transition-all font-mono font-bold text-center"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex gap-3">
-                                    <Info className="w-5 h-5 text-primary shrink-0" />
-                                    <p className="text-xs text-primary/80 leading-relaxed italic">
+                                <div className="p-5 bg-primary/5 rounded-3xl border border-primary/10 flex gap-4">
+                                    <Info className="w-6 h-6 text-primary shrink-0" />
+                                    <p className="text-xs text-primary/80 leading-relaxed font-medium">
                                         Optional: Gib Preis und Abschlag ein für genauere Prognosen und die Status-Ampel.
                                     </p>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium text-foreground/50 text-nowrap">Preis pro {unit} (€)</label>
+                                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest text-nowrap">Preis / {unit}</label>
                                         <input
                                             type="text"
                                             inputMode="decimal"
                                             value={unitPrice}
-                                            onChange={(e) => setUnitPrice(e.target.value)}
+                                            onChange={(e) => setUnitPrice(e.target.value.replace(".", ","))}
                                             placeholder="0,00"
-                                            className="w-full p-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl focus:ring-2 focus:ring-primary/20 transition-all"
+                                            className="w-full p-5 bg-slate-50 dark:bg-slate-800/40 border-none rounded-2xl focus:ring-4 focus:ring-primary/10 transition-all font-bold text-center"
                                         />
                                     </div>
                                     <div className="flex flex-col gap-2">
-                                        <label className="text-sm font-medium text-foreground/50">Abschlag / Monat (€)</label>
+                                        <label className="text-sm font-bold text-slate-400 uppercase tracking-widest">Abschlag</label>
                                         <input
                                             type="text"
                                             inputMode="decimal"
                                             value={monthlyPayment}
-                                            onChange={(e) => setMonthlyPayment(e.target.value)}
+                                            onChange={(e) => setMonthlyPayment(e.target.value.replace(".", ","))}
                                             placeholder="0,00"
-                                            className="w-full p-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl focus:ring-2 focus:ring-primary/20 transition-all"
+                                            className="w-full p-5 bg-slate-50 dark:bg-slate-800/40 border-none rounded-2xl focus:ring-4 focus:ring-primary/10 transition-all font-bold text-center"
                                         />
                                     </div>
                                 </div>
@@ -157,15 +163,15 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
                                     onClick={handleSave}
                                     disabled={!name || isSaving}
                                     className={cn(
-                                        "w-full py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 transition-all mt-4",
+                                        "w-full py-6 rounded-3xl font-black text-xl flex items-center justify-center gap-3 transition-all mt-4 shadow-2xl",
                                         !name || isSaving
-                                            ? "bg-slate-100 dark:bg-slate-800 text-foreground/20"
-                                            : "bg-primary text-white hover:bg-primary/90 active:scale-95 shadow-xl shadow-primary/25"
+                                            ? "bg-slate-100 dark:bg-slate-800 text-slate-300 pointer-events-none"
+                                            : "bg-primary text-white hover:bg-primary/90 active:scale-95 shadow-primary/30"
                                     )}
                                 >
                                     {isSaving ? "Wird angelegt..." : (
                                         <>
-                                            <Check className="w-5 h-5" />
+                                            <Check className="w-6 h-6 stroke-[3px]" />
                                             Zähler anlegen
                                         </>
                                     )}
@@ -173,7 +179,7 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
                             </div>
                         </div>
                     </motion.div>
-                </>
+                </div>
             )}
         </AnimatePresence>
     );

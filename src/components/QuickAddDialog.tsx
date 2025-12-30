@@ -47,10 +47,11 @@ export function QuickAddDialog({
     };
 
     const handleSave = async () => {
-        if (!selectedMeterId || !value) return;
+        const parsed = parseFloat(value.replace(",", "."));
+        if (!selectedMeterId || isNaN(parsed)) return;
         setIsSaving(true);
         try {
-            await onSave(selectedMeterId, parseFloat(value.replace(",", ".")));
+            await onSave(selectedMeterId, parsed);
             onClose();
         } catch (e) {
             console.error(e);
@@ -60,109 +61,122 @@ export function QuickAddDialog({
     };
 
     return (
-        <AnimatePresence>
+        <AnimatePresence mode="wait">
             {isOpen && (
-                <>
+                <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pointer-events-none">
                     {/* Backdrop */}
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
-                        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center"
+                        className="fixed inset-0 bg-slate-950/60 backdrop-blur-md pointer-events-auto"
                     />
 
-                    {/* Dialog */}
+                    {/* Dialog Container */}
                     <motion.div
-                        initial={{ y: "100%", opacity: 0, x: "-50%" }}
-                        animate={{ y: 0, opacity: 1, x: "-50%" }}
-                        exit={{ y: "100%", opacity: 0, x: "-50%" }}
-                        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                        className="fixed bottom-0 left-1/2 -translate-x-1/2 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2 w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl z-[60] overflow-hidden"
+                        initial={{ y: "100%", opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: "100%", opacity: 0 }}
+                        transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                        className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl overflow-hidden pointer-events-auto border border-white/20 sm:mb-20"
                     >
-                        <div className="p-6">
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-xl font-bold">Stand eintragen</h2>
-                                <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                        <div className="p-8 sm:p-10">
+                            <div className="flex justify-between items-center mb-8">
+                                <h2 className="text-2xl font-bold">Stand eintragen</h2>
+                                <button
+                                    onClick={onClose}
+                                    className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl hover:bg-slate-200 transition-all text-slate-500 hover:text-slate-900"
+                                >
                                     <X className="w-6 h-6" />
                                 </button>
                             </div>
 
                             {step === 1 ? (
-                                <div className="flex flex-col gap-3">
-                                    <p className="text-sm text-foreground/50 mb-2">Wähle einen Zähler aus:</p>
-                                    {meters.map((meter) => (
-                                        <button
-                                            key={meter.id}
-                                            onClick={() => handleMeterSelect(meter.id)}
-                                            className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-[0.98]"
-                                        >
-                                            <span className="font-semibold text-lg">{meter.name}</span>
-                                            <ChevronRight className="w-5 h-5 text-foreground/30" />
-                                        </button>
-                                    ))}
+                                <div className="flex flex-col gap-4">
+                                    <p className="text-sm font-semibold text-slate-400 uppercase tracking-widest">Wähle einen Zähler:</p>
+                                    <div className="flex flex-col gap-3">
+                                        {meters.map((meter) => (
+                                            <button
+                                                key={meter.id}
+                                                onClick={() => handleMeterSelect(meter.id)}
+                                                className="flex items-center justify-between p-6 bg-slate-50 dark:bg-slate-800/40 rounded-3xl hover:bg-primary/5 hover:ring-2 hover:ring-primary/20 transition-all active:scale-[0.98] group"
+                                            >
+                                                <span className="font-bold text-xl group-hover:text-primary transition-colors">{meter.name}</span>
+                                                <div className="p-2 bg-white dark:bg-slate-700 rounded-xl shadow-sm">
+                                                    <ChevronRight className="w-5 h-5 text-primary" />
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
                                     {meters.length === 0 && (
-                                        <p className="text-center py-8 text-foreground/40 italic">Keine Zähler angelegt.</p>
+                                        <div className="py-12 text-center text-slate-400 italic bg-slate-50 dark:bg-slate-800/20 rounded-3xl border-2 border-dashed border-slate-100 dark:border-slate-800">
+                                            Keine Zähler angelegt
+                                        </div>
                                     )}
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-6">
-                                    <div className="flex flex-col gap-2">
+                                <div className="flex flex-col gap-8">
+                                    <div className="flex flex-col gap-4">
                                         <div className="flex justify-between items-end">
-                                            <label className="text-sm font-medium text-foreground/50">Neuer Zählerstand</label>
-                                            <span className="text-sm font-bold text-primary">
+                                            <label className="text-sm font-bold text-slate-400 uppercase tracking-widest">Neuer Stand</label>
+                                            <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-black uppercase">
                                                 {meters.find(m => m.id === selectedMeterId)?.name}
                                             </span>
                                         </div>
                                         <div className="relative">
                                             <input
                                                 ref={inputRef}
-                                                type="decimal"
+                                                type="text"
                                                 inputMode="decimal"
                                                 value={value}
-                                                onChange={(e) => setValue(e.target.value)}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(".", ",");
+                                                    if (/^[0-9,]*$/.test(val)) setValue(val);
+                                                }}
                                                 placeholder="0,00"
-                                                className="w-full text-5xl font-bold bg-slate-50 dark:bg-slate-800/50 border-none focus:ring-2 focus:ring-primary/20 rounded-2xl p-6 py-10 transition-all placeholder:text-foreground/10"
+                                                className="w-full text-6xl font-black bg-slate-50 dark:bg-slate-800/40 border-none focus:ring-4 focus:ring-primary/10 rounded-3xl p-8 py-12 transition-all placeholder:text-slate-200 dark:placeholder:text-slate-800 text-center sm:text-left"
                                                 autoFocus
                                             />
-                                            <span className="absolute right-6 top-1/2 -translate-y-1/2 text-2xl font-bold text-foreground/30">
+                                            <span className="absolute right-8 top-1/2 -translate-y-1/2 text-3xl font-black text-slate-300">
                                                 {meters.find(m => m.id === selectedMeterId)?.unit}
                                             </span>
                                         </div>
                                     </div>
 
-                                    <button
-                                        onClick={handleSave}
-                                        disabled={!value || isSaving}
-                                        className={cn(
-                                            "w-full py-5 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 transition-all shadow-xl",
-                                            !value || isSaving
-                                                ? "bg-slate-200 dark:bg-slate-800 text-foreground/20"
-                                                : "bg-primary text-white hover:bg-primary/90 active:scale-95 shadow-primary/25"
-                                        )}
-                                    >
-                                        {isSaving ? "Speichert..." : (
-                                            <>
-                                                <Check className="w-5 h-5" />
-                                                Speichern
-                                            </>
-                                        )}
-                                    </button>
+                                    <div className="flex flex-col gap-4">
+                                        <button
+                                            onClick={handleSave}
+                                            disabled={!value || isSaving}
+                                            className={cn(
+                                                "w-full py-6 rounded-3xl font-black text-xl flex items-center justify-center gap-3 transition-all shadow-2xl",
+                                                !value || isSaving
+                                                    ? "bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-700 pointer-events-none"
+                                                    : "bg-primary text-white hover:bg-primary/90 active:scale-95 shadow-primary/30"
+                                            )}
+                                        >
+                                            {isSaving ? "Speichert..." : (
+                                                <>
+                                                    <Check className="w-6 h-6 stroke-[3px]" />
+                                                    Speichern
+                                                </>
+                                            )}
+                                        </button>
 
-                                    <button
-                                        onClick={() => setStep(1)}
-                                        className="text-sm text-foreground/40 hover:text-foreground font-medium transition-colors py-2"
-                                    >
-                                        Zähler wechseln
-                                    </button>
+                                        <button
+                                            onClick={() => setStep(1)}
+                                            className="py-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold transition-colors"
+                                        >
+                                            Zähler wechseln
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
-
                         {/* Safe area for mobile */}
-                        <div className="h-4 sm:hidden" />
+                        <div className="h-6 sm:hidden bg-white dark:bg-slate-900" />
                     </motion.div>
-                </>
+                </div>
             )}
         </AnimatePresence>
     );
