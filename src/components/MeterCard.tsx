@@ -99,7 +99,6 @@ export function MeterCard({
                             hour: "2-digit",
                             minute: "2-digit",
                         })}
-                        <span className="ml-1 uppercase text-[10px] opacity-50">Uhr</span>
                     </p>
                 )}
             </div>
