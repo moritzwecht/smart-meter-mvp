@@ -1,7 +1,4 @@
 import { SignIn } from "@clerk/nextjs";
-import { deDE } from "@clerk/localizations";
-import { dark } from "@clerk/themes";
-import { TrendingUp } from "lucide-react";
 
 export default function Page() {
   return (
@@ -81,9 +78,7 @@ export default function Page() {
             }
           `}} />
           <SignIn
-            localization={deDE}
             appearance={{
-              baseTheme: dark,
               elements: {
                 rootBox: "cl-rootBox",
                 card: "cl-card",
@@ -107,17 +102,6 @@ export default function Page() {
           Sicher & verschlüsselt durch Clerk
         </p>
       </div>
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        @keyframes bounce-subtle {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-5px); }
-        }
-        .animate-bounce-subtle {
-          animation: bounce-subtle 4s ease-in-out infinite;
-        }
-      `}} />
     </div>
   );
 }
