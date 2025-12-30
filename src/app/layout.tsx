@@ -13,12 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ArmbrustTracker",
-  description: "Track your crossbow performance and stats",
+  title: "My Home",
+  description: "Manage your household gadgets and stats",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "ArmbrustTracker",
+    title: "My Home",
   },
   formatDetection: {
     telephone: false,

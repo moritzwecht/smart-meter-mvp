@@ -62,11 +62,29 @@ export const notes = pgTable("notes", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const householdUsers = pgTable("household_users", {
+    id: serial("id").primaryKey(),
+    householdId: integer("household_id").references(() => households.id).notNull(),
+    userId: integer("user_id").references(() => users.id).notNull(),
+    role: text("role").notNull().default("MEMBER"), // 'OWNER', 'MEMBER'
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Relations
+export const userRelations = relations(users, ({ many }) => ({
+    households: many(householdUsers),
+}));
+
 export const householdRelations = relations(households, ({ many }) => ({
+    members: many(householdUsers),
     meters: many(meters),
     todoLists: many(todoLists),
     notes: many(notes),
+}));
+
+export const householdUserRelations = relations(householdUsers, ({ one }) => ({
+    household: one(households, { fields: [householdUsers.householdId], references: [households.id] }),
+    user: one(users, { fields: [householdUsers.userId], references: [users.id] }),
 }));
 
 export const meterRelations = relations(meters, ({ one, many }) => ({

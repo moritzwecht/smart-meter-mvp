@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
-import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading } from "./actions";
+import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
 
 interface Session {
   email: string;
@@ -16,6 +16,10 @@ export default function Dashboard() {
   const [selectedHouseholdId, setSelectedHouseholdId] = useState<number | null>(null);
   const [newHouseholdName, setNewHouseholdName] = useState("");
   const [isHouseholdMenuOpen, setIsHouseholdMenuOpen] = useState(false);
+  const [showManageMembers, setShowManageMembers] = useState(false);
+  const [members, setMembers] = useState<any[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteError, setInviteError] = useState("");
 
   const [widgets, setWidgets] = useState<any[]>([]);
   const [showAddWidget, setShowAddWidget] = useState(false);
@@ -29,6 +33,15 @@ export default function Dashboard() {
     setHouseholds(data);
     if (data.length > 0 && !selectedHouseholdId) {
       setSelectedHouseholdId(data[0].id);
+    }
+  };
+
+  const refreshMembers = async (hId: number) => {
+    try {
+      const data = await getHouseholdMembers(hId);
+      setMembers(data);
+    } catch (err) {
+      console.error("Failed to fetch members:", err);
     }
   };
 
@@ -90,8 +103,8 @@ export default function Dashboard() {
       <main className="min-h-screen flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-sm border border-black p-8 space-y-6">
           <div className="text-center">
-            <h1 className="text-2xl font-black uppercase tracking-tighter mb-1">ArmbrustTracker</h1>
-            <p className="text-sm border-t border-black/10 pt-1">WIREFRAME v0.1</p>
+            <h1 className="text-2xl font-black uppercase tracking-tighter mb-1">My Home</h1>
+            <p className="text-sm border-t border-black/10 pt-1">v0.1.0</p>
           </div>
           <LoginForm />
         </div>
@@ -142,6 +155,21 @@ export default function Dashboard() {
                   </button>
                 </form>
               </div>
+
+              {selectedHouseholdId && (
+                <div className="border-t border-black/10 pt-2 px-2 pb-1">
+                  <button
+                    onClick={() => {
+                      setShowManageMembers(true);
+                      setIsHouseholdMenuOpen(false);
+                      refreshMembers(selectedHouseholdId);
+                    }}
+                    className="w-full text-left font-black uppercase text-[10px] tracking-widest opacity-60 hover:opacity-100"
+                  >
+                    👥 Mitglieder verwalten
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -603,6 +631,78 @@ export default function Dashboard() {
                 Schließen
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Member Management Overlay */}
+      {showManageMembers && selectedHousehold && (
+        <div className="fixed inset-0 bg-white/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-white border-2 border-black p-8 space-y-8 relative overflow-hidden shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
+            <button
+              onClick={() => setShowManageMembers(false)}
+              className="absolute top-4 right-4 text-2xl font-black hover:scale-110 transition-transform"
+            >
+              ✕
+            </button>
+
+            <div className="space-y-1">
+              <h2 className="text-2xl font-black uppercase tracking-tighter">Mitglieder</h2>
+              <p className="text-[10px] font-mono opacity-40 uppercase tracking-widest">Haushalt: {selectedHousehold.name}</p>
+            </div>
+
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-widest opacity-40">Neues Mitglied einladen</label>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!selectedHouseholdId) return;
+                  setInviteError("");
+                  try {
+                    await inviteToHousehold(selectedHouseholdId, inviteEmail);
+                    setInviteEmail("");
+                    refreshMembers(selectedHouseholdId);
+                  } catch (err: any) {
+                    setInviteError(err.message || "Fehler beim Einladen.");
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="E-Mail Adresse..."
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="flex-1 px-3 py-2 border-b-2 border-black font-mono text-sm outline-none focus:bg-slate-50"
+                  />
+                  <button type="submit" className="px-4 py-2 bg-black text-white font-black uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-colors">
+                    Senden
+                  </button>
+                </div>
+                {inviteError && <p className="text-[10px] font-bold text-red-600 uppercase tracking-tight italic">{inviteError}</p>}
+              </form>
+            </div>
+
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-widest opacity-40">Aktuelle Mitglieder</label>
+              <div className="border border-black/10 divide-y divide-black/5">
+                {members.map((m, idx) => (
+                  <div key={idx} className="p-3 flex justify-between items-center group hover:bg-slate-50">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-bold">{m.email}</div>
+                      <div className="text-[9px] font-mono uppercase tracking-widest opacity-30">{m.role === 'OWNER' ? 'Besitzer' : 'Mitglied'}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowManageMembers(false)}
+              className="w-full py-3 border border-black font-black uppercase text-xs tracking-[0.2em] hover:bg-black hover:text-white transition-all"
+            >
+              Fertig
+            </button>
           </div>
         </div>
       )}
