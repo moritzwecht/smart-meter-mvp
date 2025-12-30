@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { verifyLogin } from "@/app/actions";
 
-export default function VerifyPage() {
+function VerifyContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [error, setError] = useState("");
@@ -27,8 +27,8 @@ export default function VerifyPage() {
     }, [searchParams, router]);
 
     return (
-        <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <div className="text-center">
+            <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4 mx-auto" />
 
             {success && (
                 <div className="space-y-2">
@@ -53,6 +53,16 @@ export default function VerifyPage() {
             {!success && !error && (
                 <h1 className="text-2xl font-bold">Verifiziere Login...</h1>
             )}
+        </div>
+    );
+}
+
+export default function VerifyPage() {
+    return (
+        <main className="min-h-screen flex flex-col items-center justify-center p-6">
+            <Suspense fallback={<div>Laden...</div>}>
+                <VerifyContent />
+            </Suspense>
         </main>
     );
 }
