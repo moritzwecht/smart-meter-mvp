@@ -21,6 +21,14 @@ export const readings = pgTable("readings", {
     date: timestamp("date").defaultNow().notNull(),
 });
 
+export const pushSubscriptions = pgTable("push_subscriptions", {
+    id: serial("id").primaryKey(),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const metersRelations = relations(meters, ({ many }) => ({
     readings: many(readings),
 }));

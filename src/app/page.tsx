@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Settings, TrendingUp, Zap, Flame, Droplets } from "lucide-react";
+import { Plus, Bell, TrendingUp, Zap, Flame, Droplets, BellOff, Settings } from "lucide-react";
 import { MeterCard } from "@/components/MeterCard";
 import { AddReadingDialog } from "@/components/AddReadingDialog";
 import { AddMeterDialog } from "@/components/AddMeterDialog";
 import { getMeters, addReading, addMeter, deleteMeter, updateMeter } from "./actions";
 import { calculateStats } from "@/lib/calculations";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { subscribeUserToPush, checkPushPermission } from "@/lib/push";
 
 export default function Dashboard() {
   const [meters, setMeters] = useState<any[]>([]);
@@ -17,16 +18,29 @@ export default function Dashboard() {
   const [isAddMeterOpen, setIsAddMeterOpen] = useState(false);
   const [selectedMeterForReading, setSelectedMeterForReading] = useState<any | null>(null);
   const [editingMeter, setEditingMeter] = useState<any | null>(null);
+  const [pushPermission, setPushPermission] = useState<string>("default");
 
   const loadMeters = async () => {
     setLoading(true);
     try {
       const data = await getMeters();
       setMeters(data);
+      const permission = await checkPushPermission();
+      setPushPermission(permission);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    try {
+      await subscribeUserToPush();
+      setPushPermission("granted");
+    } catch (e) {
+      console.error("Failed to subscribe:", e);
+      alert("Fehler beim Aktivieren der Benachrichtigungen.");
     }
   };
 
@@ -56,6 +70,18 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-4">
+            <button
+              onClick={handleEnableNotifications}
+              className={cn(
+                "p-3 rounded-xl transition-all active:scale-95 flex items-center gap-2",
+                pushPermission === "granted"
+                  ? "bg-primary/10 text-primary"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200"
+              )}
+              title={pushPermission === "granted" ? "Benachrichtigungen aktiv" : "Benachrichtigungen aktivieren"}
+            >
+              {pushPermission === "granted" ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+            </button>
             <button
               onClick={() => {
                 setEditingMeter(null);
