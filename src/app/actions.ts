@@ -4,11 +4,14 @@ import { db } from "@/lib/db";
 import { users, verificationTokens, households, meters, readings, todoLists, todoItems, notes } from "@/lib/db/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { login as setAuthSession, logout as clearAuthSession, getSession } from "@/lib/auth";
 import { randomBytes } from "crypto";
 import { Resend } from "resend";
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+const resend = (process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.startsWith('re_'))
+    ? new Resend(process.env.RESEND_API_KEY)
+    : null;
 export async function getHouseholds() {
     const session = await getSession();
     if (!session?.email) return [];
@@ -53,7 +56,10 @@ export async function requestLogin(email: string) {
         expiresAt,
     });
 
-    const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify?token=${token}`;
+    const host = (await headers()).get("host") || "localhost:3000";
+    const protocol = host.includes("localhost") ? "http" : "https";
+    const baseUrl = `${protocol}://${host}`;
+    const verifyUrl = `${baseUrl}/verify?token=${token}`;
 
     try {
         if (resend) {
