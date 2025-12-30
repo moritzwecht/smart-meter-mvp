@@ -56,7 +56,7 @@ export default function Dashboard() {
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
               <TrendingUp className="text-white w-6 h-6" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">MeterFlow <span className="text-primary">MVP</span></h1>
+            <h1 className="text-xl font-bold tracking-tight">ArmbrustTracker</h1>
           </div>
 
           <div className="flex items-center gap-4">
