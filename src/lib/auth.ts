@@ -25,7 +25,12 @@ export async function login(email: string) {
     const session = await encrypt({ email, expires });
 
     const cookieStore = await cookies();
-    cookieStore.set("session", session, { expires, httpOnly: true, secure: true });
+    cookieStore.set("session", session, {
+        expires,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        path: "/"
+    });
 }
 
 export async function logout() {

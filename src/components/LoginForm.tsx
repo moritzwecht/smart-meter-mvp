@@ -25,14 +25,23 @@ export function LoginForm() {
 
     if (submitted) {
         return (
-            <div className="p-6 border border-black">
-                <h2 className="text-xl font-bold mb-2">Check deine Emails</h2>
-                <p>
-                    Ein Login-Link wurde an <strong>{email}</strong> gesendet.
+            <div className="p-6 border-4 border-black bg-white space-y-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 bg-green-500" />
+                    <h2 className="text-xl font-black uppercase tracking-tighter">Check deine E-Mails</h2>
+                </div>
+                <p className="text-sm font-bold">
+                    Ein Login-Link wurde an <span className="underline">{email}</span> gesendet.
                 </p>
-                <p className="mt-4 text-xs uppercase tracking-tight opacity-50">
-                    (Link in der Server-Konsole)
+                <p style={{ fontSize: '12px', opacity: 0.5 }}>
+                    Falls keine E-Mail ankommt, schau bitte auch im Spam-Ordner nach.
                 </p>
+                <button
+                    onClick={() => setSubmitted(false)}
+                    className="text-[10px] font-black uppercase underline hover:no-underline"
+                >
+                    Zurück zum Login
+                </button>
             </div>
         );
     }

@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1767129094685,
+      "tag": "0000_whole_menace",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1767129438148,
+      "tag": "0001_steady_thena",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1767129759481,
+      "tag": "0002_lyrical_anthem",
+      "breakpoints": true
+    }
+  ]
+}
