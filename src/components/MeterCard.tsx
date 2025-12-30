@@ -1,5 +1,5 @@
-import { Zap, Flame, Droplets, TrendingUp, AlertTriangle, CheckCircle, Clock, Pencil } from "lucide-react";
-import { cn, formatNumber, formatCurrency } from "@/lib/utils";
+import { Zap, Flame, Droplets, TrendingUp, CheckCircle, AlertTriangle, Clock, Pencil } from "lucide-react";
+import { cn, formatNumber } from "@/lib/utils";
 import { CalculationResult, MeterType } from "@/lib/calculations";
 
 interface MeterCardProps {

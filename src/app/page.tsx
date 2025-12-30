@@ -1,31 +1,47 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Bell, TrendingUp, Zap, Flame, Droplets, BellOff, Settings } from "lucide-react";
+import { Plus, Bell, TrendingUp, BellOff, Settings } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
 import { MeterCard } from "@/components/MeterCard";
 import { AddReadingDialog } from "@/components/AddReadingDialog";
 import { AddMeterDialog } from "@/components/AddMeterDialog";
 import { getMeters, addReading, addMeter, deleteMeter, updateMeter } from "./actions";
 import { calculateStats } from "@/lib/calculations";
-import { formatCurrency, cn } from "@/lib/utils";
-import { motion } from "framer-motion";
-import { subscribeUserToPush, checkPushPermission } from "@/lib/push";
+import { cn } from "@/lib/utils";
+import { checkPushPermission, subscribeUserToPush } from "@/lib/push";
+
+interface Reading {
+  id: number;
+  meterId: number;
+  value: number;
+  date: Date;
+}
+
+interface Meter {
+  id: number;
+  name: string;
+  type: "ELECTRICITY" | "GAS" | "WATER";
+  unit: string;
+  unitPrice: number | null;
+  monthlyPayment: number | null;
+  readings?: Reading[];
+}
 
 export default function Dashboard() {
-  const [meters, setMeters] = useState<any[]>([]);
+  const [meters, setMeters] = useState<Meter[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddReadingOpen, setIsAddReadingOpen] = useState(false);
   const [isAddMeterOpen, setIsAddMeterOpen] = useState(false);
-  const [selectedMeterForReading, setSelectedMeterForReading] = useState<any | null>(null);
-  const [editingMeter, setEditingMeter] = useState<any | null>(null);
+  const [selectedMeterForReading, setSelectedMeterForReading] = useState<Meter | null>(null);
+  const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
   const [pushPermission, setPushPermission] = useState<string>("default");
 
   const loadMeters = async () => {
     setLoading(true);
     try {
       const data = await getMeters();
-      setMeters(data);
+      setMeters(data as Meter[]);
       const permission = await checkPushPermission();
       setPushPermission(permission);
     } catch (e) {
@@ -48,15 +64,6 @@ export default function Dashboard() {
   useEffect(() => {
     loadMeters();
   }, []);
-
-  const totalMonthlyCost = meters.reduce((acc, meter) => {
-    const stats = calculateStats(meter.type, meter.readings, meter.monthlyPayment, meter.unitPrice);
-    return acc + (stats?.costPrognosisMonthly || 0);
-  }, 0);
-
-  const totalMonthlyPayments = meters.reduce((acc, meter) => {
-    return acc + (meter.monthlyPayment || 0);
-  }, 0);
 
   return (
     <main className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20">
@@ -136,7 +143,6 @@ export default function Dashboard() {
             ))
           ) : meters.length > 0 ? (
             meters.map((meter) => {
-              const stats = calculateStats(meter.type, meter.readings, meter.monthlyPayment, meter.unitPrice);
               const lastReading = meter.readings && meter.readings.length > 0 ? meter.readings[0] : null;
 
               return (
@@ -148,7 +154,7 @@ export default function Dashboard() {
                   unit={meter.unit}
                   lastReading={lastReading?.value}
                   lastReadingDate={lastReading ? new Date(lastReading.date) : undefined}
-                  stats={stats}
+                  stats={calculateStats(meter.type, meter.readings || [], meter.monthlyPayment, meter.unitPrice)}
                   onAddReading={() => {
                     setSelectedMeterForReading(meter);
                     setIsAddReadingOpen(true);
@@ -199,7 +205,11 @@ export default function Dashboard() {
       <AddMeterDialog
         isOpen={isAddMeterOpen}
         onClose={() => setIsAddMeterOpen(false)}
-        initialData={editingMeter}
+        initialData={editingMeter ? {
+          ...editingMeter,
+          unitPrice: editingMeter.unitPrice ?? undefined,
+          monthlyPayment: editingMeter.monthlyPayment ?? undefined,
+        } : undefined}
         onDelete={async () => {
           if (editingMeter) {
             await deleteMeter(editingMeter.id);

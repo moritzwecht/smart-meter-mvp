@@ -63,7 +63,7 @@ export async function addReading(meterId: number, value: number, excludeEndpoint
     if (meter) {
         let query = db.select().from(pushSubscriptions);
         if (excludeEndpoint) {
-            // @ts-ignore - ne operator works with drizzle
+            // @ts-expect-error - ne operator works with drizzle
             query = query.where(ne(pushSubscriptions.endpoint, excludeEndpoint));
         }
 
@@ -83,9 +83,12 @@ export async function addReading(meterId: number, value: number, excludeEndpoint
                         auth: sub.auth
                     }
                 }, payload);
-            } catch (error: any) {
-                if (error.statusCode === 410 || error.statusCode === 404) {
-                    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, sub.endpoint));
+            } catch (error: unknown) {
+                if (error && typeof error === 'object' && 'statusCode' in error) {
+                    const err = error as { statusCode: number };
+                    if (err.statusCode === 410 || err.statusCode === 404) {
+                        await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, sub.endpoint));
+                    }
                 }
             }
         }

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { meters, readings, pushSubscriptions } from "@/lib/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import webpush from "web-push";
 
@@ -14,7 +14,7 @@ webpush.setVapidDetails(
     privateVapidKey
 );
 
-export async function GET(req: Request) {
+export async function GET() {
     try {
         // Fetch all meters
         const allMeters = await db.select().from(meters);
@@ -55,10 +55,13 @@ export async function GET(req: Request) {
                             }
                         }, payload);
                         notificationsSent.push(meter.name);
-                    } catch (error: any) {
-                        if (error.statusCode === 410 || error.statusCode === 404) {
-                            // Subscription expired or no longer valid
-                            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, sub.endpoint));
+                    } catch (error: unknown) {
+                        if (error && typeof error === 'object' && 'statusCode' in error) {
+                            const err = error as { statusCode: number };
+                            if (err.statusCode === 410 || err.statusCode === 404) {
+                                // Subscription expired or no longer valid
+                                await db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, sub.endpoint));
+                            }
                         }
                         console.error("Error sending push:", error);
                     }
