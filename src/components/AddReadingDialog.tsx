@@ -4,12 +4,13 @@ import { useState, useRef, useEffect } from "react";
 import { X, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { getPushSubscription } from "@/lib/push";
 
 interface AddReadingDialogProps {
     isOpen: boolean;
     onClose: () => void;
     meter: { id: number; name: string; unit: string } | null;
-    onSave: (meterId: number, value: number) => Promise<void>;
+    onSave: (meterId: number, value: number, excludeEndpoint?: string) => Promise<void>;
 }
 
 export function AddReadingDialog({
@@ -34,7 +35,8 @@ export function AddReadingDialog({
         if (!meter || isNaN(parsed)) return;
         setIsSaving(true);
         try {
-            await onSave(meter.id, parsed);
+            const subscription = await getPushSubscription();
+            await onSave(meter.id, parsed, subscription?.endpoint || undefined);
             onClose();
         } catch (e) {
             console.error(e);

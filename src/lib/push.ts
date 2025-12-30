@@ -46,6 +46,14 @@ export async function subscribeUserToPush() {
     throw new Error("Service worker not supported");
 }
 
+export async function getPushSubscription() {
+    if ("serviceWorker" in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        return await registration.pushManager.getSubscription();
+    }
+    return null;
+}
+
 export async function checkPushPermission(): Promise<"granted" | "denied" | "default"> {
     if (!("Notification" in window)) {
         return "denied";
