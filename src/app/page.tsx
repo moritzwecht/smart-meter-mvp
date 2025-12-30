@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Plus, Bell, TrendingUp, Zap, Flame, Droplets, BellOff, Settings } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
 import { MeterCard } from "@/components/MeterCard";
 import { AddReadingDialog } from "@/components/AddReadingDialog";
 import { AddMeterDialog } from "@/components/AddMeterDialog";
@@ -91,6 +92,13 @@ export default function Dashboard() {
             >
               <Plus className="w-5 h-5" />
             </button>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "w-11 h-11 rounded-xl"
+                }
+              }}
+            />
           </div>
         </div>
       </header>
