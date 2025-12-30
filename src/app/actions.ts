@@ -64,7 +64,7 @@ export async function requestLogin(email: string) {
     try {
         if (resend) {
             await resend.emails.send({
-                from: "Home by Moritz <onboarding@resend.dev>",
+                from: "Home by Moritz <login@home.moritz-wecht.de>",
                 to: email,
                 subject: "Dein Login-Link für Home by Moritz",
                 html: `
