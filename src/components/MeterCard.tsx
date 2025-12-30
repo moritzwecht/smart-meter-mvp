@@ -1,4 +1,4 @@
-import { Zap, Flame, Droplets, TrendingUp, AlertTriangle, CheckCircle, Clock, Trash2 } from "lucide-react";
+import { Zap, Flame, Droplets, TrendingUp, AlertTriangle, CheckCircle, Clock, Pencil } from "lucide-react";
 import { cn, formatNumber, formatCurrency } from "@/lib/utils";
 import { CalculationResult, MeterType } from "@/lib/calculations";
 
@@ -11,7 +11,7 @@ interface MeterCardProps {
     lastReadingDate?: Date;
     stats: CalculationResult | null;
     onAddReading: () => void;
-    onDelete?: () => void;
+    onEdit?: () => void;
 }
 
 export function MeterCard({
@@ -22,7 +22,7 @@ export function MeterCard({
     lastReadingDate,
     stats,
     onAddReading,
-    onDelete,
+    onEdit,
 }: MeterCardProps) {
     const icons = {
         ELECTRICITY: <Zap className="w-6 h-6 text-yellow-500" />,
@@ -66,15 +66,15 @@ export function MeterCard({
                             {stats.status}
                         </div>
                     )}
-                    {onDelete && (
+                    {onEdit && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                if (confirm("Zähler wirklich löschen?")) onDelete();
+                                onEdit();
                             }}
-                            className="p-2 hover:bg-status-red/10 hover:text-status-red rounded-xl transition-all text-foreground/20"
+                            className="p-2 hover:bg-primary/10 hover:text-primary rounded-xl transition-all text-foreground/20"
                         >
-                            <Trash2 className="w-4 h-4" />
+                            <Pencil className="w-4 h-4" />
                         </button>
                     )}
                 </div>

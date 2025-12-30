@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check, Info } from "lucide-react";
+import { X, Check, Info, Trash2, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 interface AddMeterDialogProps {
@@ -15,15 +16,42 @@ interface AddMeterDialogProps {
         unitPrice?: number;
         monthlyPayment?: number;
     }) => Promise<void>;
+    onDelete?: () => Promise<void>;
+    initialData?: {
+        name: string;
+        type: "ELECTRICITY" | "GAS" | "WATER";
+        unit: string;
+        unitPrice?: number;
+        monthlyPayment?: number;
+    };
 }
 
-export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps) {
+export function AddMeterDialog({ isOpen, onClose, onSave, onDelete, initialData }: AddMeterDialogProps) {
     const [name, setName] = useState("");
     const [type, setType] = useState<"ELECTRICITY" | "GAS" | "WATER">("ELECTRICITY");
     const [unit, setUnit] = useState("kWh");
     const [unitPrice, setUnitPrice] = useState("");
     const [monthlyPayment, setMonthlyPayment] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+    useEffect(() => {
+        if (initialData) {
+            setName(initialData.name);
+            setType(initialData.type);
+            setUnit(initialData.unit);
+            setUnitPrice(initialData.unitPrice?.toString().replace(".", ",") || "");
+            setMonthlyPayment(initialData.monthlyPayment?.toString().replace(".", ",") || "");
+        } else {
+            setName("");
+            setType("ELECTRICITY");
+            setUnit("kWh");
+            setUnitPrice("");
+            setMonthlyPayment("");
+        }
+        setShowDeleteConfirm(false);
+    }, [initialData, isOpen]);
 
     const handleTypeChange = (newType: "ELECTRICITY" | "GAS" | "WATER") => {
         setType(newType);
@@ -51,6 +79,19 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
         }
     };
 
+    const handleDelete = async () => {
+        if (!onDelete || isDeleting) return;
+        setIsDeleting(true);
+        try {
+            await onDelete();
+            onClose();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     return (
         <AnimatePresence>
             {isOpen && (
@@ -74,7 +115,7 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
                     >
                         <div className="p-8 sm:p-10 max-h-[90vh] overflow-y-auto">
                             <div className="flex justify-between items-center mb-8">
-                                <h2 className="text-2xl font-black">Neuer Zähler</h2>
+                                <h2 className="text-2xl font-black">{initialData ? "Zähler bearbeiten" : "Neuer Zähler"}</h2>
                                 <button
                                     onClick={onClose}
                                     className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl hover:bg-slate-200 transition-all text-slate-500"
@@ -169,13 +210,49 @@ export function AddMeterDialog({ isOpen, onClose, onSave }: AddMeterDialogProps)
                                             : "bg-primary text-white hover:bg-primary/90 active:scale-95 shadow-primary/30"
                                     )}
                                 >
-                                    {isSaving ? "Wird angelegt..." : (
+                                    {isSaving ? "Wird gespeichert..." : (
                                         <>
                                             <Check className="w-6 h-6 stroke-[3px]" />
-                                            Zähler anlegen
+                                            {initialData ? "Speichern" : "Zähler anlegen"}
                                         </>
                                     )}
                                 </button>
+
+                                {initialData && (
+                                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                        {showDeleteConfirm ? (
+                                            <div className="flex flex-col gap-3">
+                                                <div className="flex items-center gap-3 text-status-red p-4 bg-status-red/5 rounded-2xl border border-status-red/10">
+                                                    <AlertCircle className="w-5 h-5 shrink-0" />
+                                                    <p className="text-xs font-bold uppercase tracking-tight">Wirklich löschen? Alle Daten gehen verloren.</p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <button
+                                                        onClick={() => setShowDeleteConfirm(false)}
+                                                        className="py-4 rounded-2xl bg-slate-100 dark:bg-slate-800 font-bold text-sm"
+                                                    >
+                                                        Abbrechen
+                                                    </button>
+                                                    <button
+                                                        onClick={handleDelete}
+                                                        disabled={isDeleting}
+                                                        className="py-4 rounded-2xl bg-status-red text-white font-bold text-sm flex items-center justify-center gap-2"
+                                                    >
+                                                        {isDeleting ? "Löscht..." : "Ja, löschen"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => setShowDeleteConfirm(true)}
+                                                className="w-full py-4 rounded-2xl text-foreground/20 hover:text-status-red hover:bg-status-red/5 transition-all text-sm font-bold flex items-center justify-center gap-2"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                Zähler löschen
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </motion.div>

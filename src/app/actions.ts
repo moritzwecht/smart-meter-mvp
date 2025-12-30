@@ -46,6 +46,24 @@ export async function addReading(meterId: number, value: number) {
     return result[0];
 }
 
+export async function updateMeter(id: number, data: {
+    name: string;
+    type: "ELECTRICITY" | "GAS" | "WATER";
+    unit: string;
+    unitPrice?: number;
+    monthlyPayment?: number;
+}) {
+    await db.update(meters).set({
+        name: data.name,
+        type: data.type,
+        unit: data.unit,
+        unitPrice: data.unitPrice,
+        monthlyPayment: data.monthlyPayment,
+    }).where(eq(meters.id, id));
+
+    revalidatePath("/");
+}
+
 export async function deleteMeter(id: number) {
     await db.delete(meters).where(eq(meters.id, id));
     revalidatePath("/");

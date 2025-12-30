@@ -5,7 +5,7 @@ import { Plus, Settings, TrendingUp, Zap, Flame, Droplets } from "lucide-react";
 import { MeterCard } from "@/components/MeterCard";
 import { QuickAddDialog } from "@/components/QuickAddDialog";
 import { AddMeterDialog } from "@/components/AddMeterDialog";
-import { getMeters, addReading, addMeter, deleteMeter } from "./actions";
+import { getMeters, addReading, addMeter, deleteMeter, updateMeter } from "./actions";
 import { calculateStats } from "@/lib/calculations";
 import { formatCurrency } from "@/lib/utils";
 import { motion } from "framer-motion";
@@ -16,6 +16,7 @@ export default function Dashboard() {
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [isAddMeterOpen, setIsAddMeterOpen] = useState(false);
   const [preselectedMeterId, setPreselectedMeterId] = useState<number | null>(null);
+  const [editingMeter, setEditingMeter] = useState<any | null>(null);
 
   const loadMeters = async () => {
     setLoading(true);
@@ -61,7 +62,10 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setIsAddMeterOpen(true)}
+              onClick={() => {
+                setEditingMeter(null);
+                setIsAddMeterOpen(true);
+              }}
               className="p-3 bg-slate-100 dark:bg-slate-800 rounded-xl hover:bg-slate-200 transition-all active:scale-95"
             >
               <Plus className="w-5 h-5" />
@@ -125,9 +129,9 @@ export default function Dashboard() {
                   lastReadingDate={lastReading ? new Date(lastReading.date) : undefined}
                   stats={stats}
                   onAddReading={() => handleQuickAdd(meter.id)}
-                  onDelete={async () => {
-                    await deleteMeter(meter.id);
-                    loadMeters();
+                  onEdit={() => {
+                    setEditingMeter(meter);
+                    setIsAddMeterOpen(true);
                   }}
                 />
               );
@@ -144,7 +148,10 @@ export default function Dashboard() {
                 </p>
               </div>
               <button
-                onClick={() => setIsAddMeterOpen(true)}
+                onClick={() => {
+                  setEditingMeter(null);
+                  setIsAddMeterOpen(true);
+                }}
                 className="px-8 py-4 bg-primary text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-primary/90 transition-all"
               >
                 <Plus className="w-5 h-5" />
@@ -169,8 +176,19 @@ export default function Dashboard() {
       <AddMeterDialog
         isOpen={isAddMeterOpen}
         onClose={() => setIsAddMeterOpen(false)}
+        initialData={editingMeter}
+        onDelete={async () => {
+          if (editingMeter) {
+            await deleteMeter(editingMeter.id);
+            loadMeters();
+          }
+        }}
         onSave={async (data) => {
-          await addMeter(data);
+          if (editingMeter) {
+            await updateMeter(editingMeter.id, data);
+          } else {
+            await addMeter(data);
+          }
           loadMeters();
         }}
       />
