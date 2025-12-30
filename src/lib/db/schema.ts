@@ -1,41 +1,16 @@
-import { pgTable, text, serial, timestamp, doublePrecision, pgEnum } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
 
-export const meterTypeEnum = pgEnum("meter_type", ["ELECTRICITY", "GAS", "WATER"]);
-
-export const meters = pgTable("meters", {
+// We will define the new schema for email authentication and smart meters soon.
+export const users = pgTable("users", {
     id: serial("id").primaryKey(),
-    name: text("name").notNull(),
-    type: meterTypeEnum("type").notNull(),
-    unit: text("unit").notNull(), // e.g., kWh, m³
-    unitPrice: doublePrecision("unit_price"), // Price per unit
-    monthlyPayment: doublePrecision("monthly_payment"), // Euro per month
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
-export const readings = pgTable("readings", {
-    id: serial("id").primaryKey(),
-    meterId: serial("meter_id").references(() => meters.id, { onDelete: "cascade" }),
-    value: doublePrecision("value").notNull(),
-    date: timestamp("date").defaultNow().notNull(),
-});
-
-export const pushSubscriptions = pgTable("push_subscriptions", {
-    id: serial("id").primaryKey(),
-    endpoint: text("endpoint").notNull().unique(),
-    p256dh: text("p256dh").notNull(),
-    auth: text("auth").notNull(),
+    email: text("email").notNull().unique(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const metersRelations = relations(meters, ({ many }) => ({
-    readings: many(readings),
-}));
-
-export const readingsRelations = relations(readings, ({ one }) => ({
-    meter: one(meters, {
-        fields: [readings.meterId],
-        references: [meters.id],
-    }),
-}));
+export const verificationTokens = pgTable("verification_tokens", {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull(),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});

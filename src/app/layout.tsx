@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
-import { deDE } from "@clerk/localizations";
-import { dark } from "@clerk/themes";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -42,32 +39,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider localization={deDE} appearance={{ baseTheme: dark }}>
-      <html lang="de">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        >
-          {children}
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `
-                if ('serviceWorker' in navigator) {
-                  window.addEventListener('load', function() {
-                    navigator.serviceWorker.register('/sw.js').then(
-                      function(registration) {
-                        console.log('Service Worker registration successful with scope: ', registration.scope);
-                      },
-                      function(err) {
-                        console.log('Service Worker registration failed: ', err);
-                      }
-                    );
-                  });
-                }
-              `,
-            }}
-          />
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="de">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(
+                    function(registration) {
+                      console.log('Service Worker registration successful with scope: ', registration.scope);
+                    },
+                    function(err) {
+                      console.log('Service Worker registration failed: ', err);
+                    }
+                  );
+                });
+              }
+            `,
+          }}
+        />
+      </body>
+    </html>
   );
 }
