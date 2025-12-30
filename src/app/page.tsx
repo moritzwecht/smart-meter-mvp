@@ -97,7 +97,7 @@ export default function Dashboard() {
 
       <div className="max-w-7xl mx-auto px-6 py-10">
         {/* Summary Card */}
-        <motion.div
+        {/* <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass rounded-[2.5rem] p-8 mb-12 flex flex-col md:flex-row justify-center items-center gap-12"
@@ -118,7 +118,7 @@ export default function Dashboard() {
               <h2 className="text-3xl font-bold">{formatCurrency(totalMonthlyPayments)}</h2>
             </div>
           </div>
-        </motion.div>
+        </motion.div> */}
 
         {/* Meters Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
