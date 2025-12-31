@@ -68,6 +68,63 @@ export async function createHousehold(name: string) {
     return { success: true };
 }
 
+export async function deleteHousehold(id: number) {
+    const session = await getSession();
+    if (!session?.email) throw new Error("Unauthorized");
+
+    const user = await db.query.users.findFirst({
+        where: eq(users.email, session.email as string),
+    });
+
+    if (!user) throw new Error("User not found");
+
+    // Verify current user is owner
+    const membership = await db.query.householdUsers.findFirst({
+        where: and(
+            eq(householdUsers.householdId, id),
+            eq(householdUsers.userId, user.id),
+            eq(householdUsers.role, 'OWNER')
+        )
+    });
+
+    if (!membership) throw new Error("Nur der Besitzer kann den Haushalt löschen.");
+
+    // Delete all related data manually since no CASCADE is defined in schema
+    // 1. Delete readings for all meters in this household
+    const householdMeters = await db.query.meters.findMany({
+        where: eq(meters.householdId, id)
+    });
+    for (const m of householdMeters) {
+        await db.delete(readings).where(eq(readings.meterId, m.id));
+    }
+
+    // 2. Delete meters
+    await db.delete(meters).where(eq(meters.householdId, id));
+
+    // 3. Delete todo items for all lists in this household
+    const householdLists = await db.query.todoLists.findMany({
+        where: eq(todoLists.householdId, id)
+    });
+    for (const l of householdLists) {
+        await db.delete(todoItems).where(eq(todoItems.listId, l.id));
+    }
+
+    // 4. Delete todo lists
+    await db.delete(todoLists).where(eq(todoLists.householdId, id));
+
+    // 5. Delete notes
+    await db.delete(notes).where(eq(notes.householdId, id));
+
+    // 6. Delete household users
+    await db.delete(householdUsers).where(eq(householdUsers.householdId, id));
+
+    // 7. Delete household
+    await db.delete(households).where(eq(households.id, id));
+
+    revalidatePath("/");
+    return { success: true };
+}
+
 export async function inviteToHousehold(householdId: number, email: string) {
     const session = await getSession();
     if (!session?.email) throw new Error("Unauthorized");

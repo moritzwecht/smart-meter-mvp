@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
-import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
+import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, deleteHousehold as deleteHouseholdAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
 
 interface Session {
   email: string;
@@ -130,16 +130,37 @@ export default function Dashboard() {
             <div className="absolute top-full left-0 mt-2 w-64 bg-white border-2 border-black z-50 p-2 space-y-2">
               <div className="text-[10px] font-bold uppercase tracking-widest opacity-30 px-2 pb-1 border-b border-black/10">Deine Haushalte</div>
               {households.map(h => (
-                <button
-                  key={h.id}
-                  onClick={() => {
-                    setSelectedHouseholdId(h.id);
-                    setIsHouseholdMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2 py-1.5 font-bold uppercase text-sm hover:bg-black hover:text-white transition-colors ${h.id === selectedHouseholdId ? 'bg-slate-100' : ''}`}
-                >
-                  {h.name}
-                </button>
+                <div key={h.id} className="flex group/household">
+                  <button
+                    onClick={() => {
+                      setSelectedHouseholdId(h.id);
+                      setIsHouseholdMenuOpen(false);
+                    }}
+                    className={`flex-1 text-left px-2 py-1.5 font-bold uppercase text-sm hover:bg-black hover:text-white transition-colors ${h.id === selectedHouseholdId ? 'bg-slate-100' : ''}`}
+                  >
+                    {h.name}
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (window.confirm(`Möchtest du den Haushalt "${h.name}" wirklich löschen? Alle Daten gehen verloren.`)) {
+                        try {
+                          await deleteHouseholdAction(h.id);
+                          if (selectedHouseholdId === h.id) {
+                            setSelectedHouseholdId(null);
+                          }
+                          refreshHouseholds();
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }
+                    }}
+                    className="px-3 hover:bg-red-600 hover:text-white transition-colors text-red-600"
+                    title="Haushalt löschen"
+                  >
+                    🗑️
+                  </button>
+                </div>
               ))}
               <div className="border-t border-black/10 pt-2 px-2">
                 <form onSubmit={handleCreateHousehold} className="space-y-2">
