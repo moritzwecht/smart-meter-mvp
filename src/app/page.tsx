@@ -280,149 +280,189 @@ export default function Dashboard() {
             )}
           </AnimatePresence>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <AnimatePresence mode="popLayout">
-              {widgets.map((w) => (
-                <motion.div
-                  key={w.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  whileHover={{ y: -5 }}
-                  className="card group flex flex-col gap-6 shadow-sm hover:shadow-xl hover:shadow-foreground/5 transition-all duration-300"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                      {w.widgetType === 'METER' && <Zap className="w-3 h-3" />}
-                      {w.widgetType === 'LIST' && <ListTodo className="w-3 h-3" />}
-                      {w.widgetType === 'NOTE' && <FileText className="w-3 h-3" />}
-                      {w.widgetType}
-                    </div>
-                    <div className="text-[10px] font-mono opacity-30 uppercase">
-                      {new Date(w.createdAt).toLocaleDateString()}
-                    </div>
+          {widgets.length > 0 ? (
+            <div className="space-y-12">
+              {/* Meters Section */}
+              {widgets.some(w => w.widgetType === 'METER') && (
+                <div className="space-y-4">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">Zähler</h3>
                   </div>
-
-                  <div className="flex-1">
-                    <h3 className="text-xl font-black tracking-tight text-foreground line-clamp-1">{w.name || w.title}</h3>
-                    {w.widgetType === 'NOTE' && (
-                      <p className="text-sm text-muted-foreground mt-2 line-clamp-3 leading-relaxed">
-                        {w.content || "Kein Inhalt..."}
-                      </p>
-                    )}
-                    {w.widgetType === 'LIST' && (
-                      <div className="mt-4 space-y-2">
-                        {w.items?.slice(0, 3).map((item: any) => (
-                          <div key={item.id} className="text-xs flex items-center gap-3">
-                            <div className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 ${item.completed === 'true' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>
-                              {item.completed === 'true' && <Check className="w-2.5 h-2.5" />}
-                            </div>
-                            <span className={`line-clamp-1 ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground/80'}`}>
-                              {item.content}
-                            </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <AnimatePresence mode="popLayout">
+                      {widgets.filter(w => w.widgetType === 'METER').map((w) => (
+                        <motion.div
+                          key={w.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          whileHover={{ y: -5 }}
+                          className="card group flex flex-col p-3 gap-2 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
+                        >
+                          <div className="flex justify-between items-center gap-2">
+                            <p className="text-[10px] font-black uppercase tracking-widest opacity-40 line-clamp-1 flex-1">{w.name}</p>
+                            <button
+                              onClick={() => setEditingMeter(w)}
+                              className="p-1.5 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        ))}
-                        {w.items?.length > 3 && (
-                          <div className="text-[10px] text-muted-foreground mt-2 font-medium">
-                            +{w.items.length - 3} weitere Punkte
-                          </div>
-                        )}
-                        {(!w.items || w.items.length === 0) && (
-                          <p className="text-xs text-muted-foreground/50 italic">Keine Punkte vorhanden</p>
-                        )}
-                      </div>
-                    )}
-                    {w.widgetType === 'METER' && (
-                      <div className="mt-4 space-y-4">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-3xl font-black text-foreground">
-                            {w.readings?.length > 0 ? (
-                              w.readings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].value
-                            ) : "0"}
-                          </span>
-                          <span className="text-sm font-bold text-muted-foreground uppercase">{w.unit}</span>
-                        </div>
 
-                        {w.readings?.length >= 2 && (() => {
-                          const sorted = [...w.readings].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                          const first = sorted[0];
-                          const last = sorted[sorted.length - 1];
-                          const diff = parseFloat(last.value) - parseFloat(first.value);
-                          const days = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24);
-                          if (days > 0) {
-                            const avg = (diff / days).toFixed(2);
-                            return (
-                              <div className="flex items-center gap-2 mt-2 py-2 border-t border-border/50">
-                                <div className="p-1 rounded bg-green-500/10 text-green-600">
-                                  <History className="w-3 h-3" />
+                          <div className="flex-1">
+                            {(() => {
+                              const sorted = [...(w.readings || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                              if (sorted.length >= 2) {
+                                const first = sorted[0];
+                                const last = sorted[sorted.length - 1];
+                                const diff = parseFloat(last.value) - parseFloat(first.value);
+                                const days = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24);
+                                const avg = days > 0 ? (diff / days).toFixed(1) : "0.0";
+                                return (
+                                  <div className="space-y-1">
+                                    <div className="flex items-baseline gap-1">
+                                      <span className="text-2xl font-black tabular-nums">{avg}</span>
+                                      <span className="text-[10px] font-bold text-muted-foreground uppercase">{w.unit}/Tag</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-[9px] font-medium text-muted-foreground/60 uppercase tabular-nums">
+                                      <span>{last.value} {w.unit}</span>
+                                      <span>{new Date(last.date).toLocaleDateString([], { day: '2-digit', month: '2-digit' })}</span>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="py-1 space-y-2">
+                                  <p className="text-[9px] text-muted-foreground italic uppercase">Daten benötigt...</p>
+                                  {w.readings?.length > 0 && (
+                                    <p className="text-[9px] font-black text-muted-foreground uppercase">
+                                      {w.readings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].value} {w.unit}
+                                    </p>
+                                  )}
                                 </div>
-                                <span className="text-[11px] font-bold text-green-600 uppercase tracking-wider">
-                                  Ø {avg} {w.unit} / Tag
-                                </span>
+                              );
+                            })()}
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+
+              {/* Other Widgets Section */}
+              {widgets.some(w => w.widgetType !== 'METER') && (
+                <div className="space-y-4">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">Listen & Notizen</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <AnimatePresence mode="popLayout">
+                      {widgets.filter(w => w.widgetType !== 'METER').map((w) => (
+                        <motion.div
+                          key={w.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          whileHover={{ y: -5 }}
+                          className="card group flex flex-col p-6 gap-6 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              {w.widgetType === 'LIST' && <ListTodo className="w-3 h-3" />}
+                              {w.widgetType === 'NOTE' && <FileText className="w-3 h-3" />}
+                              {w.widgetType}
+                            </div>
+                            <div className="text-[10px] font-mono opacity-30 uppercase">
+                              {new Date(w.createdAt).toLocaleDateString()}
+                            </div>
+                          </div>
+
+                          <div className="flex-1">
+                            <h3 className="text-xl font-black tracking-tight text-foreground line-clamp-1">{w.name || w.title}</h3>
+                            {w.widgetType === 'NOTE' && (
+                              <p className="text-sm text-muted-foreground mt-2 line-clamp-3 leading-relaxed">
+                                {w.content || "Kein Inhalt..."}
+                              </p>
+                            )}
+                            {w.widgetType === 'LIST' && (
+                              <div className="mt-4 space-y-2">
+                                {w.items?.slice(0, 3).map((item: any) => (
+                                  <div key={item.id} className="text-xs flex items-center gap-3">
+                                    <div className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 ${item.completed === 'true' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>
+                                      {item.completed === 'true' && <Check className="w-2.5 h-2.5" />}
+                                    </div>
+                                    <span className={`line-clamp-1 ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground/80'}`}>
+                                      {item.content}
+                                    </span>
+                                  </div>
+                                ))}
+                                {w.items?.length > 3 && (
+                                  <div className="text-[10px] text-muted-foreground mt-2 font-medium">
+                                    +{w.items.length - 3} weitere Punkte
+                                  </div>
+                                )}
+                                {(!w.items || w.items.length === 0) && (
+                                  <p className="text-xs text-muted-foreground/50 italic">Keine Punkte vorhanden</p>
+                                )}
                               </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </div>
-                    )}
-                  </div>
+                            )}
+                          </div>
 
-                  <div className="pt-4 border-t border-border flex justify-between items-center bg-card">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          if (w.widgetType === 'NOTE') setEditingNote(w);
-                          if (w.widgetType === 'LIST') setEditingList(w);
-                          if (w.widgetType === 'METER') setEditingMeter(w);
-                        }}
-                        className="btn btn-ghost px-2 py-1 text-[10px] uppercase tracking-widest font-bold flex items-center gap-1.5"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                        Bearbeiten
-                      </button>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (window.confirm("Wirklich löschen?")) {
-                          if (w.widgetType === 'NOTE') await deleteNote(w.id);
-                          if (w.widgetType === 'LIST') await deleteTodoList(w.id);
-                          if (w.widgetType === 'METER') await deleteMeter(w.id);
-                          refreshWidgets(selectedHouseholdId!);
-                        }
-                      }}
-                      className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                          <div className="pt-4 border-t border-border flex justify-between items-center bg-card">
+                            <button
+                              onClick={() => {
+                                if (w.widgetType === 'NOTE') setEditingNote(w);
+                                if (w.widgetType === 'LIST') setEditingList(w);
+                              }}
+                              className="btn btn-ghost px-2 py-1 text-[10px] uppercase tracking-widest font-bold flex items-center gap-1.5"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              Bearbeiten
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (window.confirm("Wirklich löschen?")) {
+                                  if (w.widgetType === 'NOTE') await deleteNote(w.id);
+                                  if (w.widgetType === 'LIST') await deleteTodoList(w.id);
+                                  refreshWidgets(selectedHouseholdId!);
+                                }
+                              }}
+                              className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {widgets.length === 0 && !showAddWidget && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="col-span-full py-24 flex flex-col items-center justify-center text-center gap-6"
+                </div>
+              )}
+            </div>
+          ) : !showAddWidget && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="col-span-full py-24 flex flex-col items-center justify-center text-center gap-6"
+            >
+              <div className="w-16 h-16 rounded-3xl bg-accent flex items-center justify-center">
+                <Plus className="w-8 h-8 text-muted-foreground/50" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-foreground">Keine Widgets vorhanden</p>
+                <p className="text-xs text-muted-foreground">Erstelle dein erstes Widget, um loszulegen.</p>
+              </div>
+              <button
+                onClick={() => setShowAddWidget(true)}
+                className="btn btn-primary text-xs uppercase tracking-widest"
               >
-                <div className="w-16 h-16 rounded-3xl bg-accent flex items-center justify-center">
-                  <Plus className="w-8 h-8 text-muted-foreground/50" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-foreground">Keine Widgets vorhanden</p>
-                  <p className="text-xs text-muted-foreground">Erstelle dein erstes Widget, um loszulegen.</p>
-                </div>
-                <button
-                  onClick={() => setShowAddWidget(true)}
-                  className="btn btn-primary text-xs uppercase tracking-widest"
-                >
-                  Widget erstellen
-                </button>
-              </motion.div>
-            )}
-          </div>
+                Widget erstellen
+              </button>
+            </motion.div>
+          )}
         </div>
       ) : (
         <div className="py-24 text-center border-2 border-dashed border-black/20">
