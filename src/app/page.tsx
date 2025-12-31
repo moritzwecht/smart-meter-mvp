@@ -84,7 +84,15 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (selectedHouseholdId) refreshWidgets(selectedHouseholdId);
+    if (selectedHouseholdId) {
+      refreshWidgets(selectedHouseholdId);
+
+      const interval = setInterval(() => {
+        refreshWidgets(selectedHouseholdId);
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
   }, [selectedHouseholdId]);
 
   const handleCreateHousehold = async (e: React.FormEvent) => {
