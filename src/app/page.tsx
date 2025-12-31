@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Plus, LogOut, Trash2, Users, Settings, X, Check, Edit2, History, Zap, ListTodo, FileText, Mail, User, UserMinus } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
-import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, deleteHousehold as deleteHouseholdAction, removeMember as removeMemberAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
+import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, updateHousehold as updateHouseholdAction, deleteHousehold as deleteHouseholdAction, removeMember as removeMemberAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
 
 interface Session {
   email: string;
@@ -18,7 +18,6 @@ export default function Dashboard() {
   const [selectedHouseholdId, setSelectedHouseholdId] = useState<number | null>(null);
   const [newHouseholdName, setNewHouseholdName] = useState("");
   const [isHouseholdMenuOpen, setIsHouseholdMenuOpen] = useState(false);
-  const [showManageMembers, setShowManageMembers] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteError, setInviteError] = useState("");
@@ -28,6 +27,7 @@ export default function Dashboard() {
   const [editingNote, setEditingNote] = useState<any | null>(null);
   const [editingList, setEditingList] = useState<any | null>(null);
   const [editingMeter, setEditingMeter] = useState<any | null>(null);
+  const [editingHousehold, setEditingHousehold] = useState<any | null>(null);
   const [newItemValue, setNewItemValue] = useState("");
 
   const refreshHouseholds = async () => {
@@ -44,6 +44,16 @@ export default function Dashboard() {
       setMembers(data);
     } catch (err) {
       console.error("Failed to fetch members:", err);
+    }
+  };
+
+  const handleRenameHousehold = async () => {
+    if (!editingHousehold || !editingHousehold.name.trim()) return;
+    try {
+      await updateHouseholdAction(editingHousehold.id, editingHousehold.name);
+      refreshHouseholds();
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -173,19 +183,13 @@ export default function Dashboard() {
                       <button
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (window.confirm(`Möchtest du "${h.name}" wirklich löschen?`)) {
-                            try {
-                              await deleteHouseholdAction(h.id);
-                              if (selectedHouseholdId === h.id) setSelectedHouseholdId(null);
-                              refreshHouseholds();
-                            } catch (err: any) {
-                              alert(err.message);
-                            }
-                          }
+                          setEditingHousehold(h);
+                          setIsHouseholdMenuOpen(false);
+                          refreshMembers(h.id);
                         }}
-                        className={`p-2 hover:text-red-500 transition-colors ${h.role !== 'OWNER' ? 'hidden' : ''}`}
+                        className={`p-2 hover:text-primary transition-colors ${h.role !== 'OWNER' ? 'hidden' : ''}`}
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Edit2 className="w-4 h-4" />
                       </button>
                     </div>
                   ))}
@@ -205,20 +209,6 @@ export default function Dashboard() {
                     </button>
                   </form>
                 </div>
-
-                {selectedHouseholdId && selectedHousehold?.role === 'OWNER' && (
-                  <button
-                    onClick={() => {
-                      setShowManageMembers(true);
-                      setIsHouseholdMenuOpen(false);
-                      refreshMembers(selectedHouseholdId);
-                    }}
-                    className="w-full text-left flex items-center gap-2 px-3 py-2.5 bg-accent/30 hover:bg-accent transition-colors text-xs font-bold border-t border-border"
-                  >
-                    <Users className="w-4 h-4" />
-                    Mitglieder verwalten
-                  </button>
-                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -780,9 +770,9 @@ export default function Dashboard() {
           </div>
         )}
       </AnimatePresence>
-      {/* Member Management Overlay */}
+      {/* Household Settings Overlay */}
       <AnimatePresence>
-        {showManageMembers && selectedHousehold && (
+        {editingHousehold && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -792,11 +782,11 @@ export default function Dashboard() {
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <div className="space-y-1">
-                  <h2 className="text-xl font-black tracking-tight">Mitglieder verwalten</h2>
-                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">Haushalt: {selectedHousehold.name}</p>
+                  <h2 className="text-xl font-black tracking-tight">Haushalt Einstellungen</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{editingHousehold.name}</p>
                 </div>
                 <button
-                  onClick={() => setShowManageMembers(false)}
+                  onClick={() => setEditingHousehold(null)}
                   className="p-2 hover:bg-accent rounded-full transition-colors"
                 >
                   <X className="w-5 h-5" />
@@ -804,17 +794,36 @@ export default function Dashboard() {
               </div>
 
               <div className="p-6 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
+                {/* Rename Section */}
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Haushalt umbenennen</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={editingHousehold.name}
+                      onChange={(e) => setEditingHousehold({ ...editingHousehold, name: e.target.value })}
+                      className="flex-1 bg-accent/20 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 transition-colors"
+                    />
+                    <button
+                      onClick={handleRenameHousehold}
+                      className="btn btn-primary px-6 text-xs uppercase tracking-widest"
+                    >
+                      Speichern
+                    </button>
+                  </div>
+                </div>
+
+                {/* Members Section */}
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Neues Mitglied einladen</label>
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
-                      if (!selectedHouseholdId) return;
                       setInviteError("");
                       try {
-                        await inviteToHousehold(selectedHouseholdId, inviteEmail);
+                        await inviteToHousehold(editingHousehold.id, inviteEmail);
                         setInviteEmail("");
-                        refreshMembers(selectedHouseholdId);
+                        refreshMembers(editingHousehold.id);
                       } catch (err: any) {
                         setInviteError(err.message || "Fehler beim Einladen.");
                       }
@@ -831,7 +840,7 @@ export default function Dashboard() {
                         className="w-full bg-accent/20 rounded-xl pl-11 pr-4 py-4 text-sm outline-none focus:bg-accent/40 transition-colors"
                       />
                     </div>
-                    <button type="submit" className="btn btn-primary px-8">
+                    <button type="submit" className="btn btn-primary px-8 text-xs">
                       Einladen
                     </button>
                   </form>
@@ -861,12 +870,12 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {m.email !== session.email && m.role !== 'OWNER' && (
+                        {session && m.email !== session.email && m.role !== 'OWNER' && (
                           <button
                             onClick={async () => {
-                              if (selectedHouseholdId && window.confirm(`${m.email} wirklich aus dem Haushalt entfernen?`)) {
-                                await removeMemberAction(selectedHouseholdId, m.email);
-                                refreshMembers(selectedHouseholdId);
+                              if (window.confirm(`${m.email} wirklich aus dem Haushalt entfernen?`)) {
+                                await removeMemberAction(editingHousehold.id, m.email);
+                                refreshMembers(editingHousehold.id);
                               }
                             }}
                             className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
@@ -878,11 +887,37 @@ export default function Dashboard() {
                     ))}
                   </div>
                 </div>
+
+                {/* Danger Zone */}
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-red-500">Gefahrenzone</label>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">Das Löschen eines Haushalts entfernt alle Zähler, Listen und Notizen unwiderruflich.</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (window.confirm(`Möchtest du "${editingHousehold.name}" wirklich löschen?`)) {
+                        try {
+                          await deleteHouseholdAction(editingHousehold.id);
+                          if (selectedHouseholdId === editingHousehold.id) setSelectedHouseholdId(null);
+                          setEditingHousehold(null);
+                          refreshHouseholds();
+                        } catch (err: any) {
+                          alert(err.message);
+                        }
+                      }
+                    }}
+                    className="w-full btn bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white py-3 text-xs uppercase tracking-widest transition-all font-bold flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Haushalt löschen
+                  </button>
+                </div>
               </div>
 
               <div className="p-6 border-t border-border bg-accent/10">
                 <button
-                  onClick={() => setShowManageMembers(false)}
+                  onClick={() => setEditingHousehold(null)}
                   className="w-full btn btn-primary py-3"
                 >
                   Fertig

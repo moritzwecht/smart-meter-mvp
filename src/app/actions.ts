@@ -156,6 +156,17 @@ export async function deleteHousehold(id: number) {
     return { success: true };
 }
 
+export async function updateHousehold(id: number, name: string) {
+    const { membership } = await ensureHouseholdAccess(id);
+    if (membership.role !== 'OWNER') throw new Error("Nur der Besitzer kann den Haushalt umbenennen.");
+
+    await db.update(households)
+        .set({ name: name.trim() })
+        .where(eq(households.id, id));
+    revalidatePath("/");
+    return { success: true };
+}
+
 export async function inviteToHousehold(householdId: number, email: string) {
     const session = await getSession();
     if (!session?.email) throw new Error("Unauthorized");
