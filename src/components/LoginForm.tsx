@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { requestLogin } from "@/app/actions";
+import { ChevronRight, Mail } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function LoginForm() {
     const [email, setEmail] = useState("");
@@ -23,53 +25,89 @@ export function LoginForm() {
         }
     };
 
-    if (submitted) {
-        return (
-            <div className="p-6 border-4 border-black bg-white space-y-4">
-                <div className="flex items-center gap-3">
-                    <div className="w-4 h-4 bg-green-500" />
-                    <h2 className="text-xl font-black uppercase tracking-tighter">Check deine E-Mails</h2>
-                </div>
-                <p className="text-sm font-bold">
-                    Ein Login-Link wurde an <span className="underline">{email}</span> gesendet.
-                </p>
-                <p style={{ fontSize: '12px', opacity: 0.5 }}>
-                    Falls keine E-Mail ankommt, schau bitte auch im Spam-Ordner nach.
-                </p>
-                <button
-                    onClick={() => setSubmitted(false)}
-                    className="text-[10px] font-black uppercase underline hover:no-underline"
-                >
-                    Zurück zum Login
-                </button>
-            </div>
-        );
-    }
-
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1">
-                <label htmlFor="email" className="text-sm font-bold uppercase tracking-tight">E-Mail</label>
-                <input
-                    id="email"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="E-Mail Adresse"
-                    className="px-3 py-2 border border-black bg-transparent outline-none focus:bg-slate-100"
-                />
-            </div>
+        <div className="p-2">
+            <AnimatePresence mode="wait">
+                {submitted ? (
+                    <motion.div
+                        key="submitted"
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        className="space-y-6 text-center py-4"
+                    >
+                        <div className="w-16 h-16 bg-accent rounded-3xl flex items-center justify-center mx-auto mb-6">
+                            <Mail className="w-8 h-8 text-primary" />
+                        </div>
+                        <div className="space-y-2">
+                            <h2 className="text-xl font-black tracking-tight">Check deine E-Mails</h2>
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                                Ein Login-Link wurde an <br />
+                                <span className="font-bold text-foreground underline decoration-border underline-offset-4">{email}</span> <br />
+                                gesendet.
+                            </p>
+                        </div>
+                        <div className="pt-4">
+                            <button
+                                onClick={() => setSubmitted(false)}
+                                className="text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                Zurück zum Login
+                            </button>
+                        </div>
+                    </motion.div>
+                ) : (
+                    <motion.form
+                        key="form"
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        onSubmit={handleSubmit}
+                        className="space-y-6"
+                    >
+                        <div className="space-y-2">
+                            <label htmlFor="email" className="text-[10px] font-bold uppercase tracking-widest opacity-40">E-Mail Adresse</label>
+                            <div className="relative">
+                                <Mail className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <input
+                                    id="email"
+                                    type="email"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="email@beispiel.de"
+                                    className="w-full bg-transparent border-b-2 border-border focus:border-primary outline-none pl-7 py-3 text-sm transition-colors"
+                                />
+                            </div>
+                        </div>
 
-            {error && <p className="text-red-500 font-bold text-sm italic">{error}</p>}
+                        {error && (
+                            <motion.p
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="text-red-500 font-bold text-xs italic"
+                            >
+                                {error}
+                            </motion.p>
+                        )}
 
-            <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-3 border border-black bg-black text-white font-bold uppercase tracking-widest hover:bg-slate-800 transition-colors disabled:opacity-50"
-            >
-                {loading ? "Wird gesendet..." : "Login anfordern"}
-            </button>
-        </form>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full btn btn-primary py-4 mt-4 flex items-center justify-center gap-2 group"
+                        >
+                            {loading ? (
+                                <span className="opacity-50">Wird gesendet...</span>
+                            ) : (
+                                <>
+                                    <span>Login anfordern</span>
+                                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
+                        </button>
+                    </motion.form>
+                )}
+            </AnimatePresence>
+        </div>
     );
 }
