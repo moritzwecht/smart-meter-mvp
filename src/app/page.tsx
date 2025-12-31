@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
-import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, deleteHousehold as deleteHouseholdAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
+import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, deleteHousehold as deleteHouseholdAction, removeMember as removeMemberAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
 
 interface Session {
   email: string;
@@ -155,7 +155,7 @@ export default function Dashboard() {
                         }
                       }
                     }}
-                    className="px-3 hover:bg-red-600 hover:text-white transition-colors text-red-600"
+                    className={`px-3 hover:bg-red-600 hover:text-white transition-colors text-red-600 ${h.role !== 'OWNER' ? 'hidden' : ''}`}
                     title="Haushalt löschen"
                   >
                     🗑️
@@ -177,7 +177,7 @@ export default function Dashboard() {
                 </form>
               </div>
 
-              {selectedHouseholdId && (
+              {selectedHouseholdId && selectedHousehold?.role === 'OWNER' && (
                 <div className="border-t border-black/10 pt-2 px-2 pb-1">
                   <button
                     onClick={() => {
@@ -713,6 +713,19 @@ export default function Dashboard() {
                       <div className="text-sm font-bold">{m.email}</div>
                       <div className="text-[9px] font-mono uppercase tracking-widest opacity-30">{m.role === 'OWNER' ? 'Besitzer' : 'Mitglied'}</div>
                     </div>
+                    {m.email !== session.email && m.role !== 'OWNER' && (
+                      <button
+                        onClick={async () => {
+                          if (selectedHouseholdId && window.confirm(`${m.email} wirklich aus dem Haushalt entfernen?`)) {
+                            await removeMemberAction(selectedHouseholdId, m.email);
+                            refreshMembers(selectedHouseholdId);
+                          }
+                        }}
+                        className="opacity-0 group-hover:opacity-100 text-[10px] font-black uppercase text-red-600 underline"
+                      >
+                        Entfernen
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
