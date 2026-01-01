@@ -524,9 +524,24 @@ export async function addReading(meterId: number, value: string, date: Date) {
     if (!meter) throw new Error("Zähler nicht gefunden");
     await ensureHouseholdAccess(meter.householdId);
 
+    // Normalize number format (handle German comma vs English dot)
+    let normalized = value.trim().replace(/\s/g, ""); // remove spaces
+    if (normalized.includes(",") && normalized.includes(".")) {
+        // Assume comma is decimal if both present (e.g. 1.234,56)
+        normalized = normalized.replace(/\./g, "").replace(",", ".");
+    } else if (normalized.includes(",")) {
+        // Only comma present (e.g. 1234,56)
+        normalized = normalized.replace(",", ".");
+    }
+    // Final check for multiple dots
+    const parts = normalized.split(".");
+    if (parts.length > 2) {
+        normalized = parts.join(""); // something is weird, just strip dots
+    }
+
     await db.insert(readings).values({
         meterId,
-        value,
+        value: normalized,
         date,
     });
     revalidatePath("/");

@@ -27,6 +27,9 @@ export default function Dashboard() {
   const [editingNote, setEditingNote] = useState<any | null>(null);
   const [editingList, setEditingList] = useState<any | null>(null);
   const [editingMeter, setEditingMeter] = useState<any | null>(null);
+  const [addingReadingForMeter, setAddingReadingForMeter] = useState<any | null>(null);
+  const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
+  const [newMeterData, setNewMeterData] = useState({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
   const [editingHousehold, setEditingHousehold] = useState<any | null>(null);
   const [newItemValue, setNewItemValue] = useState("");
 
@@ -78,10 +81,10 @@ export default function Dashboard() {
       if (updatedList) setEditingList(updatedList);
     }
 
-    // If we're currently editing a meter, update its local state too
-    if (editingMeter) {
-      const updatedMeter = m.find(meter => meter.id === editingMeter.id);
-      if (updatedMeter) setEditingMeter(updatedMeter);
+    // If we're currently adding a reading, update its local state too
+    if (addingReadingForMeter) {
+      const updatedMeter = m.find(meter => meter.id === addingReadingForMeter.id);
+      if (updatedMeter) setAddingReadingForMeter(updatedMeter);
     }
   };
 
@@ -128,7 +131,7 @@ export default function Dashboard() {
         >
           <div className="text-center space-y-2">
             <h1 className="text-4xl font-black tracking-tighter text-foreground">HOME</h1>
-            <p className="text-sm text-muted-foreground font-mono">v0.1.0</p>
+            <p className="text-sm text-muted-foreground font-mono">v1.2.1</p>
           </div>
           <div className="card shadow-xl shadow-foreground/5">
             <LoginForm />
@@ -259,7 +262,10 @@ export default function Dashboard() {
                       whileTap={{ scale: 0.98 }}
                       onClick={async () => {
                         if (opt.type === 'NOTE') await addNote(selectedHouseholdId!, "Neue Notiz");
-                        if (opt.type === 'METER') await addMeter(selectedHouseholdId!, "Neuer Zähler", "ELECTRICITY", "kWh");
+                        if (opt.type === 'METER') {
+                          setNewMeterData({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
+                          setShowAddMeterDialog(true);
+                        }
                         if (opt.type === 'LIST') await addTodoList(selectedHouseholdId!, "Neue Liste");
                         setShowAddWidget(false);
                         refreshWidgets(selectedHouseholdId!);
@@ -298,13 +304,17 @@ export default function Dashboard() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.9 }}
                           whileHover={{ y: -5 }}
-                          className="card group flex flex-col p-3 gap-2 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
+                          onClick={() => setAddingReadingForMeter(w)}
+                          className="card group flex flex-col p-3 gap-2 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5 cursor-pointer active:scale-[0.98]"
                         >
                           <div className="flex justify-between items-center gap-2">
                             <p className="text-[10px] font-black uppercase tracking-widest opacity-40 line-clamp-1 flex-1">{w.name}</p>
                             <button
-                              onClick={() => setEditingMeter(w)}
-                              className="p-1.5 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingMeter(w);
+                              }}
+                              className="p-1.5 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary relative z-10"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -312,21 +322,35 @@ export default function Dashboard() {
 
                           <div className="flex-1">
                             {(() => {
+                              const parseSafe = (val: string) => {
+                                if (!val) return 0;
+                                return parseFloat(val.toString().replace(',', '.'));
+                              };
+                              const formatNumber = (num: number, digits: number = 2) => {
+                                return new Intl.NumberFormat('de-DE', {
+                                  minimumFractionDigits: digits,
+                                  maximumFractionDigits: digits
+                                }).format(num);
+                              };
                               const sorted = [...(w.readings || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                               if (sorted.length >= 2) {
-                                const first = sorted[0];
+                                // Use the last two readings for "current" average
                                 const last = sorted[sorted.length - 1];
-                                const diff = parseFloat(last.value) - parseFloat(first.value);
-                                const days = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24);
-                                const avg = days > 0 ? (diff / days).toFixed(1) : "0.0";
+                                const secondLast = sorted[sorted.length - 2];
+                                const diff = parseSafe(last.value) - parseSafe(secondLast.value);
+                                const ms = new Date(last.date).getTime() - new Date(secondLast.date).getTime();
+                                const days = ms / (1000 * 60 * 60 * 24);
+
+                                // Only show average if the readings are at least 1 hour apart
+                                const avg = days > 0.04 ? formatNumber(diff / days, 2) : null;
                                 return (
                                   <div className="space-y-1">
                                     <div className="flex items-baseline gap-1">
-                                      <span className="text-2xl font-black tabular-nums">{avg}</span>
+                                      <span className="text-2xl font-black tabular-nums">{avg || "---"}</span>
                                       <span className="text-[10px] font-bold text-muted-foreground uppercase">{w.unit}/Tag</span>
                                     </div>
                                     <div className="flex justify-between items-center text-[9px] font-medium text-muted-foreground/60 uppercase tabular-nums">
-                                      <span>{last.value} {w.unit}</span>
+                                      <span>{formatNumber(parseSafe(last.value), 2)} {w.unit}</span>
                                       <span>{new Date(last.date).toLocaleDateString([], { day: '2-digit', month: '2-digit' })}</span>
                                     </div>
                                   </div>
@@ -337,7 +361,7 @@ export default function Dashboard() {
                                   <p className="text-[9px] text-muted-foreground italic uppercase">Daten benötigt...</p>
                                   {w.readings?.length > 0 && (
                                     <p className="text-[9px] font-black text-muted-foreground uppercase">
-                                      {w.readings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].value} {w.unit}
+                                      {formatNumber(parseSafe(w.readings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].value), 2)} {w.unit}
                                     </p>
                                   )}
                                 </div>
@@ -469,6 +493,180 @@ export default function Dashboard() {
           <p className="font-bold uppercase tracking-widest opacity-30">Wähle oder erstelle einen Haushalt</p>
         </div>
       )}
+
+      <AnimatePresence>
+        {showAddMeterDialog && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-sm bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-border">
+                <h2 className="text-xl font-black tracking-tight">Neuer Zähler</h2>
+                <button
+                  onClick={() => setShowAddMeterDialog(false)}
+                  className="p-2 hover:bg-accent rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Name</label>
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newMeterData.name}
+                      onChange={(e) => setNewMeterData({ ...newMeterData, name: e.target.value })}
+                      className="w-full text-lg font-black bg-accent/20 rounded-xl px-4 py-3 outline-none focus:bg-accent/40 transition-colors"
+                      placeholder="z.B. Hauptzähler"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Einheit</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['kWh', 'm³', 'l'].map((u) => (
+                        <button
+                          key={u}
+                          onClick={() => setNewMeterData({ ...newMeterData, unit: u })}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${newMeterData.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'}`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                      <div className="relative flex-1 min-w-[100px]">
+                        <input
+                          type="text"
+                          placeholder="Andere..."
+                          value={['kWh', 'm³', 'l'].includes(newMeterData.unit) ? "" : newMeterData.unit}
+                          onChange={(e) => setNewMeterData({ ...newMeterData, unit: e.target.value })}
+                          className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!['kWh', 'm³', 'l'].includes(newMeterData.unit) && newMeterData.unit !== '' ? 'border-primary/50' : 'border-transparent focus:border-primary/30'}`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    await addMeter(selectedHouseholdId!, newMeterData.name, "ELECTRICITY", newMeterData.unit);
+                    setShowAddMeterDialog(false);
+                    refreshWidgets(selectedHouseholdId!);
+                  }}
+                  className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black"
+                >
+                  Erstellen
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {addingReadingForMeter && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-sm bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-border">
+                <div className="space-y-0.5">
+                  <h2 className="text-sm font-black tracking-tight uppercase opacity-40">{addingReadingForMeter.name}</h2>
+                  <p className="text-lg font-black italic">Ablesung eingeben</p>
+                </div>
+                <button
+                  onClick={() => setAddingReadingForMeter(null)}
+                  className="p-2 hover:bg-accent rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {(() => {
+                  const formatNumber = (num: number, digits: number = 2) => {
+                    return new Intl.NumberFormat('de-DE', {
+                      minimumFractionDigits: digits,
+                      maximumFractionDigits: digits
+                    }).format(num);
+                  };
+                  const parseSafe = (val: string) => {
+                    if (!val) return 0;
+                    return parseFloat(val.toString().replace(',', '.'));
+                  };
+                  const sorted = [...(addingReadingForMeter.readings || [])].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                  const last = sorted[0];
+                  return (
+                    <div className="space-y-4">
+                      {last && (
+                        <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
+                          <span>Letzter Stand</span>
+                          <span>{formatNumber(parseSafe(last.value), 2)} {addingReadingForMeter.unit} ({new Date(last.date).toLocaleDateString()})</span>
+                        </div>
+                      )}
+
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!newItemValue.trim()) return;
+                          await addReading(addingReadingForMeter.id, newItemValue, new Date());
+                          setNewItemValue("");
+                          setAddingReadingForMeter(null);
+                          refreshWidgets(selectedHouseholdId!);
+                        }}
+                        className="space-y-4"
+                      >
+                        <div className="relative">
+                          <input
+                            autoFocus
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            value={newItemValue}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/[^0-9,.]/g, '');
+                              setNewItemValue(val);
+                            }}
+                            className="w-full bg-accent/20 rounded-xl px-4 py-5 text-4xl font-black outline-none focus:bg-accent/40 transition-colors tabular-nums"
+                          />
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground uppercase">
+                            {addingReadingForMeter.unit}
+                          </div>
+                        </div>
+                        <button type="submit" className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
+                          Speichern
+                        </button>
+                      </form>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="p-4 border-t border-border bg-accent/10 text-center">
+                <button
+                  onClick={() => {
+                    const meter = addingReadingForMeter;
+                    setAddingReadingForMeter(null);
+                    setEditingMeter(meter);
+                  }}
+                  className="inline-flex items-center gap-2 py-2 px-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary transition-colors hover:bg-accent rounded-lg"
+                >
+                  <Settings className="w-3 h-3" />
+                  Einstellungen & Verlauf
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {editingNote && (
@@ -683,18 +881,38 @@ export default function Dashboard() {
                       className="w-full text-lg font-black bg-transparent border-b-2 border-border focus:border-primary outline-none py-1 transition-colors"
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Einheit</label>
-                    <input
-                      type="text"
-                      value={editingMeter.unit}
-                      onChange={(e) => setEditingMeter({ ...editingMeter, unit: e.target.value })}
-                      onBlur={() => {
-                        updateMeter(editingMeter.id, editingMeter.name, editingMeter.unit);
-                        refreshWidgets(selectedHouseholdId!);
-                      }}
-                      className="w-full text-lg font-black bg-transparent border-b-2 border-border focus:border-primary outline-none py-1 transition-colors"
-                    />
+                    <div className="flex flex-wrap gap-2">
+                      {['kWh', 'm³', 'l'].map((u) => (
+                        <button
+                          key={u}
+                          onClick={() => {
+                            setEditingMeter({ ...editingMeter, unit: u });
+                            updateMeter(editingMeter.id, editingMeter.name, u);
+                            refreshWidgets(selectedHouseholdId!);
+                          }}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${editingMeter.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'}`}
+                        >
+                          {u}
+                        </button>
+                      ))}
+                      <div className="relative flex-1 min-w-[120px]">
+                        <input
+                          type="text"
+                          placeholder="Andere..."
+                          value={['kWh', 'm³', 'l'].includes(editingMeter.unit) ? "" : editingMeter.unit}
+                          onChange={(e) => {
+                            setEditingMeter({ ...editingMeter, unit: e.target.value });
+                          }}
+                          onBlur={() => {
+                            updateMeter(editingMeter.id, editingMeter.name, editingMeter.unit);
+                            refreshWidgets(selectedHouseholdId!);
+                          }}
+                          className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!['kWh', 'm³', 'l'].includes(editingMeter.unit) && editingMeter.unit !== '' ? 'border-primary/50 bg-white dark:bg-slate-800' : 'border-transparent focus:border-primary/30'}`}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -702,22 +920,32 @@ export default function Dashboard() {
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Statistik</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {editingMeter.readings?.length >= 2 ? (() => {
+                      const parseSafe = (val: string) => {
+                        if (!val) return 0;
+                        return parseFloat(val.toString().replace(',', '.'));
+                      };
+                      const formatNumber = (num: number, digits: number = 2) => {
+                        return new Intl.NumberFormat('de-DE', {
+                          minimumFractionDigits: digits,
+                          maximumFractionDigits: digits
+                        }).format(num);
+                      };
                       const sorted = [...editingMeter.readings].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                       const first = sorted[0];
                       const last = sorted[sorted.length - 1];
-                      const diff = parseFloat(last.value) - parseFloat(first.value);
+                      const diff = parseSafe(last.value) - parseSafe(first.value);
                       const days = (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24);
-                      const avg = days > 0 ? (diff / days).toFixed(2) : "0.00";
+                      const avg = days > 0 ? (diff / days) : 0;
                       return (
                         <>
                           <div className="p-4 bg-accent/30 rounded-2xl space-y-1">
                             <div className="text-[10px] uppercase font-bold text-muted-foreground">Gesamtverbrauch</div>
-                            <div className="text-2xl font-black">{diff.toFixed(2)} {editingMeter.unit}</div>
+                            <div className="text-2xl font-black">{formatNumber(diff, 3)} {editingMeter.unit}</div>
                             <div className="text-[10px] opacity-40">über {Math.floor(days)} Tage</div>
                           </div>
                           <div className="p-4 bg-green-500/5 rounded-2xl space-y-1 border border-green-500/10">
                             <div className="text-[10px] uppercase font-bold text-green-600/60">Tagesdurchschnitt</div>
-                            <div className="text-2xl font-black text-green-600">{avg} {editingMeter.unit}</div>
+                            <div className="text-2xl font-black text-green-600">{formatNumber(avg, 2)} {editingMeter.unit}</div>
                             <div className="text-[10px] text-green-600/40">pro 24 Stunden</div>
                           </div>
                         </>
@@ -730,36 +958,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Neuer Zählerstand</label>
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      if (!newItemValue.trim()) return;
-                      await addReading(editingMeter.id, newItemValue, new Date());
-                      setNewItemValue("");
-                      refreshWidgets(selectedHouseholdId!);
-                    }}
-                    className="flex gap-2"
-                  >
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        value={newItemValue}
-                        onChange={(e) => setNewItemValue(e.target.value)}
-                        className="w-full bg-accent/20 rounded-xl px-4 py-4 text-2xl font-black outline-none focus:bg-accent/40 transition-colors"
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground uppercase">
-                        {editingMeter.unit}
-                      </div>
-                    </div>
-                    <button type="submit" className="btn btn-primary px-8">
-                      Speichern
-                    </button>
-                  </form>
-                </div>
 
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Verlauf</label>
