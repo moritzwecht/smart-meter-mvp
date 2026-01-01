@@ -499,13 +499,13 @@ export async function deleteTodoItem(id: number) {
     revalidatePath("/");
 }
 
-export async function updateMeter(id: number, name: string, unit: string) {
+export async function updateMeter(id: number, name: string, type: string, unit: string) {
     const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
     if (!meter) throw new Error("Zähler nicht gefunden");
     await ensureHouseholdAccess(meter.householdId);
 
     await db.update(meters)
-        .set({ name, unit })
+        .set({ name, type, unit })
         .where(eq(meters.id, id));
     revalidatePath("/");
 }

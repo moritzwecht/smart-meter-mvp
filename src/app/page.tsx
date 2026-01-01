@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, LogOut, Trash2, Users, Settings, X, Check, Edit2, History, Zap, ListTodo, FileText, Mail, User, UserMinus } from "lucide-react";
+import { ChevronDown, Plus, LogOut, Trash2, Users, Settings, X, Check, Edit2, History, Zap, Droplets, Flame, ListTodo, FileText, Mail, User, UserMinus, Sun, Moon } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
 import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, updateHousehold as updateHouseholdAction, deleteHousehold as deleteHouseholdAction, removeMember as removeMemberAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
 
@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
   const [newMeterData, setNewMeterData] = useState({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
   const [editingHousehold, setEditingHousehold] = useState<any | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newItemValue, setNewItemValue] = useState("");
 
   const refreshHouseholds = async () => {
@@ -60,11 +61,31 @@ export default function Dashboard() {
     }
   };
 
-  const refreshWidgets = async (hId: number) => {
+  useEffect(() => {
+    // Load theme from localStorage
+    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setTheme('dark');
+    }
+  }, []);
+
+  useEffect(() => {
+    // Apply theme to document element
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const refreshWidgets = async (householdId: number) => {
     const [m, l, n] = await Promise.all([
-      getMeters(hId),
-      getTodoLists(hId),
-      getNotes(hId)
+      getMeters(householdId),
+      getTodoLists(householdId),
+      getNotes(householdId)
     ]);
 
     const allWidgets = [
@@ -217,16 +238,25 @@ export default function Dashboard() {
           </AnimatePresence>
         </div>
 
-        <button
-          onClick={async () => {
-            await logoutAction();
-            setSession(null);
-          }}
-          className="btn btn-ghost flex items-center gap-2 text-sm text-muted-foreground"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="hidden sm:inline">Abmelden</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-foreground"
+            title={theme === 'light' ? 'Dunkelmodus aktivieren' : 'Hellmodus aktivieren'}
+          >
+            {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+          </button>
+          <button
+            onClick={async () => {
+              await logoutAction();
+              setSession(null);
+            }}
+            className="btn btn-ghost flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Abmelden</span>
+          </button>
+        </div>
       </header>
 
       {selectedHousehold ? (
@@ -237,7 +267,7 @@ export default function Dashboard() {
               onClick={() => setShowAddWidget(!showAddWidget)}
               className="btn btn-primary flex items-center gap-2 text-xs uppercase tracking-widest"
             >
-              <Plus className={`w-4 h-4 transition-transform ${showAddWidget ? 'rotate-45' : ''}`} />
+              <Plus className={`w - 4 h - 4 transition - transform ${showAddWidget ? 'rotate-45' : ''} `} />
               {showAddWidget ? "Abbrechen" : "Hinzufügen"}
             </button>
           </div>
@@ -304,69 +334,73 @@ export default function Dashboard() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.9 }}
                           whileHover={{ y: -5 }}
-                          onClick={() => setAddingReadingForMeter(w)}
-                          className="card group flex flex-col p-3 gap-2 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5 cursor-pointer active:scale-[0.98]"
+                          className="card group flex flex-col p-4 gap-4 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
                         >
-                          <div className="flex justify-between items-center gap-2">
-                            <p className="text-[10px] font-black uppercase tracking-widest opacity-40 line-clamp-1 flex-1">{w.name}</p>
+                          <div className="flex items-center gap-3">
+                            {(() => {
+                              const type = w.type || 'ELECTRICITY';
+                              const config = {
+                                ELECTRICITY: { icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+                                WATER: { icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-500/10' },
+                                GAS: { icon: Flame, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+                              }[type as 'ELECTRICITY' | 'WATER' | 'GAS'] || { icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10' };
+
+                              return (
+                                <div className={`w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
+                                  <config.icon className={`w-5 h-5 ${config.color}`} />
+                                </div>
+                              );
+                            })()}
+
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40 line-clamp-1">{w.name}</p>
+                              {(() => {
+                                const parseSafe = (val: string) => {
+                                  if (!val) return 0;
+                                  return parseFloat(val.toString().replace(',', '.'));
+                                };
+                                const formatNumber = (num: number, digits: number = 2) => {
+                                  return new Intl.NumberFormat('de-DE', {
+                                    minimumFractionDigits: digits,
+                                    maximumFractionDigits: digits
+                                  }).format(num);
+                                };
+                                const sorted = [...(w.readings || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                if (sorted.length >= 2) {
+                                  const last = sorted[sorted.length - 1];
+                                  const secondLast = sorted[sorted.length - 2];
+                                  const diff = parseSafe(last.value) - parseSafe(secondLast.value);
+                                  const ms = new Date(last.date).getTime() - new Date(secondLast.date).getTime();
+                                  const days = ms / (1000 * 60 * 60 * 24);
+                                  const avg = days > 0.04 ? formatNumber(diff / days, 2) : null;
+                                  return (
+                                    <div className="flex items-baseline gap-1">
+                                      <span className="text-lg font-black tabular-nums">{avg || "---"}</span>
+                                      <span className="text-[9px] font-bold text-muted-foreground">{w.unit}/Tag</span>
+                                    </div>
+                                  );
+                                }
+                                return <p className="text-[9px] text-muted-foreground italic uppercase">Daten benötigt...</p>;
+                              })()}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setAddingReadingForMeter(w)}
+                              className="flex-1 bg-accent/50 hover:bg-primary hover:text-primary-foreground py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
+                            >
+                              Eintragen
+                            </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingMeter(w);
                               }}
-                              className="p-1.5 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-primary relative z-10"
+                              className="p-2 hover:bg-accent rounded-xl transition-colors text-muted-foreground hover:text-primary"
                             >
-                              <Edit2 className="w-3.5 h-3.5" />
+                              <Settings className="w-4 h-4" />
                             </button>
-                          </div>
-
-                          <div className="flex-1">
-                            {(() => {
-                              const parseSafe = (val: string) => {
-                                if (!val) return 0;
-                                return parseFloat(val.toString().replace(',', '.'));
-                              };
-                              const formatNumber = (num: number, digits: number = 2) => {
-                                return new Intl.NumberFormat('de-DE', {
-                                  minimumFractionDigits: digits,
-                                  maximumFractionDigits: digits
-                                }).format(num);
-                              };
-                              const sorted = [...(w.readings || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                              if (sorted.length >= 2) {
-                                // Use the last two readings for "current" average
-                                const last = sorted[sorted.length - 1];
-                                const secondLast = sorted[sorted.length - 2];
-                                const diff = parseSafe(last.value) - parseSafe(secondLast.value);
-                                const ms = new Date(last.date).getTime() - new Date(secondLast.date).getTime();
-                                const days = ms / (1000 * 60 * 60 * 24);
-
-                                // Only show average if the readings are at least 1 hour apart
-                                const avg = days > 0.04 ? formatNumber(diff / days, 2) : null;
-                                return (
-                                  <div className="space-y-1">
-                                    <div className="flex items-baseline gap-1">
-                                      <span className="text-2xl font-black tabular-nums">{avg || "---"}</span>
-                                      <span className="text-[10px] font-bold text-muted-foreground uppercase">{w.unit}/Tag</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[9px] font-medium text-muted-foreground/60 uppercase tabular-nums">
-                                      <span>{formatNumber(parseSafe(last.value), 2)} {w.unit}</span>
-                                      <span>{new Date(last.date).toLocaleDateString([], { day: '2-digit', month: '2-digit' })}</span>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div className="py-1 space-y-2">
-                                  <p className="text-[9px] text-muted-foreground italic uppercase">Daten benötigt...</p>
-                                  {w.readings?.length > 0 && (
-                                    <p className="text-[9px] font-black text-muted-foreground uppercase">
-                                      {formatNumber(parseSafe(w.readings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())[0].value), 2)} {w.unit}
-                                    </p>
-                                  )}
-                                </div>
-                              );
-                            })()}
                           </div>
                         </motion.div>
                       ))}
@@ -415,10 +449,10 @@ export default function Dashboard() {
                               <div className="mt-4 space-y-2">
                                 {w.items?.slice(0, 3).map((item: any) => (
                                   <div key={item.id} className="text-xs flex items-center gap-3">
-                                    <div className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 ${item.completed === 'true' ? 'bg-primary text-primary-foreground border-primary' : ''}`}>
+                                    <div className={`w - 4 h - 4 rounded border border - border flex items - center justify - center shrink - 0 ${item.completed === 'true' ? 'bg-primary text-primary-foreground border-primary' : ''} `}>
                                       {item.completed === 'true' && <Check className="w-2.5 h-2.5" />}
                                     </div>
-                                    <span className={`line-clamp-1 ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground/80'}`}>
+                                    <span className={`line - clamp - 1 ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground/80'} `}>
                                       {item.content}
                                     </span>
                                   </div>
@@ -501,7 +535,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-sm bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Neuer Zähler</h2>
@@ -515,6 +549,26 @@ export default function Dashboard() {
 
               <div className="p-6 space-y-6">
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typ</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { type: 'ELECTRICITY', icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Strom' },
+                        { type: 'WATER', icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Wasser' },
+                        { type: 'GAS', icon: Flame, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Gas' },
+                      ].map((t) => (
+                        <button
+                          key={t.type}
+                          onClick={() => setNewMeterData({ ...newMeterData, type: t.type })}
+                          className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${newMeterData.type === t.type ? 'border-primary bg-primary/5' : 'border-transparent bg-accent/30 hover:bg-accent/50'} `}
+                        >
+                          <t.icon className={`w-6 h-6 ${t.color}`} />
+                          <span className="text-[10px] font-bold uppercase">{t.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Name</label>
                     <input
@@ -534,7 +588,7 @@ export default function Dashboard() {
                         <button
                           key={u}
                           onClick={() => setNewMeterData({ ...newMeterData, unit: u })}
-                          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${newMeterData.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'}`}
+                          className={`px - 4 py - 2 rounded - xl text - sm font - bold transition - all ${newMeterData.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'} `}
                         >
                           {u}
                         </button>
@@ -545,7 +599,7 @@ export default function Dashboard() {
                           placeholder="Andere..."
                           value={['kWh', 'm³', 'l'].includes(newMeterData.unit) ? "" : newMeterData.unit}
                           onChange={(e) => setNewMeterData({ ...newMeterData, unit: e.target.value })}
-                          className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!['kWh', 'm³', 'l'].includes(newMeterData.unit) && newMeterData.unit !== '' ? 'border-primary/50' : 'border-transparent focus:border-primary/30'}`}
+                          className={`w - full px - 4 py - 2 rounded - xl text - sm font - bold bg - accent / 30 border - 2 transition - all outline - none ${!['kWh', 'm³', 'l'].includes(newMeterData.unit) && newMeterData.unit !== '' ? 'border-primary/50' : 'border-transparent focus:border-primary/30'} `}
                         />
                       </div>
                     </div>
@@ -554,7 +608,7 @@ export default function Dashboard() {
 
                 <button
                   onClick={async () => {
-                    await addMeter(selectedHouseholdId!, newMeterData.name, "ELECTRICITY", newMeterData.unit);
+                    await addMeter(selectedHouseholdId!, newMeterData.name, newMeterData.type, newMeterData.unit);
                     setShowAddMeterDialog(false);
                     refreshWidgets(selectedHouseholdId!);
                   }}
@@ -575,7 +629,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-sm bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <div className="space-y-0.5">
@@ -675,7 +729,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Notiz bearbeiten</h2>
@@ -741,7 +795,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Liste bearbeiten</h2>
@@ -790,11 +844,11 @@ export default function Dashboard() {
                               await toggleTodoItem(item.id, newStatus);
                               refreshWidgets(selectedHouseholdId!);
                             }}
-                            className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === 'true' ? 'bg-primary border-primary text-primary-foreground transform scale-105' : 'hover:border-primary'}`}
+                            className={`w - 6 h - 6 rounded - lg border - 2 border - border flex items - center justify - center transition - all ${item.completed === 'true' ? 'bg-primary border-primary text-primary-foreground transform scale-105' : 'hover:border-primary'} `}
                           >
                             {item.completed === 'true' && <Check className="w-4 h-4" />}
                           </button>
-                          <span className={`flex-1 text-sm font-medium ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground'}`}>
+                          <span className={`flex - 1 text - sm font - medium ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground'} `}>
                             {item.content}
                           </span>
                           <button
@@ -854,7 +908,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-2xl bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Zähler bearbeiten</h2>
@@ -867,6 +921,30 @@ export default function Dashboard() {
               </div>
 
               <div className="p-6 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="space-y-4">
+                  <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typ</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { type: 'ELECTRICITY', icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Strom' },
+                      { type: 'WATER', icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-500/10', label: 'Wasser' },
+                      { type: 'GAS', icon: Flame, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Gas' },
+                    ].map((t) => (
+                      <button
+                        key={t.type}
+                        onClick={() => {
+                          setEditingMeter({ ...editingMeter, type: t.type });
+                          updateMeter(editingMeter.id, editingMeter.name, t.type, editingMeter.unit);
+                          refreshWidgets(selectedHouseholdId!);
+                        }}
+                        className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${editingMeter.type === t.type ? 'border-primary bg-primary/5' : 'border-transparent bg-accent/30 hover:bg-accent/50'} `}
+                      >
+                        <t.icon className={`w-6 h-6 ${t.color}`} />
+                        <span className="text-[10px] font-bold uppercase">{t.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Name</label>
@@ -875,7 +953,7 @@ export default function Dashboard() {
                       value={editingMeter.name}
                       onChange={(e) => setEditingMeter({ ...editingMeter, name: e.target.value })}
                       onBlur={() => {
-                        updateMeter(editingMeter.id, editingMeter.name, editingMeter.unit);
+                        updateMeter(editingMeter.id, editingMeter.name, editingMeter.type, editingMeter.unit);
                         refreshWidgets(selectedHouseholdId!);
                       }}
                       className="w-full text-lg font-black bg-transparent border-b-2 border-border focus:border-primary outline-none py-1 transition-colors"
@@ -889,10 +967,10 @@ export default function Dashboard() {
                           key={u}
                           onClick={() => {
                             setEditingMeter({ ...editingMeter, unit: u });
-                            updateMeter(editingMeter.id, editingMeter.name, u);
+                            updateMeter(editingMeter.id, editingMeter.name, editingMeter.type, u);
                             refreshWidgets(selectedHouseholdId!);
                           }}
-                          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${editingMeter.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'}`}
+                          className={`px - 4 py - 2 rounded - xl text - sm font - bold transition - all ${editingMeter.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'} `}
                         >
                           {u}
                         </button>
@@ -906,10 +984,10 @@ export default function Dashboard() {
                             setEditingMeter({ ...editingMeter, unit: e.target.value });
                           }}
                           onBlur={() => {
-                            updateMeter(editingMeter.id, editingMeter.name, editingMeter.unit);
+                            updateMeter(editingMeter.id, editingMeter.name, editingMeter.type, editingMeter.unit);
                             refreshWidgets(selectedHouseholdId!);
                           }}
-                          className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!['kWh', 'm³', 'l'].includes(editingMeter.unit) && editingMeter.unit !== '' ? 'border-primary/50 bg-white dark:bg-slate-800' : 'border-transparent focus:border-primary/30'}`}
+                          className={`w - full px - 4 py - 2 rounded - xl text - sm font - bold bg - accent / 30 border - 2 transition - all outline - none ${!['kWh', 'm³', 'l'].includes(editingMeter.unit) && editingMeter.unit !== '' ? 'border-primary/50 bg-card' : 'border-transparent focus:border-primary/30'} `}
                         />
                       </div>
                     </div>
@@ -1016,7 +1094,7 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="w-full max-w-xl bg-white dark:bg-slate-900 border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              className="w-full max-w-xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <div className="space-y-1">
@@ -1111,7 +1189,7 @@ export default function Dashboard() {
                         {session && m.email !== session.email && m.role !== 'OWNER' && (
                           <button
                             onClick={async () => {
-                              if (window.confirm(`${m.email} wirklich aus dem Haushalt entfernen?`)) {
+                              if (window.confirm(`${m.email} wirklich aus dem Haushalt entfernen ? `)) {
                                 await removeMemberAction(editingHousehold.id, m.email);
                                 refreshMembers(editingHousehold.id);
                               }
@@ -1134,7 +1212,7 @@ export default function Dashboard() {
                   </div>
                   <button
                     onClick={async () => {
-                      if (window.confirm(`Möchtest du "${editingHousehold.name}" wirklich löschen?`)) {
+                      if (window.confirm(`Möchtest du "${editingHousehold.name}" wirklich löschen ? `)) {
                         try {
                           await deleteHouseholdAction(editingHousehold.id);
                           if (selectedHouseholdId === editingHousehold.id) setSelectedHouseholdId(null);
