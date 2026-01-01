@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Plus, LogOut, Trash2, Users, Settings, X, Check, Edit2, History, Zap, Droplets, Flame, ListTodo, FileText, Mail, User, UserMinus, Sun, Moon } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
-import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, updateHousehold as updateHouseholdAction, deleteHousehold as deleteHouseholdAction, removeMember as removeMemberAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers } from "./actions";
+import { logout as logoutAction, getHouseholds as getHouseholdsAction, createHousehold as createHouseholdAction, updateHousehold as updateHouseholdAction, deleteHousehold as deleteHouseholdAction, removeMember as removeMemberAction, getMeters, getTodoLists, getNotes, addNote, addMeter, addTodoList, updateNote, deleteNote, updateTodoList, deleteTodoList, addTodoItem, toggleTodoItem, deleteTodoItem, updateMeter, deleteMeter, addReading, deleteReading, inviteToHousehold, getHouseholdMembers, updateProfile, getUserProfile } from "./actions";
 
 interface Session {
   email: string;
@@ -33,6 +33,11 @@ export default function Dashboard() {
   const [editingHousehold, setEditingHousehold] = useState<any | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newItemValue, setNewItemValue] = useState("");
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
+  const [profileData, setProfileData] = useState({ name: "", currentPassword: "", newPassword: "" });
+  const [profileError, setProfileError] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState(false);
 
   const refreshHouseholds = async () => {
     const data = await getHouseholdsAction();
@@ -80,6 +85,20 @@ export default function Dashboard() {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  const refreshProfile = async () => {
+    const data = await getUserProfile();
+    if (data) {
+      setUserProfile(data);
+      setProfileData(prev => ({ ...prev, name: data.name }));
+    }
+  };
+
+  useEffect(() => {
+    if (session) {
+      refreshProfile();
+    }
+  }, [session]);
 
   const refreshWidgets = async (householdId: number) => {
     const [m, l, n] = await Promise.all([
@@ -144,7 +163,7 @@ export default function Dashboard() {
 
   if (!session) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+      <main className="min-h-screen flex flex-col items-center justify-center p-3 bg-background">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -154,7 +173,7 @@ export default function Dashboard() {
             <h1 className="text-4xl font-black tracking-tighter text-foreground">HOME</h1>
             <p className="text-sm text-muted-foreground font-mono">v1.2.1</p>
           </div>
-          <div className="bg-card text-card-foreground rounded-lg border border-border p-6 shadow-xl shadow-foreground/5">
+          <div className="bg-card text-card-foreground rounded-lg border border-border p-3 shadow-xl shadow-foreground/5">
             <LoginForm />
           </div>
         </motion.div>
@@ -238,7 +257,7 @@ export default function Dashboard() {
           </AnimatePresence>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
             className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-foreground"
@@ -247,14 +266,14 @@ export default function Dashboard() {
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           </button>
           <button
-            onClick={async () => {
-              await logoutAction();
-              setSession(null);
-            }}
-            className="btn btn-ghost flex items-center gap-2 text-sm text-muted-foreground"
+            onClick={() => setIsProfileOpen(true)}
+            className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-foreground flex items-center gap-2"
+            title="Profil & Einstellungen"
           >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Abmelden</span>
+            <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <User className="w-4 h-4 text-primary" />
+            </div>
+            <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest">{userProfile?.name}</span>
           </button>
         </div>
       </header>
@@ -298,7 +317,7 @@ export default function Dashboard() {
                         setShowAddWidget(false);
                         refreshWidgets(selectedHouseholdId!);
                       }}
-                      className="bg-card text-card-foreground rounded-lg border border-border p-6 hover:border-primary/50 group text-left flex flex-col items-start gap-4"
+                      className="bg-card text-card-foreground rounded-lg border border-border p-3 hover:border-primary/50 group text-left flex flex-col items-start gap-3"
                     >
                       <div className="p-3 rounded-xl bg-accent group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         {opt.icon}
@@ -382,8 +401,9 @@ export default function Dashboard() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => setAddingReadingForMeter(w)}
-                              className="flex-1 bg-accent/50 hover:bg-primary hover:text-primary-foreground py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95"
+                              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
                             >
+                              <Plus className="w-3 h-3" />
                               Eintragen
                             </button>
                             <button
@@ -409,7 +429,7 @@ export default function Dashboard() {
                   <div className="px-2">
                     <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">Listen & Notizen</h3>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <AnimatePresence mode="popLayout">
                       {widgets.filter(w => w.widgetType !== 'METER').map((w) => (
                         <motion.div
@@ -419,7 +439,7 @@ export default function Dashboard() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.9 }}
                           whileTap={{ scale: 0.98 }}
-                          className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-4 gap-4 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
+                          className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
                         >
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -524,14 +544,14 @@ export default function Dashboard() {
 
       <AnimatePresence>
         {showAddMeterDialog && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="w-full max-w-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
-              <div className="flex justify-between items-center p-6 border-b border-border">
+              <div className="flex justify-between items-center p-3 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Neuer Zähler</h2>
                 <button
                   onClick={() => setShowAddMeterDialog(false)}
@@ -541,8 +561,8 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-6">
-                <div className="space-y-4">
+              <div className="p-3 space-y-6">
+                <div className="space-y-2">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typ</label>
                     <div className="grid grid-cols-3 gap-2">
@@ -606,19 +626,18 @@ export default function Dashboard() {
 
       <AnimatePresence>
         {addingReadingForMeter && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="w-full max-w-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
-              <div className="flex justify-between items-center p-6 border-b border-border">
+              <div className="flex justify-between items-center p-3 border-b border-border">
                 <div className="space-y-0.5">
                   <h2 className="text-sm font-black tracking-tight uppercase opacity-40">
                     {{ ELECTRICITY: 'Strom', WATER: 'Wasser', GAS: 'Gas' }[addingReadingForMeter.type as 'ELECTRICITY' | 'WATER' | 'GAS'] || 'Zähler'}
                   </h2>
-                  <p className="text-lg font-black italic">Ablesung eingeben</p>
                 </div>
                 <button
                   onClick={() => setAddingReadingForMeter(null)}
@@ -628,7 +647,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-6">
+              <div className="p-3 space-y-6">
                 {(() => {
                   const formatNumber = (num: number, digits: number = 2) => {
                     return new Intl.NumberFormat('de-DE', {
@@ -688,7 +707,7 @@ export default function Dashboard() {
                 })()}
               </div>
 
-              <div className="p-4 border-t border-border bg-accent/10 text-center">
+              <div className="p-3 border-t border-border bg-accent/10 text-center">
                 <button
                   onClick={() => {
                     const meter = addingReadingForMeter;
@@ -708,14 +727,14 @@ export default function Dashboard() {
 
       <AnimatePresence>
         {editingNote && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
             >
-              <div className="flex justify-between items-center p-6 border-b border-border">
+              <div className="flex justify-between items-center p-3 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Notiz bearbeiten</h2>
                 <button
                   onClick={() => setEditingNote(null)}
@@ -726,7 +745,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-6 overflow-y-auto">
+              <div className="p-3 space-y-6 overflow-y-auto">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Titel</label>
                   <input
@@ -750,7 +769,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="p-6 bg-accent/20 border-t border-border flex gap-3">
+              <div className="p-3 bg-accent/20 border-t border-border flex gap-3">
                 <button
                   onClick={async () => {
                     await updateNote(editingNote.id, editingNote.title, editingNote.content);
@@ -774,14 +793,14 @@ export default function Dashboard() {
       </AnimatePresence>
       <AnimatePresence>
         {editingList && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="flex justify-between items-center p-6 border-b border-border">
+              <div className="flex justify-between items-center p-3 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Liste bearbeiten</h2>
                 <button
                   onClick={() => setEditingList(null)}
@@ -791,7 +810,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Name der Liste</label>
                   <input
@@ -873,7 +892,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-border bg-accent/10">
+              <div className="p-3 border-t border-border bg-accent/10">
                 <button
                   onClick={() => setEditingList(null)}
                   className="w-full btn btn-primary py-3"
@@ -887,14 +906,14 @@ export default function Dashboard() {
       </AnimatePresence>
       <AnimatePresence>
         {editingMeter && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="flex justify-between items-center p-6 border-b border-border">
+              <div className="flex justify-between items-center p-3 border-b border-border">
                 <h2 className="text-xl font-black tracking-tight">Zähler bearbeiten</h2>
                 <button
                   onClick={() => setEditingMeter(null)}
@@ -904,7 +923,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typ</label>
                   <div className="grid grid-cols-3 gap-2">
@@ -929,7 +948,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6">
+                <div className="grid grid-cols-1 gap-3">
                   <div className="space-y-4">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Einheit</label>
                     <div className="flex flex-wrap gap-2">
@@ -987,7 +1006,7 @@ export default function Dashboard() {
                       const avg = days > 0 ? (diff / days) : 0;
                       return (
                         <>
-                          <div className="p-4 bg-accent/30 rounded-2xl space-y-1">
+                          <div className="p-3 bg-accent/30 rounded-2xl space-y-1">
                             <div className="text-[10px] uppercase font-bold text-muted-foreground">Gesamtverbrauch</div>
                             <div className="text-2xl font-black">{formatNumber(diff, 3)} {editingMeter.unit}</div>
                             <div className="text-[10px] opacity-40">über {Math.floor(days)} Tage</div>
@@ -1015,8 +1034,8 @@ export default function Dashboard() {
                       editingMeter.readings
                         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
                         .map((r: any) => (
-                          <div key={r.id} className="flex justify-between items-center p-4 hover:bg-accent/20 transition-colors group">
-                            <div className="flex items-center gap-4">
+                          <div key={r.id} className="flex justify-between items-center p-3 hover:bg-accent/20 transition-colors group">
+                            <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shrink-0">
                                 <History className="w-4 h-4 text-muted-foreground" />
                               </div>
@@ -1045,7 +1064,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-border bg-accent/10">
+              <div className="p-3 border-t border-border bg-accent/10">
                 <button
                   onClick={() => setEditingMeter(null)}
                   className="w-full btn btn-primary py-3"
@@ -1080,7 +1099,7 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <div className="p-6 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
+              <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
                 {/* Rename Section */}
                 <div className="space-y-4">
                   <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Haushalt umbenennen</label>
@@ -1142,7 +1161,7 @@ export default function Dashboard() {
 
                   <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50">
                     {members.map((m, idx) => (
-                      <div key={idx} className="flex justify-between items-center p-4 hover:bg-accent/10 transition-colors group">
+                      <div key={idx} className="flex justify-between items-center p-3 hover:bg-accent/10 transition-colors group">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center border border-border">
                             <User className="w-5 h-5 text-muted-foreground" />
@@ -1202,12 +1221,115 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="p-6 border-t border-border bg-accent/10">
+              <div className="p-3 border-t border-border bg-accent/10">
                 <button
                   onClick={() => setEditingHousehold(null)}
                   className="w-full btn btn-primary py-3"
                 >
                   Fertig
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Profile & Settings Overlay */}
+      <AnimatePresence>
+        {isProfileOpen && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+            >
+              <div className="flex justify-between items-center p-3 border-b border-border">
+                <div className="space-y-0.5">
+                  <h2 className="text-lg font-black tracking-tight">Profil</h2>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-40">{userProfile?.email}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    setProfileError("");
+                    setProfileSuccess(false);
+                  }}
+                  className="p-2 hover:bg-accent rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-3 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="space-y-4">
+                  {/* Name Section */}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Anzeigename</label>
+                    <input
+                      type="text"
+                      value={profileData.name}
+                      onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                      className="w-full bg-accent/20 rounded-xl px-4 py-2.5 text-sm outline-none focus:bg-accent/40 transition-colors"
+                    />
+                  </div>
+
+                  <div className="pt-2 border-t border-border/50 space-y-3">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Passwort ändern</label>
+                    <div className="space-y-2">
+                      <input
+                        type="password"
+                        placeholder="Aktuelles Passwort"
+                        value={profileData.currentPassword}
+                        onChange={(e) => setProfileData({ ...profileData, currentPassword: e.target.value })}
+                        className="w-full bg-accent/20 rounded-xl px-4 py-2.5 text-sm outline-none focus:bg-accent/40 transition-colors"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Neues Passwort"
+                        value={profileData.newPassword}
+                        onChange={(e) => setProfileData({ ...profileData, newPassword: e.target.value })}
+                        className="w-full bg-accent/20 rounded-xl px-4 py-2.5 text-sm outline-none focus:bg-accent/40 transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {profileError && <p className="text-[10px] font-bold text-red-600 uppercase tracking-tight italic">{profileError}</p>}
+                {profileSuccess && <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-tight">Erfolgreich gespeichert!</p>}
+
+                <div className="pt-2 border-t border-border">
+                  <button
+                    onClick={async () => {
+                      await logoutAction();
+                      setSession(null);
+                      setIsProfileOpen(false);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-3 text-red-500 hover:bg-red-500/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Abmelden
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 border-t border-border bg-accent/10 flex gap-2">
+                <button
+                  onClick={async () => {
+                    setProfileError("");
+                    setProfileSuccess(false);
+                    try {
+                      await updateProfile(profileData);
+                      setProfileSuccess(true);
+                      setProfileData(prev => ({ ...prev, currentPassword: "", newPassword: "" }));
+                      refreshProfile();
+                    } catch (err: any) {
+                      setProfileError(err.message);
+                    }
+                  }}
+                  className="flex-1 btn btn-primary py-3"
+                >
+                  Speichern
                 </button>
               </div>
             </motion.div>

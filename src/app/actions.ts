@@ -6,6 +6,7 @@ import { eq, and, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { login as setAuthSession, logout as clearAuthSession, getSession } from "@/lib/auth";
+import { hash, compare } from "bcryptjs";
 import { randomBytes } from "crypto";
 import { Resend } from "resend";
 
@@ -324,6 +325,109 @@ export async function requestLogin(email: string) {
     console.log("---------------------------------\n\n");
 
     return { success: true };
+}
+
+export async function register(email: string, password: string) {
+    const existingUser = await db.query.users.findFirst({
+        where: eq(users.email, email.trim().toLowerCase())
+    });
+
+    if (existingUser && existingUser.password) {
+        throw new Error("Ein Nutzer mit dieser E-Mail existiert bereits.");
+    }
+
+    const hashedPassword = await hash(password, 10);
+
+    const defaultName = email.split('@')[0];
+
+    if (existingUser) {
+        // Upgrade existing magic link user to password
+        await db.update(users)
+            .set({
+                password: hashedPassword,
+                name: existingUser.name || defaultName
+            })
+            .where(eq(users.id, existingUser.id));
+    } else {
+        await db.insert(users).values({
+            email: email.trim().toLowerCase(),
+            password: hashedPassword,
+            name: defaultName
+        });
+    }
+
+    await setAuthSession(email.trim().toLowerCase());
+    revalidatePath("/");
+    return { success: true };
+}
+
+export async function loginWithPassword(email: string, password: string) {
+    const user = await db.query.users.findFirst({
+        where: eq(users.email, email.trim().toLowerCase())
+    });
+
+    if (!user || !user.password) {
+        throw new Error("Ungültige E-Mail oder Passwort.");
+    }
+
+    const passwordMatch = await compare(password, user.password);
+    if (!passwordMatch) {
+        throw new Error("Ungültige E-Mail oder Passwort.");
+    }
+
+    await setAuthSession(email.trim().toLowerCase());
+    revalidatePath("/");
+    return { success: true };
+}
+
+export async function updateProfile(data: { name?: string; currentPassword?: string; newPassword?: string }) {
+    const session = await getSession();
+    if (!session?.email) throw new Error("Nicht autorisiert");
+
+    const user = await db.query.users.findFirst({
+        where: eq(users.email, session.email as string)
+    });
+
+    if (!user) throw new Error("Benutzer nicht gefunden");
+
+    // If changing password, verify current password
+    if (data.newPassword) {
+        if (!data.currentPassword) throw new Error("Aktuelles Passwort wird zur Bestätigung benötigt.");
+        if (!user.password) throw new Error("Kein Passwort zum Abgleich vorhanden.");
+
+        const isMatch = await compare(data.currentPassword, user.password);
+        if (!isMatch) throw new Error("Aktuelles Passwort ist nicht korrekt.");
+
+        const hashedPassword = await hash(data.newPassword, 10);
+        await db.update(users)
+            .set({ password: hashedPassword })
+            .where(eq(users.id, user.id));
+    }
+
+    // Update name if provided
+    if (data.name) {
+        await db.update(users)
+            .set({ name: data.name.trim() })
+            .where(eq(users.id, user.id));
+    }
+
+    revalidatePath("/");
+    return { success: true };
+}
+
+export async function getUserProfile() {
+    const session = await getSession();
+    if (!session?.email) return null;
+
+    const user = await db.query.users.findFirst({
+        where: eq(users.email, session.email as string)
+    });
+
+    if (!user) return null;
+    return {
+        email: user.email,
+        name: user.name || user.email.split('@')[0]
+    };
 }
 
 export async function verifyLogin(token: string) {
