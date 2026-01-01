@@ -154,7 +154,7 @@ export default function Dashboard() {
             <h1 className="text-4xl font-black tracking-tighter text-foreground">HOME</h1>
             <p className="text-sm text-muted-foreground font-mono">v1.2.1</p>
           </div>
-          <div className="card shadow-xl shadow-foreground/5">
+          <div className="bg-card text-card-foreground rounded-lg border border-border p-6 shadow-xl shadow-foreground/5">
             <LoginForm />
           </div>
         </motion.div>
@@ -267,7 +267,7 @@ export default function Dashboard() {
               onClick={() => setShowAddWidget(!showAddWidget)}
               className="btn btn-primary flex items-center gap-2 text-xs uppercase tracking-widest"
             >
-              <Plus className={`w - 4 h - 4 transition - transform ${showAddWidget ? 'rotate-45' : ''} `} />
+              <Plus className={`w-4 h-4 transition-transform ${showAddWidget ? 'rotate-45' : ''} `} />
               {showAddWidget ? "Abbrechen" : "Hinzufügen"}
             </button>
           </div>
@@ -300,7 +300,7 @@ export default function Dashboard() {
                         setShowAddWidget(false);
                         refreshWidgets(selectedHouseholdId!);
                       }}
-                      className="card hover:border-primary/50 group text-left flex flex-col items-start gap-4"
+                      className="bg-card text-card-foreground rounded-lg border border-border p-6 hover:border-primary/50 group text-left flex flex-col items-start gap-4"
                     >
                       <div className="p-3 rounded-xl bg-accent group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                         {opt.icon}
@@ -334,7 +334,7 @@ export default function Dashboard() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.9 }}
                           whileHover={{ y: -5 }}
-                          className="card group flex flex-col p-4 gap-4 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
+                          className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
                         >
                           <div className="flex items-center gap-3">
                             {(() => {
@@ -353,7 +353,6 @@ export default function Dashboard() {
                             })()}
 
                             <div className="flex-1 min-w-0">
-                              <p className="text-[10px] font-black uppercase tracking-widest opacity-40 line-clamp-1">{w.name}</p>
                               {(() => {
                                 const parseSafe = (val: string) => {
                                   if (!val) return 0;
@@ -375,12 +374,12 @@ export default function Dashboard() {
                                   const avg = days > 0.04 ? formatNumber(diff / days, 2) : null;
                                   return (
                                     <div className="flex items-baseline gap-1">
-                                      <span className="text-lg font-black tabular-nums">{avg || "---"}</span>
-                                      <span className="text-[9px] font-bold text-muted-foreground">{w.unit}/Tag</span>
+                                      <span className="text-xl font-black tabular-nums">{avg || "---"}</span>
+                                      <span className="text-[10px] font-bold text-muted-foreground">{w.unit}/Tag</span>
                                     </div>
                                   );
                                 }
-                                return <p className="text-[9px] text-muted-foreground italic uppercase">Daten benötigt...</p>;
+                                return <p className="text-[10px] text-muted-foreground italic uppercase">Daten benötigt...</p>;
                               })()}
                             </div>
                           </div>
@@ -425,7 +424,7 @@ export default function Dashboard() {
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.9 }}
                           whileHover={{ y: -5 }}
-                          className="card group flex flex-col p-6 gap-6 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
+                          className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-4 gap-4 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
                         >
                           <div className="flex justify-between items-start">
                             <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -446,13 +445,13 @@ export default function Dashboard() {
                               </p>
                             )}
                             {w.widgetType === 'LIST' && (
-                              <div className="mt-4 space-y-2">
+                              <div className="mt-3 space-y-2">
                                 {w.items?.slice(0, 3).map((item: any) => (
                                   <div key={item.id} className="text-xs flex items-center gap-3">
-                                    <div className={`w - 4 h - 4 rounded border border - border flex items - center justify - center shrink - 0 ${item.completed === 'true' ? 'bg-primary text-primary-foreground border-primary' : ''} `}>
+                                    <div className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 ${item.completed === 'true' ? 'bg-primary text-primary-foreground border-primary' : ''} `}>
                                       {item.completed === 'true' && <Check className="w-2.5 h-2.5" />}
                                     </div>
-                                    <span className={`line - clamp - 1 ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground/80'} `}>
+                                    <span className={`line-clamp-1 ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground/80'} `}>
                                       {item.content}
                                     </span>
                                   </div>
@@ -469,7 +468,7 @@ export default function Dashboard() {
                             )}
                           </div>
 
-                          <div className="pt-4 border-t border-border flex justify-between items-center bg-card">
+                          <div className="pt-3 border-t border-border flex justify-between items-center bg-card">
                             <button
                               onClick={() => {
                                 if (w.widgetType === 'NOTE') setEditingNote(w);
@@ -559,7 +558,7 @@ export default function Dashboard() {
                       ].map((t) => (
                         <button
                           key={t.type}
-                          onClick={() => setNewMeterData({ ...newMeterData, type: t.type })}
+                          onClick={() => setNewMeterData({ ...newMeterData, type: t.type, name: t.label })}
                           className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${newMeterData.type === t.type ? 'border-primary bg-primary/5' : 'border-transparent bg-accent/30 hover:bg-accent/50'} `}
                         >
                           <t.icon className={`w-6 h-6 ${t.color}`} />
@@ -567,18 +566,6 @@ export default function Dashboard() {
                         </button>
                       ))}
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Name</label>
-                    <input
-                      autoFocus
-                      type="text"
-                      value={newMeterData.name}
-                      onChange={(e) => setNewMeterData({ ...newMeterData, name: e.target.value })}
-                      className="w-full text-lg font-black bg-accent/20 rounded-xl px-4 py-3 outline-none focus:bg-accent/40 transition-colors"
-                      placeholder="z.B. Hauptzähler"
-                    />
                   </div>
 
                   <div className="space-y-2">
@@ -599,7 +586,7 @@ export default function Dashboard() {
                           placeholder="Andere..."
                           value={['kWh', 'm³', 'l'].includes(newMeterData.unit) ? "" : newMeterData.unit}
                           onChange={(e) => setNewMeterData({ ...newMeterData, unit: e.target.value })}
-                          className={`w - full px - 4 py - 2 rounded - xl text - sm font - bold bg - accent / 30 border - 2 transition - all outline - none ${!['kWh', 'm³', 'l'].includes(newMeterData.unit) && newMeterData.unit !== '' ? 'border-primary/50' : 'border-transparent focus:border-primary/30'} `}
+                          className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!['kWh', 'm³', 'l'].includes(newMeterData.unit) && newMeterData.unit !== '' ? 'border-primary/50' : 'border-transparent focus:border-primary/30'} `}
                         />
                       </div>
                     </div>
@@ -633,7 +620,9 @@ export default function Dashboard() {
             >
               <div className="flex justify-between items-center p-6 border-b border-border">
                 <div className="space-y-0.5">
-                  <h2 className="text-sm font-black tracking-tight uppercase opacity-40">{addingReadingForMeter.name}</h2>
+                  <h2 className="text-sm font-black tracking-tight uppercase opacity-40">
+                    {{ ELECTRICITY: 'Strom', WATER: 'Wasser', GAS: 'Gas' }[addingReadingForMeter.type as 'ELECTRICITY' | 'WATER' | 'GAS'] || 'Zähler'}
+                  </h2>
                   <p className="text-lg font-black italic">Ablesung eingeben</p>
                 </div>
                 <button
@@ -848,7 +837,7 @@ export default function Dashboard() {
                           >
                             {item.completed === 'true' && <Check className="w-4 h-4" />}
                           </button>
-                          <span className={`flex - 1 text - sm font - medium ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground'} `}>
+                          <span className={`flex-1 text-sm font-medium ${item.completed === 'true' ? 'line-through opacity-40' : 'text-foreground'} `}>
                             {item.content}
                           </span>
                           <button
@@ -932,8 +921,8 @@ export default function Dashboard() {
                       <button
                         key={t.type}
                         onClick={() => {
-                          setEditingMeter({ ...editingMeter, type: t.type });
-                          updateMeter(editingMeter.id, editingMeter.name, t.type, editingMeter.unit);
+                          setEditingMeter({ ...editingMeter, type: t.type, name: t.label });
+                          updateMeter(editingMeter.id, t.label, t.type, editingMeter.unit);
                           refreshWidgets(selectedHouseholdId!);
                         }}
                         className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${editingMeter.type === t.type ? 'border-primary bg-primary/5' : 'border-transparent bg-accent/30 hover:bg-accent/50'} `}
@@ -945,20 +934,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Name</label>
-                    <input
-                      type="text"
-                      value={editingMeter.name}
-                      onChange={(e) => setEditingMeter({ ...editingMeter, name: e.target.value })}
-                      onBlur={() => {
-                        updateMeter(editingMeter.id, editingMeter.name, editingMeter.type, editingMeter.unit);
-                        refreshWidgets(selectedHouseholdId!);
-                      }}
-                      className="w-full text-lg font-black bg-transparent border-b-2 border-border focus:border-primary outline-none py-1 transition-colors"
-                    />
-                  </div>
+                <div className="grid grid-cols-1 gap-6">
                   <div className="space-y-4">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Einheit</label>
                     <div className="flex flex-wrap gap-2">
@@ -970,7 +946,7 @@ export default function Dashboard() {
                             updateMeter(editingMeter.id, editingMeter.name, editingMeter.type, u);
                             refreshWidgets(selectedHouseholdId!);
                           }}
-                          className={`px - 4 py - 2 rounded - xl text - sm font - bold transition - all ${editingMeter.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'} `}
+                          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${editingMeter.unit === u ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20' : 'bg-accent/50 hover:bg-accent text-muted-foreground'} `}
                         >
                           {u}
                         </button>
@@ -987,7 +963,7 @@ export default function Dashboard() {
                             updateMeter(editingMeter.id, editingMeter.name, editingMeter.type, editingMeter.unit);
                             refreshWidgets(selectedHouseholdId!);
                           }}
-                          className={`w - full px - 4 py - 2 rounded - xl text - sm font - bold bg - accent / 30 border - 2 transition - all outline - none ${!['kWh', 'm³', 'l'].includes(editingMeter.unit) && editingMeter.unit !== '' ? 'border-primary/50 bg-card' : 'border-transparent focus:border-primary/30'} `}
+                          className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!['kWh', 'm³', 'l'].includes(editingMeter.unit) && editingMeter.unit !== '' ? 'border-primary/50 bg-card' : 'border-transparent focus:border-primary/30'} `}
                         />
                       </div>
                     </div>

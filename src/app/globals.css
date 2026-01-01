@@ -90,7 +90,7 @@ body {
 }
 
 .card {
-  @apply bg-card text-card-foreground p-6 rounded-lg border border-border transition-all;
+  @apply bg-card text-card-foreground rounded-lg border border-border transition-all;
 }
 
 .input-field {
