@@ -166,7 +166,7 @@ export default function Dashboard() {
 
   return (
     <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-8 bg-background text-foreground">
-      <header className="flex justify-between items-center py-4 border-b border-border mb-8">
+      <header className="flex justify-between items-center py-4 border-b border-border mb-4">
         <div className="relative">
           <button
             onClick={() => setIsHouseholdMenuOpen(!isHouseholdMenuOpen)}
@@ -260,15 +260,14 @@ export default function Dashboard() {
       </header>
 
       {selectedHousehold ? (
-        <div className="space-y-8">
+        <div className="space-y-3">
           <div className="flex justify-between items-center px-2">
-            <h2 className="text-xs font-bold uppercase tracking-[0.2em] opacity-30">Dashboard</h2>
+            <h2 className="text-xs font-bold uppercase tracking-[0.2em] opacity-30"></h2>
             <button
               onClick={() => setShowAddWidget(!showAddWidget)}
               className="btn btn-primary flex items-center gap-2 text-xs uppercase tracking-widest"
             >
               <Plus className={`w-4 h-4 transition-transform ${showAddWidget ? 'rotate-45' : ''} `} />
-              {showAddWidget ? "Abbrechen" : "Hinzufügen"}
             </button>
           </div>
 
@@ -320,9 +319,6 @@ export default function Dashboard() {
               {/* Meters Section */}
               {widgets.some(w => w.widgetType === 'METER') && (
                 <div className="space-y-4">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">Zähler</h3>
-                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <AnimatePresence mode="popLayout">
                       {widgets.filter(w => w.widgetType === 'METER').map((w) => (
