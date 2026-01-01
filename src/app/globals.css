@@ -93,6 +93,12 @@ body {
   @apply bg-card text-card-foreground rounded-lg border border-border transition-all;
 }
 
+@media (hover: hover) {
+  .card:hover {
+    @apply shadow-lg shadow-foreground/5 border-primary/20;
+  }
+}
+
 .input-field {
   @apply px-3 py-2 bg-transparent border-b-2 border-border focus:border-primary outline-none transition-colors;
 }
