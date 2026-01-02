@@ -1011,7 +1011,7 @@ export default function Dashboard() {
                             <div className="text-2xl font-black">{formatNumber(diff, 3)} {editingMeter.unit}</div>
                             <div className="text-[10px] opacity-40">über {Math.floor(days)} Tage</div>
                           </div>
-                          <div className="p-4 bg-green-500/5 rounded-2xl space-y-1 border border-green-500/10">
+                          <div className="p-3 bg-green-500/5 rounded-2xl space-y-1 border border-green-500/10">
                             <div className="text-[10px] uppercase font-bold text-green-600/60">Tagesdurchschnitt</div>
                             <div className="text-2xl font-black text-green-600">{formatNumber(avg, 2)} {editingMeter.unit}</div>
                             <div className="text-[10px] text-green-600/40">pro 24 Stunden</div>
