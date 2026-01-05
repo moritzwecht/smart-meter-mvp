@@ -380,12 +380,12 @@ export default function Dashboard() {
                                 };
                                 const sorted = [...(w.readings || [])].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
                                 if (sorted.length >= 2) {
+                                  const first = sorted[0];
                                   const last = sorted[sorted.length - 1];
-                                  const secondLast = sorted[sorted.length - 2];
-                                  const diff = parseSafe(last.value) - parseSafe(secondLast.value);
-                                  const ms = new Date(last.date).getTime() - new Date(secondLast.date).getTime();
+                                  const diff = parseSafe(last.value) - parseSafe(first.value);
+                                  const ms = new Date(last.date).getTime() - new Date(first.date).getTime();
                                   const days = ms / (1000 * 60 * 60 * 24);
-                                  const avg = days > 0.04 ? formatNumber(diff / days, 2) : null;
+                                  const avg = days > 0 ? formatNumber(diff / days, 2) : null;
                                   return (
                                     <div className="flex items-baseline gap-1">
                                       <span className="text-xl font-black tabular-nums">{avg || "---"}</span>
