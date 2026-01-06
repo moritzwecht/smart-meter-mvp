@@ -171,17 +171,19 @@ export default function Dashboard() {
 
       setWidgets(allWidgets);
 
-      // If we're currently editing a list, update its local state too
-      if (editingList) {
-        const updatedList = l.find(list => list.id === editingList.id);
-        if (updatedList) setEditingList(updatedList);
-      }
+      // If we're currently editing a list, update its local state too (atomically)
+      setEditingList(prev => {
+        if (!prev) return null;
+        const updatedList = l.find(list => list.id === prev.id);
+        return updatedList || prev;
+      });
 
-      // If we're currently adding a reading, update its local state too
-      if (addingReadingForMeter) {
-        const updatedMeter = m.find(meter => meter.id === addingReadingForMeter.id);
-        if (updatedMeter) setAddingReadingForMeter(updatedMeter);
-      }
+      // If we're currently adding a reading, update its local state too (atomically)
+      setAddingReadingForMeter(prev => {
+        if (!prev) return null;
+        const updatedMeter = m.find(meter => meter.id === prev.id);
+        return updatedMeter || prev;
+      });
     } finally {
       setIsWidgetsLoading(false);
     }
