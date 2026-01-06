@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, User, UserMinus, Trash2 } from "lucide-react";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface HouseholdSettingsDialogProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ interface HouseholdSettingsDialogProps {
     members: any[];
     onRemoveMember: (email: string) => void;
     currentUserEmail?: string;
+    isPending?: boolean;
 }
 
 export function HouseholdSettingsDialog({
@@ -33,6 +35,7 @@ export function HouseholdSettingsDialog({
     members,
     onRemoveMember,
     currentUserEmail,
+    isPending,
 }: HouseholdSettingsDialogProps) {
     if (!household) return null;
 
@@ -77,9 +80,10 @@ export function HouseholdSettingsDialog({
                                     />
                                     <button
                                         onClick={onRename}
-                                        className="btn btn-primary px-6 text-xs uppercase tracking-widest"
+                                        disabled={isPending}
+                                        className="btn btn-primary px-6 text-xs uppercase tracking-widest disabled:opacity-70"
                                     >
-                                        Speichern
+                                        {isPending ? <Spinner className="text-primary-foreground" /> : "Speichern"}
                                     </button>
                                 </div>
                             </div>
@@ -100,8 +104,8 @@ export function HouseholdSettingsDialog({
                                             className="w-full bg-accent/20 rounded-xl pl-11 pr-4 py-4 text-sm outline-none focus:bg-accent/40 transition-colors"
                                         />
                                     </div>
-                                    <button type="submit" className="btn btn-primary px-8 text-xs">
-                                        Einladen
+                                    <button type="submit" disabled={isPending} className="btn btn-primary px-8 text-xs disabled:opacity-70">
+                                        {isPending ? <Spinner className="text-primary-foreground" /> : "Einladen"}
                                     </button>
                                 </form>
                                 {inviteError && (
@@ -169,9 +173,10 @@ export function HouseholdSettingsDialog({
                                 </div>
                                 <button
                                     onClick={onDelete}
-                                    className="w-full btn bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white py-3 text-xs uppercase tracking-widest transition-all font-bold flex items-center justify-center gap-2"
+                                    disabled={isPending}
+                                    className="w-full btn bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white py-3 text-xs uppercase tracking-widest transition-all font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
                                 >
-                                    <Trash2 className="w-4 h-4" />
+                                    {isPending ? <Spinner className="text-red-500" /> : <Trash2 className="w-4 h-4" />}
                                     Haushalt löschen
                                 </button>
                             </div>

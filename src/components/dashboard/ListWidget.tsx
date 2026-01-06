@@ -1,5 +1,6 @@
 "use client";
 
+import { useOptimistic, useTransition } from "react";
 import { motion } from "framer-motion";
 import { ListTodo, Check, Edit2, Trash2 } from "lucide-react";
 
@@ -7,15 +8,29 @@ interface ListWidgetProps {
     list: any;
     onEdit: (list: any) => void;
     onDelete: (id: number) => void;
+    onToggleItem: (id: number, status: "true" | "false") => void;
 }
 
-export function ListWidget({ list, onEdit, onDelete }: ListWidgetProps) {
+export function ListWidget({ list, onEdit, onDelete, onToggleItem }: ListWidgetProps) {
+    const [isPending, startTransition] = useTransition();
+    const [optimisticList, addOptimisticToggle] = useOptimistic(
+        list,
+        (state, { itemId, completed }) => ({
+            ...state,
+            items: state.items?.map((item: any) =>
+                item.id === itemId ? { ...item, completed } : item
+            ),
+        })
+    );
+
     return (
         <motion.div
             layout
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            whileHover={{ y: -4, transition: { duration: 0.2 } }}
             whileTap={{ scale: 0.98 }}
             className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
         >
@@ -34,21 +49,33 @@ export function ListWidget({ list, onEdit, onDelete }: ListWidgetProps) {
                     {list.name}
                 </h3>
                 <div className="mt-3 space-y-2">
-                    {list.items?.slice(0, 3).map((item: any) => (
-                        <div key={item.id} className="text-xs flex items-center gap-3">
+                    {optimisticList.items?.slice(0, 3).map((item: any) => (
+                        <button
+                            key={item.id}
+                            disabled={isPending}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                const newStatus = item.completed === "true" ? "false" : "true";
+                                startTransition(async () => {
+                                    addOptimisticToggle({ itemId: item.id, completed: newStatus });
+                                    await onToggleItem(item.id, newStatus);
+                                });
+                            }}
+                            className="text-xs flex items-center gap-3 w-full text-left group/item hover:bg-accent/30 p-1 -m-1 rounded-md transition-colors"
+                        >
                             <div
-                                className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 ${item.completed === "true" ? "bg-primary text-primary-foreground border-primary" : ""
+                                className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 transition-colors ${item.completed === "true" ? "bg-primary text-primary-foreground border-primary" : "group-hover/item:border-primary/50"
                                     } `}
                             >
                                 {item.completed === "true" && <Check className="w-2.5 h-2.5" />}
                             </div>
                             <span
-                                className={`line-clamp-1 ${item.completed === "true" ? "line-through opacity-40" : "text-foreground/80"
+                                className={`line-clamp-1 transition-all ${item.completed === "true" ? "line-through opacity-40 text-muted-foreground" : "text-foreground/80"
                                     } `}
                             >
                                 {item.content}
                             </span>
-                        </div>
+                        </button>
                     ))}
                     {list.items?.length > 3 && (
                         <div className="text-[10px] text-muted-foreground mt-2 font-medium">

@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Zap, Droplets, Flame, History, Trash2 } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface MeterSettingsDialogProps {
     isOpen: boolean;
@@ -10,6 +11,7 @@ interface MeterSettingsDialogProps {
     meter: any;
     onUpdateMeter: (id: number, name: string, type: string, unit: string) => void;
     onDeleteReading: (id: number) => void;
+    isPending?: boolean;
 }
 
 export function MeterSettingsDialog({
@@ -18,6 +20,7 @@ export function MeterSettingsDialog({
     meter,
     onUpdateMeter,
     onDeleteReading,
+    isPending,
 }: MeterSettingsDialogProps) {
     if (!meter) return null;
 
@@ -75,11 +78,12 @@ export function MeterSettingsDialog({
                                     {types.map((t) => (
                                         <button
                                             key={t.type}
+                                            disabled={isPending}
                                             onClick={() => onUpdateMeter(meter.id, t.label, t.type, meter.unit)}
                                             className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${meter.type === t.type
-                                                    ? "border-primary bg-primary/5"
-                                                    : "border-transparent bg-accent/30 hover:bg-accent/50"
-                                                } `}
+                                                ? "border-primary bg-primary/5"
+                                                : "border-transparent bg-accent/30 hover:bg-accent/50"
+                                                } ${isPending ? "opacity-50 cursor-not-allowed" : ""}`}
                                         >
                                             <t.icon className={`w-6 h-6 ${t.color}`} />
                                             <span className="text-[10px] font-bold uppercase">{t.label}</span>
@@ -94,17 +98,19 @@ export function MeterSettingsDialog({
                                     {units.map((u) => (
                                         <button
                                             key={u}
+                                            disabled={isPending}
                                             onClick={() => onUpdateMeter(meter.id, meter.name, meter.type, u)}
                                             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${meter.unit === u
-                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                    : "bg-accent/50 hover:bg-accent text-muted-foreground"
-                                                } `}
+                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                : "bg-accent/50 hover:bg-accent text-muted-foreground"
+                                                } ${isPending ? "opacity-50 cursor-not-allowed" : ""}`}
                                         >
                                             {u}
                                         </button>
                                     ))}
                                     <input
                                         type="text"
+                                        disabled={isPending}
                                         placeholder="Andere..."
                                         value={units.includes(meter.unit) ? "" : meter.unit}
                                         onChange={(e) => onUpdateMeter(meter.id, meter.name, meter.type, e.target.value)}
@@ -139,7 +145,12 @@ export function MeterSettingsDialog({
 
                             <div className="space-y-4">
                                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Verlauf</label>
-                                <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50">
+                                <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50 relative">
+                                    {isPending && (
+                                        <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
+                                            <Spinner size={24} />
+                                        </div>
+                                    )}
                                     {meter.readings && meter.readings.length > 0 ? (
                                         [...meter.readings]
                                             .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -155,8 +166,9 @@ export function MeterSettingsDialog({
                                                         </div>
                                                     </div>
                                                     <button
+                                                        disabled={isPending}
                                                         onClick={() => onDeleteReading(r.id)}
-                                                        className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                        className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all disabled:pointer-events-none"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>

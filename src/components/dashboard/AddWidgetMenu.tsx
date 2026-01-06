@@ -2,13 +2,15 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, ListTodo, FileText } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface AddWidgetMenuProps {
     isOpen: boolean;
+    isPending?: boolean;
     onAddWidget: (type: "METER" | "LIST" | "NOTE") => void;
 }
 
-export function AddWidgetMenu({ isOpen, onAddWidget }: AddWidgetMenuProps) {
+export function AddWidgetMenu({ isOpen, isPending, onAddWidget }: AddWidgetMenuProps) {
     const options = [
         { type: "METER", icon: <Zap className="w-5 h-5" />, label: "Zähler", desc: "Strom, Gas, Wasser" },
         { type: "LIST", icon: <ListTodo className="w-5 h-5" />, label: "Liste (Beta)", desc: "Aufgaben & Pläne" },
@@ -28,9 +30,13 @@ export function AddWidgetMenu({ isOpen, onAddWidget }: AddWidgetMenuProps) {
                         {options.map((opt) => (
                             <motion.button
                                 key={opt.type}
-                                whileTap={{ scale: 0.95 }}
+                                whileTap={isPending ? {} : { scale: 0.95 }}
                                 onClick={() => onAddWidget(opt.type)}
-                                className="bg-card text-card-foreground rounded-lg border border-border p-3 hover:border-primary/50 group text-left flex flex-col items-start gap-3"
+                                disabled={isPending}
+                                className={cn(
+                                    "bg-card text-card-foreground rounded-lg border border-border p-3 hover:border-primary/50 group text-left flex flex-col items-start gap-3 transition-opacity",
+                                    isPending && "opacity-50 cursor-not-allowed"
+                                )}
                             >
                                 <div className="p-3 rounded-xl bg-accent group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                                     {opt.icon}

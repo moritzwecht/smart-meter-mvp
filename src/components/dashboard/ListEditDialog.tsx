@@ -1,7 +1,9 @@
 "use client";
 
+import { useOptimistic, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, Trash2, Plus } from "lucide-react";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface ListEditDialogProps {
     isOpen: boolean;
@@ -14,6 +16,7 @@ interface ListEditDialogProps {
     onDeleteItem: (id: number) => void;
     newItemValue: string;
     setNewItemValue: (val: string) => void;
+    isPending?: boolean;
 }
 
 export function ListEditDialog({
@@ -27,7 +30,47 @@ export function ListEditDialog({
     onDeleteItem,
     newItemValue,
     setNewItemValue,
+    isPending: parentIsPending,
 }: ListEditDialogProps) {
+    const [isTransitionPending, startTransition] = useTransition();
+    const isPending = parentIsPending || isTransitionPending;
+
+    const [optimisticList, addOptimisticAction] = useOptimistic(
+        list,
+        (state, action: { type: "toggle" | "add" | "delete"; payload: any }) => {
+            switch (action.type) {
+                case "toggle":
+                    return {
+                        ...state,
+                        items: state.items?.map((item: any) =>
+                            item.id === action.payload.id
+                                ? { ...item, completed: action.payload.status }
+                                : item
+                        ),
+                    };
+                case "add":
+                    return {
+                        ...state,
+                        items: [
+                            ...(state.items || []),
+                            {
+                                id: Math.random(), // Temporary ID
+                                content: action.payload.content,
+                                completed: "false",
+                            },
+                        ],
+                    };
+                case "delete":
+                    return {
+                        ...state,
+                        items: state.items?.filter((item: any) => item.id !== action.payload.id),
+                    };
+                default:
+                    return state;
+            }
+        }
+    );
+
     if (!list) return null;
 
     return (
@@ -72,7 +115,7 @@ export function ListEditDialog({
 
                                 <div className="space-y-2">
                                     <AnimatePresence mode="popLayout">
-                                        {list.items?.map((item: any) => (
+                                        {optimisticList.items?.map((item: any) => (
                                             <motion.div
                                                 key={item.id}
                                                 layout
@@ -82,12 +125,16 @@ export function ListEditDialog({
                                                 className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
                                             >
                                                 <button
-                                                    onClick={() =>
-                                                        onToggleItem(item.id, item.completed === "true" ? "false" : "true")
-                                                    }
+                                                    onClick={() => {
+                                                        const newStatus = item.completed === "true" ? "false" : "true";
+                                                        startTransition(async () => {
+                                                            addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
+                                                            await onToggleItem(item.id, newStatus);
+                                                        });
+                                                    }}
                                                     className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
-                                                            ? "bg-primary border-primary text-primary-foreground transform scale-105"
-                                                            : "hover:border-primary"
+                                                        ? "bg-primary border-primary text-primary-foreground transform scale-105"
+                                                        : "hover:border-primary"
                                                         } `}
                                                 >
                                                     {item.completed === "true" && <Check className="w-4 h-4" />}
@@ -99,7 +146,12 @@ export function ListEditDialog({
                                                     {item.content}
                                                 </span>
                                                 <button
-                                                    onClick={() => onDeleteItem(item.id)}
+                                                    onClick={() => {
+                                                        startTransition(async () => {
+                                                            addOptimisticAction({ type: "delete", payload: { id: item.id } });
+                                                            await onDeleteItem(item.id);
+                                                        });
+                                                    }}
                                                     className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -112,7 +164,10 @@ export function ListEditDialog({
                                         onSubmit={(e) => {
                                             e.preventDefault();
                                             if (!newItemValue.trim()) return;
-                                            onAddItem(newItemValue);
+                                            startTransition(async () => {
+                                                addOptimisticAction({ type: "add", payload: { content: newItemValue } });
+                                                await onAddItem(newItemValue);
+                                            });
                                         }}
                                         className="flex gap-2 mt-4"
                                     >
@@ -123,8 +178,8 @@ export function ListEditDialog({
                                             onChange={(e) => setNewItemValue(e.target.value)}
                                             className="flex-1 bg-accent/20 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 transition-colors"
                                         />
-                                        <button type="submit" className="btn btn-primary px-6">
-                                            <Plus className="w-5 h-5" />
+                                        <button type="submit" disabled={isPending} className="btn btn-primary px-6 disabled:opacity-70">
+                                            {isPending ? <Spinner className="text-primary-foreground" /> : <Plus className="w-5 h-5" />}
                                         </button>
                                     </form>
                                 </div>

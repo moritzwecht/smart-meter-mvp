@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Settings } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface MeterReadingDialogProps {
     isOpen: boolean;
@@ -12,6 +13,7 @@ interface MeterReadingDialogProps {
     setValue: (val: string) => void;
     onSave: (e: React.FormEvent) => void;
     onOpenSettings: () => void;
+    isPending?: boolean;
 }
 
 export function MeterReadingDialog({
@@ -22,6 +24,7 @@ export function MeterReadingDialog({
     setValue,
     onSave,
     onOpenSettings,
+    isPending,
 }: MeterReadingDialogProps) {
     if (!meter) return null;
 
@@ -92,9 +95,10 @@ export function MeterReadingDialog({
                                     </div>
                                     <button
                                         type="submit"
-                                        className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black"
+                                        disabled={isPending}
+                                        className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black disabled:opacity-70"
                                     >
-                                        Speichern
+                                        {isPending ? <Spinner className="text-primary-foreground" size={20} /> : "Speichern"}
                                     </button>
                                 </form>
                             </div>

@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Zap, Droplets, Flame } from "lucide-react";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface AddMeterDialogProps {
     isOpen: boolean;
@@ -9,6 +10,7 @@ interface AddMeterDialogProps {
     newMeterData: any;
     setNewMeterData: (data: any) => void;
     onAdd: () => void;
+    isPending?: boolean;
 }
 
 export function AddMeterDialog({
@@ -17,6 +19,7 @@ export function AddMeterDialog({
     newMeterData,
     setNewMeterData,
     onAdd,
+    isPending,
 }: AddMeterDialogProps) {
     const types = [
         { type: "ELECTRICITY", icon: Zap, color: "text-amber-500", bg: "bg-amber-500/10", label: "Strom" },
@@ -57,8 +60,8 @@ export function AddMeterDialog({
                                                 key={t.type}
                                                 onClick={() => setNewMeterData({ ...newMeterData, type: t.type, name: t.label })}
                                                 className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${newMeterData.type === t.type
-                                                        ? "border-primary bg-primary/5"
-                                                        : "border-transparent bg-accent/30 hover:bg-accent/50"
+                                                    ? "border-primary bg-primary/5"
+                                                    : "border-transparent bg-accent/30 hover:bg-accent/50"
                                                     } `}
                                             >
                                                 <t.icon className={`w-6 h-6 ${t.color}`} />
@@ -76,8 +79,8 @@ export function AddMeterDialog({
                                                 key={u}
                                                 onClick={() => setNewMeterData({ ...newMeterData, unit: u })}
                                                 className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${newMeterData.unit === u
-                                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                        : "bg-accent/50 hover:bg-accent text-muted-foreground"
+                                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                                                    : "bg-accent/50 hover:bg-accent text-muted-foreground"
                                                     } `}
                                             >
                                                 {u}
@@ -90,8 +93,8 @@ export function AddMeterDialog({
                                                 value={units.includes(newMeterData.unit) ? "" : newMeterData.unit}
                                                 onChange={(e) => setNewMeterData({ ...newMeterData, unit: e.target.value })}
                                                 className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!units.includes(newMeterData.unit) && newMeterData.unit !== ""
-                                                        ? "border-primary/50"
-                                                        : "border-transparent focus:border-primary/30"
+                                                    ? "border-primary/50"
+                                                    : "border-transparent focus:border-primary/30"
                                                     } `}
                                             />
                                         </div>
@@ -101,9 +104,10 @@ export function AddMeterDialog({
 
                             <button
                                 onClick={onAdd}
-                                className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black"
+                                disabled={isPending}
+                                className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black disabled:opacity-70"
                             >
-                                Erstellen
+                                {isPending ? <Spinner className="text-primary-foreground" size={20} /> : "Erstellen"}
                             </button>
                         </div>
                     </motion.div>

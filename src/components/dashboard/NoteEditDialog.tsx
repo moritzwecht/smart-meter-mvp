@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface NoteEditDialogProps {
     isOpen: boolean;
@@ -9,9 +10,10 @@ interface NoteEditDialogProps {
     setNote: (note: any) => void;
     onClose: () => void;
     onSave: () => void;
+    isPending?: boolean;
 }
 
-export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave }: NoteEditDialogProps) {
+export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPending }: NoteEditDialogProps) {
     if (!note) return null;
 
     return (
@@ -60,10 +62,10 @@ export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave }: NoteE
                         </div>
 
                         <div className="p-3 bg-accent/20 border-t border-border flex gap-3">
-                            <button onClick={onSave} className="flex-1 btn btn-primary py-3">
-                                Speichern
+                            <button onClick={onSave} disabled={isPending} className="flex-1 btn btn-primary py-3 disabled:opacity-70">
+                                {isPending ? <Spinner className="text-primary-foreground" size={20} /> : "Speichern"}
                             </button>
-                            <button onClick={onClose} className="flex-1 btn btn-ghost py-3">
+                            <button onClick={onClose} disabled={isPending} className="flex-1 btn btn-ghost py-3">
                                 Abbrechen
                             </button>
                         </div>

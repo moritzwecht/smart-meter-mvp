@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition, useOptimistic } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
@@ -50,6 +50,7 @@ import { MeterReadingDialog } from "@/components/dashboard/MeterReadingDialog";
 import { MeterSettingsDialog } from "@/components/dashboard/MeterSettingsDialog";
 import { NoteEditDialog } from "@/components/dashboard/NoteEditDialog";
 import { ListEditDialog } from "@/components/dashboard/ListEditDialog";
+import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 
 interface Session {
   email: string;
@@ -57,6 +58,7 @@ interface Session {
 }
 
 export default function Dashboard() {
+  const [isPending, startTransition] = useTransition();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [households, setHouseholds] = useState<any[]>([]);
@@ -68,6 +70,10 @@ export default function Dashboard() {
   const [inviteError, setInviteError] = useState("");
 
   const [widgets, setWidgets] = useState<any[]>([]);
+  const [optimisticWidgets, addOptimisticWidget] = useOptimistic(
+    widgets,
+    (state, newWidget: any) => [newWidget, ...state]
+  );
   const [showAddWidget, setShowAddWidget] = useState(false);
   const [editingNote, setEditingNote] = useState<any | null>(null);
   const [editingList, setEditingList] = useState<any | null>(null);
@@ -101,14 +107,16 @@ export default function Dashboard() {
     }
   };
 
-  const handleRenameHousehold = async () => {
+  const handleRenameHousehold = () => {
     if (!editingHousehold || !editingHousehold.name.trim()) return;
-    try {
-      await updateHouseholdAction(editingHousehold.id, editingHousehold.name);
-      refreshHouseholds();
-    } catch (err: any) {
-      alert(err.message);
-    }
+    startTransition(async () => {
+      try {
+        await updateHouseholdAction(editingHousehold.id, editingHousehold.name);
+        refreshHouseholds();
+      } catch (err: any) {
+        alert(err.message);
+      }
+    });
   };
 
   useEffect(() => {
@@ -195,16 +203,18 @@ export default function Dashboard() {
     }
   }, [selectedHouseholdId]);
 
-  const handleCreateHousehold = async (e: React.FormEvent) => {
+  const handleCreateHousehold = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newHouseholdName.trim()) return;
-    await createHouseholdAction(newHouseholdName);
-    setNewHouseholdName("");
-    setIsHouseholdMenuOpen(false);
-    refreshHouseholds();
+    startTransition(async () => {
+      await createHouseholdAction(newHouseholdName);
+      setNewHouseholdName("");
+      setIsHouseholdMenuOpen(false);
+      refreshHouseholds();
+    });
   };
 
-  if (loading) return null;
+  if (loading) return <DashboardSkeleton />;
 
   if (!session) {
     return (
@@ -275,32 +285,51 @@ export default function Dashboard() {
 
           <AddWidgetMenu
             isOpen={showAddWidget}
-            onAddWidget={async (type) => {
-              if (type === "NOTE")
-                await addNote(selectedHouseholdId!, "Neue Notiz");
-              if (type === "METER") {
-                setNewMeterData({
-                  name: "Neuer Zähler",
-                  type: "ELECTRICITY",
-                  unit: "kWh",
-                });
-                setShowAddMeterDialog(true);
-              }
-              if (type === "LIST")
-                await addTodoList(selectedHouseholdId!, "Neue Liste");
-              setShowAddWidget(false);
-              refreshWidgets(selectedHouseholdId!);
+            isPending={isPending}
+            onAddWidget={(type) => {
+              startTransition(async () => {
+                if (type === "NOTE") {
+                  addOptimisticWidget({
+                    id: Math.random(),
+                    widgetType: "NOTE",
+                    title: "Neue Notiz",
+                    content: "",
+                    createdAt: new Date().toISOString(),
+                  });
+                  await addNote(selectedHouseholdId!, "Neue Notiz");
+                }
+                if (type === "METER") {
+                  setNewMeterData({
+                    name: "Neuer Zähler",
+                    type: "ELECTRICITY",
+                    unit: "kWh",
+                  });
+                  setShowAddMeterDialog(true);
+                }
+                if (type === "LIST") {
+                  addOptimisticWidget({
+                    id: Math.random(),
+                    widgetType: "LIST",
+                    name: "Neue Liste",
+                    items: [],
+                    createdAt: new Date().toISOString(),
+                  });
+                  await addTodoList(selectedHouseholdId!, "Neue Liste");
+                }
+                setShowAddWidget(false);
+                refreshWidgets(selectedHouseholdId!);
+              });
             }}
           />
 
           {widgets.length > 0 ? (
             <div className="space-y-12">
               {/* Meters Section */}
-              {widgets.some((w) => w.widgetType === "METER") && (
+              {optimisticWidgets.some((w) => w.widgetType === "METER") && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <AnimatePresence mode="popLayout">
-                      {widgets
+                      {optimisticWidgets
                         .filter((w) => w.widgetType === "METER")
                         .map((w) => (
                           <MeterWidget
@@ -316,7 +345,7 @@ export default function Dashboard() {
               )}
 
               {/* Other Widgets Section */}
-              {widgets.some((w) => w.widgetType !== "METER") && (
+              {optimisticWidgets.some((w) => w.widgetType !== "METER") && (
                 <div className="space-y-4">
                   <div className="px-2">
                     <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
@@ -325,7 +354,7 @@ export default function Dashboard() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <AnimatePresence mode="popLayout">
-                      {widgets
+                      {optimisticWidgets
                         .filter((w) => w.widgetType !== "METER")
                         .map((w) => (
                           <div key={w.id}>
@@ -333,10 +362,12 @@ export default function Dashboard() {
                               <NoteWidget
                                 note={w}
                                 onEdit={() => setEditingNote(w)}
-                                onDelete={async () => {
+                                onDelete={() => {
                                   if (window.confirm("Wirklich löschen?")) {
-                                    await deleteNote(w.id);
-                                    refreshWidgets(selectedHouseholdId!);
+                                    startTransition(async () => {
+                                      await deleteNote(w.id);
+                                      refreshWidgets(selectedHouseholdId!);
+                                    });
                                   }
                                 }}
                               />
@@ -345,11 +376,19 @@ export default function Dashboard() {
                               <ListWidget
                                 list={w}
                                 onEdit={() => setEditingList(w)}
-                                onDelete={async () => {
+                                onDelete={() => {
                                   if (window.confirm("Wirklich löschen?")) {
-                                    await deleteTodoList(w.id);
-                                    refreshWidgets(selectedHouseholdId!);
+                                    startTransition(async () => {
+                                      await deleteTodoList(w.id);
+                                      refreshWidgets(selectedHouseholdId!);
+                                    });
                                   }
+                                }}
+                                onToggleItem={(id, status) => {
+                                  startTransition(async () => {
+                                    await toggleTodoItem(id, status);
+                                    refreshWidgets(selectedHouseholdId!);
+                                  });
                                 }}
                               />
                             )}
@@ -399,15 +438,18 @@ export default function Dashboard() {
         onClose={() => setShowAddMeterDialog(false)}
         newMeterData={newMeterData}
         setNewMeterData={setNewMeterData}
-        onAdd={async () => {
-          await addMeter(
-            selectedHouseholdId!,
-            newMeterData.name,
-            newMeterData.type,
-            newMeterData.unit
-          );
-          setShowAddMeterDialog(false);
-          refreshWidgets(selectedHouseholdId!);
+        isPending={isPending}
+        onAdd={() => {
+          startTransition(async () => {
+            await addMeter(
+              selectedHouseholdId!,
+              newMeterData.name,
+              newMeterData.type,
+              newMeterData.unit
+            );
+            setShowAddMeterDialog(false);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
       />
 
@@ -417,13 +459,16 @@ export default function Dashboard() {
         meter={addingReadingForMeter}
         value={newItemValue}
         setValue={setNewItemValue}
-        onSave={async (e) => {
+        isPending={isPending}
+        onSave={(e) => {
           e.preventDefault();
           if (!newItemValue.trim()) return;
-          await addReading(addingReadingForMeter.id, newItemValue, new Date());
-          setNewItemValue("");
-          setAddingReadingForMeter(null);
-          refreshWidgets(selectedHouseholdId!);
+          startTransition(async () => {
+            await addReading(addingReadingForMeter.id, newItemValue, new Date());
+            setNewItemValue("");
+            setAddingReadingForMeter(null);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
         onOpenSettings={() => {
           const meter = addingReadingForMeter;
@@ -437,14 +482,17 @@ export default function Dashboard() {
         note={editingNote}
         setNote={setEditingNote}
         onClose={() => setEditingNote(null)}
-        onSave={async () => {
-          await updateNote(
-            editingNote.id,
-            editingNote.title,
-            editingNote.content
-          );
-          setEditingNote(null);
-          refreshWidgets(selectedHouseholdId!);
+        isPending={isPending}
+        onSave={() => {
+          startTransition(async () => {
+            await updateNote(
+              editingNote.id,
+              editingNote.title,
+              editingNote.content
+            );
+            setEditingNote(null);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
       />
 
@@ -453,21 +501,30 @@ export default function Dashboard() {
         list={editingList}
         setList={setEditingList}
         onClose={() => setEditingList(null)}
-        onUpdateList={async (id, name) => {
-          await updateTodoList(id, name);
-          refreshWidgets(selectedHouseholdId!);
+        isPending={isPending}
+        onUpdateList={(id, name) => {
+          startTransition(async () => {
+            await updateTodoList(id, name);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
-        onAddItem={async (content) => {
-          await addTodoItem(editingList.id, content);
-          refreshWidgets(selectedHouseholdId!);
+        onAddItem={(content) => {
+          startTransition(async () => {
+            await addTodoItem(editingList.id, content);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
-        onToggleItem={async (id, status) => {
-          await toggleTodoItem(id, status);
-          refreshWidgets(selectedHouseholdId!);
+        onToggleItem={(id, status) => {
+          startTransition(async () => {
+            await toggleTodoItem(id, status);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
-        onDeleteItem={async (id) => {
-          await deleteTodoItem(id);
-          refreshWidgets(selectedHouseholdId!);
+        onDeleteItem={(id) => {
+          startTransition(async () => {
+            await deleteTodoItem(id);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
         newItemValue={newItemValue}
         setNewItemValue={setNewItemValue}
@@ -477,14 +534,19 @@ export default function Dashboard() {
         isOpen={!!editingMeter}
         onClose={() => setEditingMeter(null)}
         meter={editingMeter}
-        onUpdateMeter={async (id, name, type, unit) => {
-          await updateMeter(id, name, type, unit);
-          refreshWidgets(selectedHouseholdId!);
-        }}
-        onDeleteReading={async (id) => {
-          if (window.confirm("Ablesung löschen?")) {
-            await deleteReading(id);
+        isPending={isPending}
+        onUpdateMeter={(id, name, type, unit) => {
+          startTransition(async () => {
+            await updateMeter(id, name, type, unit);
             refreshWidgets(selectedHouseholdId!);
+          });
+        }}
+        onDeleteReading={(id) => {
+          if (window.confirm("Ablesung löschen?")) {
+            startTransition(async () => {
+              await deleteReading(id);
+              refreshWidgets(selectedHouseholdId!);
+            });
           }
         }}
       />
@@ -495,42 +557,49 @@ export default function Dashboard() {
         household={editingHousehold}
         setHousehold={setEditingHousehold}
         onRename={handleRenameHousehold}
-        onDelete={async () => {
+        isPending={isPending}
+        onDelete={() => {
           if (
             window.confirm(
               `Möchtest du "${editingHousehold.name}" wirklich löschen?`
             )
           ) {
-            try {
-              await deleteHouseholdAction(editingHousehold.id);
-              if (selectedHouseholdId === editingHousehold.id)
-                setSelectedHouseholdId(null);
-              setEditingHousehold(null);
-              refreshHouseholds();
-            } catch (err: any) {
-              alert(err.message);
-            }
+            startTransition(async () => {
+              try {
+                await deleteHouseholdAction(editingHousehold.id);
+                if (selectedHouseholdId === editingHousehold.id)
+                  setSelectedHouseholdId(null);
+                setEditingHousehold(null);
+                refreshHouseholds();
+              } catch (err: any) {
+                alert(err.message);
+              }
+            });
           }
         }}
         inviteEmail={inviteEmail}
         setInviteEmail={setInviteEmail}
-        onInvite={async (e) => {
+        onInvite={(e) => {
           e.preventDefault();
           setInviteError("");
-          try {
-            await inviteToHousehold(editingHousehold.id, inviteEmail);
-            setInviteEmail("");
-            refreshMembers(editingHousehold.id);
-          } catch (err: any) {
-            setInviteError(err.message || "Fehler beim Einladen.");
-          }
+          startTransition(async () => {
+            try {
+              await inviteToHousehold(editingHousehold.id, inviteEmail);
+              setInviteEmail("");
+              refreshMembers(editingHousehold.id);
+            } catch (err: any) {
+              setInviteError(err.message || "Fehler beim Einladen.");
+            }
+          });
         }}
         inviteError={inviteError}
         members={members}
-        onRemoveMember={async (email) => {
+        onRemoveMember={(email) => {
           if (window.confirm(`${email} wirklich aus dem Haushalt entfernen?`)) {
-            await removeMemberAction(editingHousehold.id, email);
-            refreshMembers(editingHousehold.id);
+            startTransition(async () => {
+              await removeMemberAction(editingHousehold.id, email);
+              refreshMembers(editingHousehold.id);
+            });
           }
         }}
         currentUserEmail={session?.email}
@@ -548,26 +617,31 @@ export default function Dashboard() {
         setProfileData={setProfileData}
         profileError={profileError}
         profileSuccess={profileSuccess}
-        onSave={async () => {
+        isPending={isPending}
+        onSave={() => {
           setProfileError("");
           setProfileSuccess(false);
-          try {
-            await updateProfile(profileData);
-            setProfileSuccess(true);
-            setProfileData((prev) => ({
-              ...prev,
-              currentPassword: "",
-              newPassword: "",
-            }));
-            refreshProfile();
-          } catch (err: any) {
-            setProfileError(err.message);
-          }
+          startTransition(async () => {
+            try {
+              await updateProfile(profileData);
+              setProfileSuccess(true);
+              setProfileData((prev) => ({
+                ...prev,
+                currentPassword: "",
+                newPassword: "",
+              }));
+              refreshProfile();
+            } catch (err: any) {
+              setProfileError(err.message);
+            }
+          });
         }}
-        onLogout={async () => {
-          await logoutAction();
-          setSession(null);
-          setIsProfileOpen(false);
+        onLogout={() => {
+          startTransition(async () => {
+            await logoutAction();
+            setSession(null);
+            setIsProfileOpen(false);
+          });
         }}
       />
     </main>

@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, LogOut } from "lucide-react";
+import { Spinner } from "@/components/ui/Spinner";
 
 interface ProfileDialogProps {
     isOpen: boolean;
@@ -13,6 +14,7 @@ interface ProfileDialogProps {
     profileSuccess: boolean;
     onSave: () => void;
     onLogout: () => void;
+    isPending?: boolean;
 }
 
 export function ProfileDialog({
@@ -25,6 +27,7 @@ export function ProfileDialog({
     profileSuccess,
     onSave,
     onLogout,
+    isPending,
 }: ProfileDialogProps) {
     return (
         <AnimatePresence>
@@ -34,7 +37,7 @@ export function ProfileDialog({
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="w-full max-w-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
+                        className="w-full max-sm bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col"
                     >
                         <div className="flex justify-between items-center p-3 border-b border-border">
                             <div className="space-y-0.5">
@@ -107,17 +110,18 @@ export function ProfileDialog({
                             <div className="pt-2 border-t border-border">
                                 <button
                                     onClick={onLogout}
-                                    className="w-full flex items-center justify-center gap-2 py-3 text-red-500 hover:bg-red-500/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                    disabled={isPending}
+                                    className="w-full flex items-center justify-center gap-2 py-3 text-red-500 hover:bg-red-500/10 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50"
                                 >
-                                    <LogOut className="w-4 h-4" />
+                                    {isPending ? <Spinner className="text-red-500" /> : <LogOut className="w-4 h-4" />}
                                     Abmelden
                                 </button>
                             </div>
                         </div>
 
                         <div className="p-3 border-t border-border bg-accent/10 flex gap-2">
-                            <button onClick={onSave} className="flex-1 btn btn-primary py-3">
-                                Speichern
+                            <button onClick={onSave} disabled={isPending} className="flex-1 btn btn-primary py-3 disabled:opacity-70">
+                                {isPending ? <Spinner className="text-primary-foreground" size={20} /> : "Speichern"}
                             </button>
                         </div>
                     </motion.div>
