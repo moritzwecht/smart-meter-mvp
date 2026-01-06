@@ -168,7 +168,7 @@ export function MeterSettingsDialog({
                                                     <button
                                                         disabled={isPending}
                                                         onClick={() => onDeleteReading(r.id)}
-                                                        className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all disabled:pointer-events-none"
+                                                        className="p-2 text-muted-foreground hover:text-red-500 transition-all disabled:pointer-events-none"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
                                                     </button>
