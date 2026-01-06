@@ -36,20 +36,20 @@ import {
 
 // Dashboard Components
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
-import { HouseholdMenu } from "@/components/dashboard/HouseholdMenu";
+import { HouseholdMenu } from "@/components/dashboard/household/HouseholdMenu";
 import { AddWidgetMenu } from "@/components/dashboard/AddWidgetMenu";
-import { MeterWidget } from "@/components/dashboard/MeterWidget";
-import { NoteWidget } from "@/components/dashboard/NoteWidget";
-import { ListWidget } from "@/components/dashboard/ListWidget";
+import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
+import { NoteWidget } from "@/components/dashboard/note/NoteWidget";
+import { ListWidget } from "@/components/dashboard/list/ListWidget";
 
 // Dialog Components
-import { ProfileDialog } from "@/components/dashboard/ProfileDialog";
-import { HouseholdSettingsDialog } from "@/components/dashboard/HouseholdSettingsDialog";
-import { AddMeterDialog } from "@/components/dashboard/AddMeterDialog";
-import { MeterReadingDialog } from "@/components/dashboard/MeterReadingDialog";
-import { MeterSettingsDialog } from "@/components/dashboard/MeterSettingsDialog";
-import { NoteEditDialog } from "@/components/dashboard/NoteEditDialog";
-import { ListEditDialog } from "@/components/dashboard/ListEditDialog";
+import { ProfileDialog } from "@/components/dashboard/profile/ProfileDialog";
+import { HouseholdSettingsDialog } from "@/components/dashboard/household/HouseholdSettingsDialog";
+import { AddMeterDialog } from "@/components/dashboard/meter/AddMeterDialog";
+import { MeterReadingDialog } from "@/components/dashboard/meter/MeterReadingDialog";
+import { MeterSettingsDialog } from "@/components/dashboard/meter/MeterSettingsDialog";
+import { NoteEditDialog } from "@/components/dashboard/note/NoteEditDialog";
+import { ListEditDialog } from "@/components/dashboard/list/ListEditDialog";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 
 interface Session {
