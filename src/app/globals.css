@@ -78,11 +78,11 @@ body {
 
 /* Base interactive styles */
 .btn {
-  @apply px-4 py-2 rounded-md font-medium transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+  @apply px-4 py-2 rounded-xl font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2;
 }
 
 .btn-primary {
-  @apply bg-primary text-primary-foreground hover:opacity-90;
+  @apply bg-primary text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0;
 }
 
 .btn-ghost {
@@ -90,20 +90,31 @@ body {
 }
 
 .card {
-  @apply bg-card text-card-foreground rounded-lg border border-border transition-all;
+  @apply bg-card text-card-foreground rounded-2xl border border-border transition-all duration-300;
 }
 
 @media (hover: hover) {
   .card:hover {
-    @apply shadow-lg shadow-foreground/5 border-primary/20;
+    @apply shadow-2xl shadow-foreground/5 border-primary/10 -translate-y-1;
   }
 }
 
 .input-field {
-  @apply px-3 py-2 bg-transparent border-b-2 border-border focus:border-primary outline-none transition-colors;
+  @apply px-4 py-3 bg-accent/20 border-2 border-transparent rounded-xl focus:border-primary/30 focus:bg-accent/40 outline-none transition-all;
 }
 
 /* Glassmorphism utility */
 .glass {
-  @apply bg-white/10 backdrop-blur-md border border-white/20;
+  @apply bg-white/5 backdrop-blur-xl border border-white/10;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
 }

@@ -1,0 +1,49 @@
+"use client";
+
+import { motion, AnimatePresence } from "framer-motion";
+import { Zap, ListTodo, FileText } from "lucide-react";
+
+interface AddWidgetMenuProps {
+    isOpen: boolean;
+    onAddWidget: (type: "METER" | "LIST" | "NOTE") => void;
+}
+
+export function AddWidgetMenu({ isOpen, onAddWidget }: AddWidgetMenuProps) {
+    const options = [
+        { type: "METER", icon: <Zap className="w-5 h-5" />, label: "Zähler", desc: "Strom, Gas, Wasser" },
+        { type: "LIST", icon: <ListTodo className="w-5 h-5" />, label: "Liste (Beta)", desc: "Aufgaben & Pläne" },
+        { type: "NOTE", icon: <FileText className="w-5 h-5" />, label: "Notiz (Beta)", desc: "Schnelle Gedanken" },
+    ] as const;
+
+    return (
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-8">
+                        {options.map((opt) => (
+                            <motion.button
+                                key={opt.type}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => onAddWidget(opt.type)}
+                                className="bg-card text-card-foreground rounded-lg border border-border p-3 hover:border-primary/50 group text-left flex flex-col items-start gap-3"
+                            >
+                                <div className="p-3 rounded-xl bg-accent group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                    {opt.icon}
+                                </div>
+                                <div>
+                                    <div className="font-bold text-sm uppercase tracking-tight">{opt.label}</div>
+                                    <div className="text-xs text-muted-foreground">{opt.desc}</div>
+                                </div>
+                            </motion.button>
+                        ))}
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+}

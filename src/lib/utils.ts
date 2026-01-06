@@ -18,3 +18,8 @@ export function formatCurrency(num: number): string {
         currency: "EUR",
     }).format(num);
 }
+export function parseSafe(val: string | number | null | undefined): number {
+    if (val === null || val === undefined) return 0;
+    if (typeof val === "number") return val;
+    return parseFloat(val.toString().replace(",", "."));
+}
