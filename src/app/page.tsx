@@ -57,12 +57,69 @@ interface Session {
   expires: string;
 }
 
+interface Household {
+  id: number;
+  name: string;
+  userId: number;
+  createdAt: string;
+}
+
+interface Reading {
+  id: number;
+  meterId: number;
+  value: string;
+  date: string | Date;
+  createdAt: string | Date;
+}
+
+interface Meter {
+  id: number;
+  name: string;
+  type: string;
+  householdId: number;
+  unit: string;
+  createdAt: string | Date;
+  readings?: Reading[];
+}
+
+interface TodoItem {
+  id: number;
+  listId: number;
+  content: string;
+  completed: string;
+  createdAt: string | Date;
+}
+
+interface TodoList {
+  id: number;
+  name: string;
+  householdId: number;
+  createdAt: string | Date;
+  items?: TodoItem[];
+}
+
+interface Note {
+  id: number;
+  title: string;
+  content: string | null;
+  householdId: number;
+  createdAt: string | Date;
+}
+
+type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' });
+
+interface ProfileData {
+  name: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
 export default function Dashboard() {
   const [isPending, startTransition] = useTransition();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [isWidgetsLoading, setIsWidgetsLoading] = useState(false);
-  const [households, setHouseholds] = useState<any[]>([]);
+  const [households, setHouseholds] = useState<Household[]>([]);
   const [selectedHouseholdId, setSelectedHouseholdId] = useState<number | null>(null);
   const [newHouseholdName, setNewHouseholdName] = useState("");
   const [isHouseholdMenuOpen, setIsHouseholdMenuOpen] = useState(false);
@@ -70,24 +127,24 @@ export default function Dashboard() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteError, setInviteError] = useState("");
 
-  const [widgets, setWidgets] = useState<any[]>([]);
+  const [widgets, setWidgets] = useState<Widget[]>([]);
   const [optimisticWidgets, addOptimisticWidget] = useOptimistic(
     widgets,
-    (state, newWidget: any) => [newWidget, ...state]
+    (state: Widget[], newWidget: Widget) => [newWidget, ...state]
   );
   const [showAddWidget, setShowAddWidget] = useState(false);
-  const [editingNote, setEditingNote] = useState<any | null>(null);
-  const [editingList, setEditingList] = useState<any | null>(null);
-  const [editingMeter, setEditingMeter] = useState<any | null>(null);
-  const [addingReadingForMeter, setAddingReadingForMeter] = useState<any | null>(null);
+  const [editingNote, setEditingNote] = useState<Note | null>(null);
+  const [editingList, setEditingList] = useState<TodoList | null>(null);
+  const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
+  const [addingReadingForMeter, setAddingReadingForMeter] = useState<Meter | null>(null);
   const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
   const [newMeterData, setNewMeterData] = useState({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
-  const [editingHousehold, setEditingHousehold] = useState<any | null>(null);
+  const [editingHousehold, setEditingHousehold] = useState<Household | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newItemValue, setNewItemValue] = useState("");
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
-  const [profileData, setProfileData] = useState({ name: "", currentPassword: "", newPassword: "" });
+  const [profileData, setProfileData] = useState<ProfileData>({ name: "", currentPassword: "", newPassword: "" });
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState(false);
 
@@ -144,7 +201,7 @@ export default function Dashboard() {
     const data = await getUserProfile();
     if (data) {
       setUserProfile(data);
-      setProfileData(prev => ({ ...prev, name: data.name }));
+      setProfileData((prev: ProfileData) => ({ ...prev, name: data.name }));
     }
   };
 
@@ -163,26 +220,26 @@ export default function Dashboard() {
         getNotes(householdId)
       ]);
 
-      const allWidgets = [
-        ...m.map(i => ({ ...i, widgetType: 'METER' })),
-        ...l.map(i => ({ ...i, widgetType: 'LIST' })),
-        ...n.map(i => ({ ...i, widgetType: 'NOTE' }))
+      const allWidgets: Widget[] = [
+        ...m.map(i => ({ ...i, widgetType: 'METER' as const })),
+        ...l.map(i => ({ ...i, widgetType: 'LIST' as const })),
+        ...n.map(i => ({ ...i, widgetType: 'NOTE' as const }))
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       setWidgets(allWidgets);
 
       // If we're currently editing a list, update its local state too (atomically)
-      setEditingList(prev => {
+      setEditingList((prev: TodoList | null) => {
         if (!prev) return null;
-        const updatedList = l.find(list => list.id === prev.id);
-        return updatedList || prev;
+        const updatedList = l.find((list: any) => list.id === prev.id);
+        return (updatedList as TodoList) || prev;
       });
 
       // If we're currently adding a reading, update its local state too (atomically)
-      setAddingReadingForMeter(prev => {
+      setAddingReadingForMeter((prev: Meter | null) => {
         if (!prev) return null;
-        const updatedMeter = m.find(meter => meter.id === prev.id);
-        return updatedMeter || prev;
+        const updatedMeter = m.find((meter: any) => meter.id === prev.id);
+        return (updatedMeter as Meter) || prev;
       });
     } finally {
       setIsWidgetsLoading(false);
@@ -321,7 +378,8 @@ export default function Dashboard() {
                         widgetType: "NOTE",
                         title: "Neue Notiz",
                         content: "",
-                        createdAt: new Date().toISOString(),
+                        createdAt: new Date(),
+                        householdId: selectedHouseholdId!,
                       });
                       await addNote(selectedHouseholdId!, "Neue Notiz");
                     }
@@ -339,7 +397,8 @@ export default function Dashboard() {
                         widgetType: "LIST",
                         name: "Neue Liste",
                         items: [],
-                        createdAt: new Date().toISOString(),
+                        createdAt: new Date(),
+                        householdId: selectedHouseholdId!,
                       });
                       await addTodoList(selectedHouseholdId!, "Neue Liste");
                     }
@@ -485,13 +544,13 @@ export default function Dashboard() {
       <MeterReadingDialog
         isOpen={!!addingReadingForMeter}
         onClose={() => setAddingReadingForMeter(null)}
-        meter={addingReadingForMeter}
+        meter={addingReadingForMeter!}
         value={newItemValue}
         setValue={setNewItemValue}
         isPending={isPending}
         onSave={(e) => {
           e.preventDefault();
-          if (!newItemValue.trim()) return;
+          if (!newItemValue.trim() || !addingReadingForMeter) return;
           startTransition(async () => {
             await addReading(addingReadingForMeter.id, newItemValue, new Date());
             setNewItemValue("");
@@ -500,24 +559,27 @@ export default function Dashboard() {
           });
         }}
         onOpenSettings={() => {
-          const meter = addingReadingForMeter;
-          setAddingReadingForMeter(null);
-          setEditingMeter(meter);
+          if (addingReadingForMeter) {
+            const meter = addingReadingForMeter;
+            setAddingReadingForMeter(null);
+            setEditingMeter(meter);
+          }
         }}
       />
 
       <NoteEditDialog
         isOpen={!!editingNote}
-        note={editingNote}
+        note={editingNote!}
         setNote={setEditingNote}
         onClose={() => setEditingNote(null)}
         isPending={isPending}
         onSave={() => {
+          if (!editingNote) return;
           startTransition(async () => {
             await updateNote(
               editingNote.id,
               editingNote.title,
-              editingNote.content
+              editingNote.content || undefined
             );
             setEditingNote(null);
             refreshWidgets(selectedHouseholdId!);
@@ -527,7 +589,7 @@ export default function Dashboard() {
 
       <ListEditDialog
         isOpen={!!editingList}
-        list={editingList}
+        list={editingList!}
         setList={setEditingList}
         onClose={() => setEditingList(null)}
         isPending={isPending}
@@ -538,6 +600,7 @@ export default function Dashboard() {
           });
         }}
         onAddItem={(content) => {
+          if (!editingList) return;
           startTransition(async () => {
             await addTodoItem(editingList.id, content);
             refreshWidgets(selectedHouseholdId!);
@@ -562,7 +625,7 @@ export default function Dashboard() {
       <MeterSettingsDialog
         isOpen={!!editingMeter}
         onClose={() => setEditingMeter(null)}
-        meter={editingMeter}
+        meter={editingMeter!}
         isPending={isPending}
         onUpdateMeter={(id, name, type, unit) => {
           startTransition(async () => {
@@ -583,33 +646,36 @@ export default function Dashboard() {
       <HouseholdSettingsDialog
         isOpen={!!editingHousehold}
         onClose={() => setEditingHousehold(null)}
-        household={editingHousehold}
+        household={editingHousehold!}
         setHousehold={setEditingHousehold}
         onRename={handleRenameHousehold}
         isPending={isPending}
         onDelete={() => {
           if (
-            window.confirm(
+            !editingHousehold ||
+            !window.confirm(
               `Möchtest du "${editingHousehold.name}" wirklich löschen?`
             )
           ) {
-            startTransition(async () => {
-              try {
-                await deleteHouseholdAction(editingHousehold.id);
-                if (selectedHouseholdId === editingHousehold.id)
-                  setSelectedHouseholdId(null);
-                setEditingHousehold(null);
-                refreshHouseholds();
-              } catch (err: any) {
-                alert(err.message);
-              }
-            });
+            return;
           }
+          startTransition(async () => {
+            try {
+              await deleteHouseholdAction(editingHousehold.id);
+              if (selectedHouseholdId === editingHousehold.id)
+                setSelectedHouseholdId(null);
+              setEditingHousehold(null);
+              refreshHouseholds();
+            } catch (err: any) {
+              alert(err.message);
+            }
+          });
         }}
         inviteEmail={inviteEmail}
         setInviteEmail={setInviteEmail}
         onInvite={(e) => {
           e.preventDefault();
+          if (!editingHousehold) return;
           setInviteError("");
           startTransition(async () => {
             try {
@@ -624,6 +690,7 @@ export default function Dashboard() {
         inviteError={inviteError}
         members={members}
         onRemoveMember={(email) => {
+          if (!editingHousehold) return;
           if (window.confirm(`${email} wirklich aus dem Haushalt entfernen?`)) {
             startTransition(async () => {
               await removeMemberAction(editingHousehold.id, email);
@@ -654,7 +721,7 @@ export default function Dashboard() {
             try {
               await updateProfile(profileData);
               setProfileSuccess(true);
-              setProfileData((prev) => ({
+              setProfileData((prev: ProfileData) => ({
                 ...prev,
                 currentPassword: "",
                 newPassword: "",
