@@ -26,7 +26,7 @@ export function DashboardHeader({
     children,
 }: DashboardHeaderProps) {
     return (
-        <header className="flex justify-between items-center py-4 border-b border-border mb-4">
+        <header className="flex justify-between items-center pb-4 border-b border-border mb-4">
             <div className="relative">
                 <button
                     onClick={() => setIsHouseholdMenuOpen(!isHouseholdMenuOpen)}
