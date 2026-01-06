@@ -2,19 +2,25 @@
 
 import { Skeleton } from "@/components/ui/Skeleton";
 
-export function DashboardSkeleton() {
-    return (
-        <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-8 bg-background">
-            {/* Header Skeleton */}
-            <header className="flex justify-between items-center py-4 border-b border-border mb-4">
-                <Skeleton className="h-8 w-48" />
-                <div className="flex gap-2">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <Skeleton className="h-10 w-24 rounded-full" />
-                </div>
-            </header>
+interface DashboardSkeletonProps {
+    hideHeader?: boolean;
+}
 
-            <div className="space-y-3">
+export function DashboardSkeleton({ hideHeader = false }: DashboardSkeletonProps) {
+    return (
+        <main className={`min-h-screen ${hideHeader ? "" : "p-4 md:p-8"} max-w-7xl mx-auto space-y-8 bg-background`}>
+            {/* Header Skeleton */}
+            {!hideHeader && (
+                <header className="flex justify-between items-center py-4 border-b border-border mb-4">
+                    <Skeleton className="h-8 w-48" />
+                    <div className="flex gap-2">
+                        <Skeleton className="h-10 w-10 rounded-full" />
+                        <Skeleton className="h-10 w-24 rounded-full" />
+                    </div>
+                </header>
+            )}
+
+            <div className={`space-y-3 ${hideHeader ? "" : ""}`}>
                 {/* Add Widget Button Skeleton */}
                 <div className="flex justify-end px-2">
                     <Skeleton className="h-10 w-10" />

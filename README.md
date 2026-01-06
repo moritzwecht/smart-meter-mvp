@@ -8,6 +8,8 @@ This is the ArmbrustTracker project, a mobile-first application to track crossbo
 First, run the development server:
 
 ```bash
+NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev # for self-signed certificates
+# or
 npm run dev
 # or
 yarn dev

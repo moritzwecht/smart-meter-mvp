@@ -61,6 +61,7 @@ export default function Dashboard() {
   const [isPending, startTransition] = useTransition();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isWidgetsLoading, setIsWidgetsLoading] = useState(false);
   const [households, setHouseholds] = useState<any[]>([]);
   const [selectedHouseholdId, setSelectedHouseholdId] = useState<number | null>(null);
   const [newHouseholdName, setNewHouseholdName] = useState("");
@@ -154,54 +155,69 @@ export default function Dashboard() {
   }, [session]);
 
   const refreshWidgets = async (householdId: number) => {
-    const [m, l, n] = await Promise.all([
-      getMeters(householdId),
-      getTodoLists(householdId),
-      getNotes(householdId)
-    ]);
+    setIsWidgetsLoading(true);
+    try {
+      const [m, l, n] = await Promise.all([
+        getMeters(householdId),
+        getTodoLists(householdId),
+        getNotes(householdId)
+      ]);
 
-    const allWidgets = [
-      ...m.map(i => ({ ...i, widgetType: 'METER' })),
-      ...l.map(i => ({ ...i, widgetType: 'LIST' })),
-      ...n.map(i => ({ ...i, widgetType: 'NOTE' }))
-    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const allWidgets = [
+        ...m.map(i => ({ ...i, widgetType: 'METER' })),
+        ...l.map(i => ({ ...i, widgetType: 'LIST' })),
+        ...n.map(i => ({ ...i, widgetType: 'NOTE' }))
+      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    setWidgets(allWidgets);
+      setWidgets(allWidgets);
 
-    // If we're currently editing a list, update its local state too
-    if (editingList) {
-      const updatedList = l.find(list => list.id === editingList.id);
-      if (updatedList) setEditingList(updatedList);
-    }
+      // If we're currently editing a list, update its local state too
+      if (editingList) {
+        const updatedList = l.find(list => list.id === editingList.id);
+        if (updatedList) setEditingList(updatedList);
+      }
 
-    // If we're currently adding a reading, update its local state too
-    if (addingReadingForMeter) {
-      const updatedMeter = m.find(meter => meter.id === addingReadingForMeter.id);
-      if (updatedMeter) setAddingReadingForMeter(updatedMeter);
+      // If we're currently adding a reading, update its local state too
+      if (addingReadingForMeter) {
+        const updatedMeter = m.find(meter => meter.id === addingReadingForMeter.id);
+        if (updatedMeter) setAddingReadingForMeter(updatedMeter);
+      }
+    } finally {
+      setIsWidgetsLoading(false);
     }
   };
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then(res => res.json())
-      .then(data => {
+      .then(async data => {
         setSession(data.session);
-        if (data.session) refreshHouseholds();
+        if (data.session) {
+          await refreshHouseholds();
+          // The selectedHouseholdId useEffect will trigger refreshWidgets
+        } else {
+          setLoading(false);
+        }
       })
-      .finally(() => setLoading(false));
+      .catch(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     if (selectedHouseholdId) {
-      refreshWidgets(selectedHouseholdId);
+      refreshWidgets(selectedHouseholdId).then(() => {
+        if (loading) setLoading(false);
+      });
 
       const interval = setInterval(() => {
         refreshWidgets(selectedHouseholdId);
       }, 5000);
 
       return () => clearInterval(interval);
+    } else if (session && households.length === 0) {
+      // If session exists but no households, we can stop loading (will show 0 results or prompt)
+      setLoading(false);
     }
-  }, [selectedHouseholdId]);
+  }, [selectedHouseholdId, session, households.length]);
 
   const handleCreateHousehold = (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,6 +270,9 @@ export default function Dashboard() {
           households={households}
           selectedHouseholdId={selectedHouseholdId}
           onSelectHousehold={(id) => {
+            if (id !== selectedHouseholdId) {
+              setWidgets([]); // Clear widgets to show skeleton
+            }
             setSelectedHouseholdId(id);
             setIsHouseholdMenuOpen(false);
           }}
@@ -270,161 +289,169 @@ export default function Dashboard() {
 
       {selectedHousehold ? (
         <div className="space-y-3">
-          <div className="flex justify-between items-center px-2">
-            <h2 className="text-xs font-bold uppercase tracking-[0.2em] opacity-30"></h2>
-            <button
-              onClick={() => setShowAddWidget(!showAddWidget)}
-              className="btn btn-primary flex items-center gap-2 text-xs uppercase tracking-widest"
-            >
-              <Plus
-                className={`w-4 h-4 transition-transform ${showAddWidget ? "rotate-45" : ""
-                  } `}
-              />
-            </button>
-          </div>
-
-          <AddWidgetMenu
-            isOpen={showAddWidget}
-            isPending={isPending}
-            onAddWidget={(type) => {
-              startTransition(async () => {
-                if (type === "NOTE") {
-                  addOptimisticWidget({
-                    id: Math.random(),
-                    widgetType: "NOTE",
-                    title: "Neue Notiz",
-                    content: "",
-                    createdAt: new Date().toISOString(),
-                  });
-                  await addNote(selectedHouseholdId!, "Neue Notiz");
-                }
-                if (type === "METER") {
-                  setNewMeterData({
-                    name: "Neuer Zähler",
-                    type: "ELECTRICITY",
-                    unit: "kWh",
-                  });
-                  setShowAddMeterDialog(true);
-                }
-                if (type === "LIST") {
-                  addOptimisticWidget({
-                    id: Math.random(),
-                    widgetType: "LIST",
-                    name: "Neue Liste",
-                    items: [],
-                    createdAt: new Date().toISOString(),
-                  });
-                  await addTodoList(selectedHouseholdId!, "Neue Liste");
-                }
-                setShowAddWidget(false);
-                refreshWidgets(selectedHouseholdId!);
-              });
-            }}
-          />
-
-          {widgets.length > 0 ? (
-            <div className="space-y-12">
-              {/* Meters Section */}
-              {optimisticWidgets.some((w) => w.widgetType === "METER") && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    <AnimatePresence mode="popLayout">
-                      {optimisticWidgets
-                        .filter((w) => w.widgetType === "METER")
-                        .map((w) => (
-                          <MeterWidget
-                            key={w.id}
-                            meter={w}
-                            onAddReading={() => setAddingReadingForMeter(w)}
-                            onEditMeter={() => setEditingMeter(w)}
-                          />
-                        ))}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              )}
-
-              {/* Other Widgets Section */}
-              {optimisticWidgets.some((w) => w.widgetType !== "METER") && (
-                <div className="space-y-4">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                      Listen & Notizen
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    <AnimatePresence mode="popLayout">
-                      {optimisticWidgets
-                        .filter((w) => w.widgetType !== "METER")
-                        .map((w) => (
-                          <div key={w.id}>
-                            {w.widgetType === "NOTE" && (
-                              <NoteWidget
-                                note={w}
-                                onEdit={() => setEditingNote(w)}
-                                onDelete={() => {
-                                  if (window.confirm("Wirklich löschen?")) {
-                                    startTransition(async () => {
-                                      await deleteNote(w.id);
-                                      refreshWidgets(selectedHouseholdId!);
-                                    });
-                                  }
-                                }}
-                              />
-                            )}
-                            {w.widgetType === "LIST" && (
-                              <ListWidget
-                                list={w}
-                                onEdit={() => setEditingList(w)}
-                                onDelete={() => {
-                                  if (window.confirm("Wirklich löschen?")) {
-                                    startTransition(async () => {
-                                      await deleteTodoList(w.id);
-                                      refreshWidgets(selectedHouseholdId!);
-                                    });
-                                  }
-                                }}
-                                onToggleItem={(id, status) => {
-                                  startTransition(async () => {
-                                    await toggleTodoItem(id, status);
-                                    refreshWidgets(selectedHouseholdId!);
-                                  });
-                                }}
-                              />
-                            )}
-                          </div>
-                        ))}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              )}
+          {(isWidgetsLoading && widgets.length === 0) ? (
+            <div className="pt-4">
+              <DashboardSkeleton hideHeader />
             </div>
           ) : (
-            !showAddWidget && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="col-span-full py-24 flex flex-col items-center justify-center text-center gap-6"
-              >
-                <div className="w-16 h-16 rounded-3xl bg-accent flex items-center justify-center">
-                  <Plus className="w-8 h-8 text-muted-foreground/50" />
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-foreground">
-                    Keine Widgets vorhanden
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Erstelle dein erstes Widget, um loszulegen.
-                  </p>
-                </div>
+            <>
+              <div className="flex justify-between items-center px-2">
+                <h2 className="text-xs font-bold uppercase tracking-[0.2em] opacity-30"></h2>
                 <button
-                  onClick={() => setShowAddWidget(true)}
-                  className="btn btn-primary text-xs uppercase tracking-widest"
+                  onClick={() => setShowAddWidget(!showAddWidget)}
+                  className="btn btn-primary flex items-center gap-2 text-xs uppercase tracking-widest"
                 >
-                  Widget erstellen
+                  <Plus
+                    className={`w-4 h-4 transition-transform ${showAddWidget ? "rotate-45" : ""
+                      } `}
+                  />
                 </button>
-              </motion.div>
-            )
+              </div>
+
+              <AddWidgetMenu
+                isOpen={showAddWidget}
+                isPending={isPending}
+                onAddWidget={(type) => {
+                  startTransition(async () => {
+                    if (type === "NOTE") {
+                      addOptimisticWidget({
+                        id: Math.random(),
+                        widgetType: "NOTE",
+                        title: "Neue Notiz",
+                        content: "",
+                        createdAt: new Date().toISOString(),
+                      });
+                      await addNote(selectedHouseholdId!, "Neue Notiz");
+                    }
+                    if (type === "METER") {
+                      setNewMeterData({
+                        name: "Neuer Zähler",
+                        type: "ELECTRICITY",
+                        unit: "kWh",
+                      });
+                      setShowAddMeterDialog(true);
+                    }
+                    if (type === "LIST") {
+                      addOptimisticWidget({
+                        id: Math.random(),
+                        widgetType: "LIST",
+                        name: "Neue Liste",
+                        items: [],
+                        createdAt: new Date().toISOString(),
+                      });
+                      await addTodoList(selectedHouseholdId!, "Neue Liste");
+                    }
+                    setShowAddWidget(false);
+                    refreshWidgets(selectedHouseholdId!);
+                  });
+                }}
+              />
+
+              {widgets.length > 0 ? (
+                <div className="space-y-12">
+                  {/* Meters Section */}
+                  {optimisticWidgets.some((w) => w.widgetType === "METER") && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <AnimatePresence mode="popLayout">
+                          {optimisticWidgets
+                            .filter((w) => w.widgetType === "METER")
+                            .map((w) => (
+                              <MeterWidget
+                                key={w.id}
+                                meter={w}
+                                onAddReading={() => setAddingReadingForMeter(w)}
+                                onEditMeter={() => setEditingMeter(w)}
+                              />
+                            ))}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Other Widgets Section */}
+                  {optimisticWidgets.some((w) => w.widgetType !== "METER") && (
+                    <div className="space-y-4">
+                      <div className="px-2">
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
+                          Listen & Notizen
+                        </h3>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <AnimatePresence mode="popLayout">
+                          {optimisticWidgets
+                            .filter((w) => w.widgetType !== "METER")
+                            .map((w) => (
+                              <div key={w.id}>
+                                {w.widgetType === "NOTE" && (
+                                  <NoteWidget
+                                    note={w}
+                                    onEdit={() => setEditingNote(w)}
+                                    onDelete={() => {
+                                      if (window.confirm("Wirklich löschen?")) {
+                                        startTransition(async () => {
+                                          await deleteNote(w.id);
+                                          refreshWidgets(selectedHouseholdId!);
+                                        });
+                                      }
+                                    }}
+                                  />
+                                )}
+                                {w.widgetType === "LIST" && (
+                                  <ListWidget
+                                    list={w}
+                                    onEdit={() => setEditingList(w)}
+                                    onDelete={() => {
+                                      if (window.confirm("Wirklich löschen?")) {
+                                        startTransition(async () => {
+                                          await deleteTodoList(w.id);
+                                          refreshWidgets(selectedHouseholdId!);
+                                        });
+                                      }
+                                    }}
+                                    onToggleItem={(id, status) => {
+                                      startTransition(async () => {
+                                        await toggleTodoItem(id, status);
+                                        refreshWidgets(selectedHouseholdId!);
+                                      });
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                !showAddWidget && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="col-span-full py-24 flex flex-col items-center justify-center text-center gap-6"
+                  >
+                    <div className="w-16 h-16 rounded-3xl bg-accent flex items-center justify-center">
+                      <Plus className="w-8 h-8 text-muted-foreground/50" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-foreground">
+                        Keine Widgets vorhanden
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Erstelle dein erstes Widget, um loszulegen.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowAddWidget(true)}
+                      className="btn btn-primary text-xs uppercase tracking-widest"
+                    >
+                      Widget erstellen
+                    </button>
+                  </motion.div>
+                )
+              )}
+            </>
           )}
         </div>
       ) : (
