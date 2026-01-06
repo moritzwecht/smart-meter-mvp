@@ -244,7 +244,7 @@ export default function Dashboard() {
         >
           <div className="text-center space-y-2">
             <h1 className="text-4xl font-black tracking-tighter text-foreground">HOME</h1>
-            <p className="text-sm text-muted-foreground font-mono">v1.2.1</p>
+            <p className="text-sm text-muted-foreground font-mono">v1.4.2</p>
           </div>
           <div className="bg-card text-card-foreground rounded-lg border border-border p-3 shadow-xl shadow-foreground/5">
             <LoginForm />
