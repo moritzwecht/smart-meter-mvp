@@ -301,8 +301,8 @@ export default function Dashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-8">
                   {[
                     { type: 'METER', icon: <Zap className="w-5 h-5" />, label: 'Zähler', desc: 'Strom, Gas, Wasser' },
-                    { type: 'LIST', icon: <ListTodo className="w-5 h-5" />, label: 'Liste', desc: 'Aufgaben & Pläne' },
-                    { type: 'NOTE', icon: <FileText className="w-5 h-5" />, label: 'Notiz', desc: 'Schnelle Gedanken' },
+                    { type: 'LIST', icon: <ListTodo className="w-5 h-5" />, label: 'Liste (Beta)', desc: 'Aufgaben & Pläne' },
+                    { type: 'NOTE', icon: <FileText className="w-5 h-5" />, label: 'Notiz (Beta)', desc: 'Schnelle Gedanken' },
                   ].map(opt => (
                     <motion.button
                       key={opt.type}
