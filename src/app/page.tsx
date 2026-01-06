@@ -42,7 +42,6 @@ import {
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { BottomNav } from "@/components/navigation/BottomNav";
 import { HouseholdMenu } from "@/components/dashboard/household/HouseholdMenu";
-import { AddWidgetMenu } from "@/components/dashboard/AddWidgetMenu";
 import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
 import { NoteWidget } from "@/components/dashboard/note/NoteWidget";
 import { ListWidget } from "@/components/dashboard/list/ListWidget";
@@ -148,7 +147,6 @@ export default function Dashboard() {
     widgets,
     (state: Widget[], newWidget: Widget) => [newWidget, ...state]
   );
-  const [showAddWidget, setShowAddWidget] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
@@ -308,6 +306,47 @@ export default function Dashboard() {
     });
   };
 
+  const handleAddNote = () => {
+    startTransition(async () => {
+      addOptimisticWidget({
+        id: Math.random(),
+        widgetType: "NOTE",
+        title: "Neue Notiz",
+        content: "",
+        isPinned: "false",
+        createdAt: new Date(),
+        householdId: selectedHouseholdId!,
+      });
+      await addNote(selectedHouseholdId!, "Neue Notiz");
+      refreshWidgets(selectedHouseholdId!);
+    });
+  };
+
+  const handleAddMeter = () => {
+    setNewMeterData({
+      name: "Neuer Zähler",
+      type: "ELECTRICITY",
+      unit: "kWh",
+    });
+    setShowAddMeterDialog(true);
+  };
+
+  const handleAddList = () => {
+    startTransition(async () => {
+      addOptimisticWidget({
+        id: Math.random(),
+        widgetType: "LIST",
+        name: "Neue Liste",
+        items: [],
+        isPinned: "false",
+        createdAt: new Date(),
+        householdId: selectedHouseholdId!,
+      });
+      await addTodoList(selectedHouseholdId!, "Neue Liste");
+      refreshWidgets(selectedHouseholdId!);
+    });
+  };
+
   if (loading) return <DashboardSkeleton />;
 
   if (!session) {
@@ -373,73 +412,9 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-              <div className="flex justify-between items-center px-2">
-                <h2 className="text-xs font-bold uppercase tracking-[0.2em] opacity-30"></h2>
-                <button
-                  onClick={() => setShowAddWidget(!showAddWidget)}
-                  className="btn btn-primary flex items-center gap-2 text-xs uppercase tracking-widest"
-                >
-                  <Plus
-                    className={`w-4 h-4 transition-transform ${showAddWidget ? "rotate-45" : ""
-                      } `}
-                  />
-                </button>
-              </div>
-
-              <AddWidgetMenu
-                isOpen={showAddWidget}
-                isPending={isPending}
-                onAddWidget={(type) => {
-                  startTransition(async () => {
-                    if (type === "NOTE") {
-                      addOptimisticWidget({
-                        id: Math.random(),
-                        widgetType: "NOTE",
-                        title: "Neue Notiz",
-                        content: "",
-                        isPinned: "false",
-                        createdAt: new Date(),
-                        householdId: selectedHouseholdId!,
-                      });
-                      await addNote(selectedHouseholdId!, "Neue Notiz");
-                    }
-                    if (type === "METER") {
-                      setNewMeterData({
-                        name: "Neuer Zähler",
-                        type: "ELECTRICITY",
-                        unit: "kWh",
-                      });
-                      setShowAddMeterDialog(true);
-                    }
-                    if (type === "LIST") {
-                      addOptimisticWidget({
-                        id: Math.random(),
-                        widgetType: "LIST",
-                        name: "Neue Liste",
-                        items: [],
-                        isPinned: "false",
-                        createdAt: new Date(),
-                        householdId: selectedHouseholdId!,
-                      });
-                      await addTodoList(selectedHouseholdId!, "Neue Liste");
-                    }
-                    if (type === "EFFICIENCY") {
-                      await updateHouseholdDetails(selectedHouseholdId!, { showEfficiency: "true" });
-                    }
-                    setShowAddWidget(false);
-                    refreshWidgets(selectedHouseholdId!);
-                    refreshHouseholds();
-                  });
-                }}
-              />
 
               {activeTab === "dashboard" && (
                 <div className="space-y-12 pb-24">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                      Gepinnt am Dashboard
-                    </h3>
-                  </div>
                   {optimisticWidgets.filter(w => w.isPinned === 'true').length > 0 || selectedHousehold?.showEfficiency === "true" ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       <AnimatePresence mode="popLayout">
@@ -529,11 +504,6 @@ export default function Dashboard() {
 
               {activeTab === "lists" && (
                 <div className="space-y-4 pb-24">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                      Alle Listen
-                    </h3>
-                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <AnimatePresence mode="popLayout">
                       {optimisticWidgets
@@ -565,6 +535,18 @@ export default function Dashboard() {
                             }}
                           />
                         ))}
+                      <motion.button
+                        layout
+                        onClick={handleAddList}
+                        className="flex flex-col items-center justify-center gap-3 p-6 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-all group min-h-[160px]"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Plus className="w-6 h-6 text-primary" />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">
+                          Liste hinzufügen
+                        </span>
+                      </motion.button>
                     </AnimatePresence>
                   </div>
                 </div>
@@ -572,11 +554,6 @@ export default function Dashboard() {
 
               {activeTab === "notes" && (
                 <div className="space-y-4 pb-24">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                      Alle Notizen
-                    </h3>
-                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <AnimatePresence mode="popLayout">
                       {optimisticWidgets
@@ -602,6 +579,18 @@ export default function Dashboard() {
                             }}
                           />
                         ))}
+                      <motion.button
+                        layout
+                        onClick={handleAddNote}
+                        className="flex flex-col items-center justify-center gap-3 p-6 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-all group min-h-[160px]"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Plus className="w-6 h-6 text-primary" />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">
+                          Notiz hinzufügen
+                        </span>
+                      </motion.button>
                     </AnimatePresence>
                   </div>
                 </div>
@@ -609,11 +598,6 @@ export default function Dashboard() {
 
               {activeTab === "meters" && (
                 <div className="space-y-4 pb-24">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                      Alle Zähler
-                    </h3>
-                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <AnimatePresence mode="popLayout">
                       {optimisticWidgets
@@ -632,6 +616,18 @@ export default function Dashboard() {
                             }}
                           />
                         ))}
+                      <motion.button
+                        layout
+                        onClick={handleAddMeter}
+                        className="flex flex-col items-center justify-center gap-3 p-6 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-all group min-h-[160px]"
+                      >
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Plus className="w-6 h-6 text-primary" />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">
+                          Zähler hinzufügen
+                        </span>
+                      </motion.button>
                     </AnimatePresence>
                   </div>
                 </div>
