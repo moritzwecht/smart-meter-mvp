@@ -124,15 +124,15 @@ export function MeterSettingsDialog({
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {stats ? (
                                         <>
-                                            <div className="p-3 bg-accent/30 rounded-2xl space-y-1">
+                                            <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50">
                                                 <div className="text-[10px] uppercase font-bold text-muted-foreground">Gesamtverbrauch</div>
                                                 <div className="text-2xl font-black">{formatNumber(stats.diff, 3)} {meter.unit}</div>
                                                 <div className="text-[10px] opacity-40">über {Math.floor(stats.days)} Tage</div>
                                             </div>
-                                            <div className="p-3 bg-green-500/5 rounded-2xl space-y-1 border border-green-500/10">
-                                                <div className="text-[10px] uppercase font-bold text-green-600/60">Tagesdurchschnitt</div>
-                                                <div className="text-2xl font-black text-green-600">{formatNumber(stats.avg, 2)} {meter.unit}</div>
-                                                <div className="text-[10px] text-green-600/40">pro 24 Stunden</div>
+                                            <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50">
+                                                <div className="text-[10px] uppercase font-bold text-muted-foreground">Tagesdurchschnitt</div>
+                                                <div className="text-2xl font-black">{formatNumber(stats.avg, 2)} {meter.unit}</div>
+                                                <div className="text-[10px] opacity-40">pro 24 Stunden</div>
                                             </div>
                                         </>
                                     ) : (
@@ -162,7 +162,10 @@ export function MeterSettingsDialog({
                                                         </div>
                                                         <div>
                                                             <div className="text-sm font-black">{r.value} {meter.unit}</div>
-                                                            <div className="text-[10px] text-muted-foreground uppercase">{new Date(r.date).toLocaleDateString()}</div>
+                                                            <div className="text-[10px] text-muted-foreground uppercase">
+                                                                {new Date(r.date).toLocaleDateString()},&nbsp;
+                                                                {new Date(r.date).toLocaleTimeString()}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <button
