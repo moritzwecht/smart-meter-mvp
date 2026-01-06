@@ -1,15 +1,16 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { FileText, Edit2, Trash2 } from "lucide-react";
+import { FileText, Edit2, Trash2, Pin } from "lucide-react";
 
 interface NoteWidgetProps {
     note: any;
     onEdit: (note: any) => void;
     onDelete: (id: number) => void;
+    onPin?: () => void;
 }
 
-export function NoteWidget({ note, onEdit, onDelete }: NoteWidgetProps) {
+export function NoteWidget({ note, onEdit, onDelete, onPin }: NoteWidgetProps) {
     return (
         <motion.div
             layout
@@ -22,9 +23,25 @@ export function NoteWidget({ note, onEdit, onDelete }: NoteWidgetProps) {
             className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
         >
             <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    <FileText className="w-3 h-3" />
-                    NOTE
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <FileText className="w-3 h-3" />
+                        NOTE
+                    </div>
+                    {onPin && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onPin();
+                            }}
+                            className={`p-1.5 rounded-lg transition-all duration-300 ${note.isPinned === "true"
+                                    ? "text-primary bg-primary/10"
+                                    : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
+                                }`}
+                        >
+                            <Pin className={`w-3 h-3 ${note.isPinned === "true" ? "fill-current" : ""}`} />
+                        </button>
+                    )}
                 </div>
                 <div className="text-[10px] font-mono opacity-30 uppercase">
                     {new Date(note.createdAt).toLocaleDateString()}

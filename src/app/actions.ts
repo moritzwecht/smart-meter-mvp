@@ -632,13 +632,30 @@ export async function deleteTodoItem(id: number) {
     revalidatePath("/");
 }
 
-export async function updateMeter(id: number, name: string, type: string, unit: string, expectedDailyAverage?: string) {
+export async function updateMeter(
+    id: number,
+    name: string,
+    type: string,
+    unit: string,
+    expectedDailyAverage?: string,
+    yearlyTarget?: string,
+    pricePerUnit?: string,
+    monthlyPayment?: string
+) {
     const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
     if (!meter) throw new Error("Zähler nicht gefunden");
     await ensureHouseholdAccess(meter.householdId);
 
     await db.update(meters)
-        .set({ name, type, unit, expectedDailyAverage })
+        .set({
+            name,
+            type,
+            unit,
+            expectedDailyAverage,
+            yearlyTarget,
+            pricePerUnit,
+            monthlyPayment
+        })
         .where(eq(meters.id, id));
     revalidatePath("/");
 }
@@ -689,5 +706,32 @@ export async function deleteReading(id: number) {
     await ensureHouseholdAccess(reading.meter.householdId);
 
     await db.delete(readings).where(eq(readings.id, id));
+    revalidatePath("/");
+}
+
+export async function toggleMeterPin(id: number, isPinned: string) {
+    const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
+    if (!meter) throw new Error("Zähler nicht gefunden");
+    await ensureHouseholdAccess(meter.householdId);
+
+    await db.update(meters).set({ isPinned }).where(eq(meters.id, id));
+    revalidatePath("/");
+}
+
+export async function toggleTodoListPin(id: number, isPinned: string) {
+    const list = await db.query.todoLists.findFirst({ where: eq(todoLists.id, id) });
+    if (!list) throw new Error("Liste nicht gefunden");
+    await ensureHouseholdAccess(list.householdId);
+
+    await db.update(todoLists).set({ isPinned }).where(eq(todoLists.id, id));
+    revalidatePath("/");
+}
+
+export async function toggleNotePin(id: number, isPinned: string) {
+    const note = await db.query.notes.findFirst({ where: eq(notes.id, id) });
+    if (!note) throw new Error("Notiz nicht gefunden");
+    await ensureHouseholdAccess(note.householdId);
+
+    await db.update(notes).set({ isPinned }).where(eq(notes.id, id));
     revalidatePath("/");
 }

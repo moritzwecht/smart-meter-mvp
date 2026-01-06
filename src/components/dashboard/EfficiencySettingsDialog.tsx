@@ -11,7 +11,7 @@ interface EfficiencySettingsDialogProps {
     household: any;
     meters: any[];
     onUpdateHousehold: (data: any) => Promise<void>;
-    onUpdateMeter: (id: number, name: string, type: string, unit: string, expectedDailyAverage: string) => Promise<void>;
+    onUpdateMeter: (id: number, name: string, type: string, unit: string, expectedDailyAverage: string, yearlyTarget: string, pricePerUnit: string, monthlyPayment: string) => Promise<void>;
     isPending: boolean;
 }
 
@@ -24,63 +24,58 @@ export function EfficiencySettingsDialog({
     onUpdateMeter,
     isPending,
 }: EfficiencySettingsDialogProps) {
-    const [formData, setFormData] = useState({
-        sqm: household?.sqm || 0,
-        persons: household?.persons || 1,
-        heatingType: household?.heatingType || "GAS",
-        waterHeatingType: household?.waterHeatingType || "CENTRAL",
-    });
-
-    const [meterTargets, setMeterTargets] = useState<Record<number, string>>({});
+    const [meterData, setMeterData] = useState<Record<number, {
+        yearlyTarget: string;
+        pricePerUnit: string;
+        monthlyPayment: string;
+        dailyAverage: string;
+    }>>({});
 
     useEffect(() => {
-        if (meters) {
-            const targets: Record<number, string> = {};
+        if (isOpen && meters) {
+            const data: Record<number, any> = {};
             meters.forEach((m) => {
-                targets[m.id] = m.expectedDailyAverage || "";
+                data[m.id] = {
+                    yearlyTarget: m.yearlyTarget || "",
+                    pricePerUnit: m.pricePerUnit || "",
+                    monthlyPayment: m.monthlyPayment || "",
+                    dailyAverage: m.expectedDailyAverage || "",
+                };
             });
-            setMeterTargets(targets);
+            setMeterData(data);
         }
-    }, [meters]);
+    }, [isOpen]); // Only run when dialog is opened/closed
 
-    const calculateAverages = () => {
-        const { sqm, persons, waterHeatingType } = formData;
-        const newTargets: Record<number, string> = { ...meterTargets };
+    const updateField = (id: number, field: string, value: string) => {
+        setMeterData(prev => {
+            const current = { ...prev[id], [field]: value };
 
-        meters.forEach((meter) => {
-            let daily = 0;
-            if (meter.type === "ELECTRICITY") {
-                // 1500 kWh (1p) + 1000 kWh per extra person
-                let yearly = 1500 + (persons - 1) * 1000;
-                if (waterHeatingType === "ELECTRIC") {
-                    yearly += persons * 800;
-                }
-                daily = yearly / 365;
-            } else if (meter.type === "WATER") {
-                // 122 L/person/day
-                daily = persons * 122;
-                if (meter.unit === "m³") {
-                    daily = daily / 1000;
-                }
-            } else if (meter.type === "GAS") {
-                // 140 kWh/sqm/year
-                let yearly = sqm * 140;
-                if (waterHeatingType === "GAS") {
-                    yearly += persons * 800;
-                }
-                daily = yearly / 365;
+            // Auto-calculate daily average if yearly target changes
+            if (field === "yearlyTarget") {
+                const yearly = parseFloat(value.replace(",", ".")) || 0;
+                current.dailyAverage = (yearly / 365).toFixed(3);
             }
-            newTargets[meter.id] = daily.toFixed(3);
-        });
 
-        setMeterTargets(newTargets);
+            return { ...prev, [id]: current };
+        });
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        await onUpdateHousehold(formData);
         for (const meter of meters) {
-            await onUpdateMeter(meter.id, meter.name, meter.type, meter.unit, meterTargets[meter.id]);
+            const data = meterData[meter.id];
+            if (data) {
+                await onUpdateMeter(
+                    meter.id,
+                    meter.name,
+                    meter.type,
+                    meter.unit,
+                    data.dailyAverage,
+                    data.yearlyTarget,
+                    data.pricePerUnit,
+                    data.monthlyPayment
+                );
+            }
         }
         onClose();
     };
@@ -100,12 +95,12 @@ export function EfficiencySettingsDialog({
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl overflow-hidden"
+                        className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden"
                     >
                         <div className="p-6 border-b border-border flex justify-between items-center">
                             <div>
                                 <h2 className="text-xl font-black uppercase tracking-tight">Barometer Einstellungen</h2>
-                                <p className="text-xs text-muted-foreground mt-1">Konfiguriere deine Haushaltswerte</p>
+                                <p className="text-xs text-muted-foreground mt-1">Konfiguriere deine Verbrauchsziele und Kosten</p>
                             </div>
                             <button
                                 onClick={onClose}
@@ -115,82 +110,74 @@ export function EfficiencySettingsDialog({
                             </button>
                         </div>
 
-                        <form onSubmit={handleSave} className="p-6 space-y-8 overflow-y-auto max-h-[70vh]">
-                            {/* Household Section */}
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] opacity-30">
-                                    <Home className="w-3 h-3" />
-                                    Haushalt
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold uppercase">Wohnfläche (qm)</label>
-                                        <input
-                                            type="number"
-                                            value={formData.sqm}
-                                            onChange={(e) => setFormData({ ...formData, sqm: parseInt(e.target.value) || 0 })}
-                                            className="w-full bg-accent/50 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold uppercase">Personen</label>
-                                        <input
-                                            type="number"
-                                            value={formData.persons}
-                                            onChange={(e) => setFormData({ ...formData, persons: parseInt(e.target.value) || 0 })}
-                                            className="w-full bg-accent/50 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/20 transition-all font-mono"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold uppercase">Warmwasserbereitung</label>
-                                    <select
-                                        value={formData.waterHeatingType}
-                                        onChange={(e) => setFormData({ ...formData, waterHeatingType: e.target.value })}
-                                        className="w-full bg-accent/50 border-none rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary/20 transition-all"
-                                    >
-                                        <option value="CENTRAL">Zentral (Heizanlage)</option>
-                                        <option value="GAS">Gas-Etagenheizung</option>
-                                        <option value="ELECTRIC">Elektrisch (Durchlauferhitzer)</option>
-                                    </select>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={calculateAverages}
-                                    className="w-full py-2 text-[10px] font-black uppercase tracking-[0.2em] bg-accent hover:bg-accent/80 transition-colors rounded-xl"
-                                >
-                                    Durchschnittswerte berechnen
-                                </button>
-                            </div>
-
-                            {/* Meters Section */}
-                            <div className="space-y-4 pt-4 border-t border-border">
-                                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] opacity-30">
-                                    <Zap className="w-3 h-3" />
-                                    Zielwerte pro Zähler (Schnitt)
-                                </div>
-
-                                <div className="grid gap-3">
-                                    {meters.map((meter) => (
-                                        <div key={meter.id} className="flex items-center gap-4 bg-accent/20 p-3 rounded-xl">
-                                            <div className="flex-1">
-                                                <div className="text-[10px] font-bold uppercase opacity-50">{meter.name}</div>
-                                                <div className="text-xs font-bold">{meter.type}</div>
+                        <form onSubmit={handleSave} className="p-6 space-y-6 overflow-y-auto max-h-[80vh]">
+                            <div className="grid gap-6">
+                                {meters.map((meter) => {
+                                    const data = meterData[meter.id] || { yearlyTarget: "", pricePerUnit: "", monthlyPayment: "", dailyAverage: "" };
+                                    return (
+                                        <div key={meter.id} className="bg-accent/20 p-4 rounded-2xl space-y-4">
+                                            <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                                        {meter.type === 'ELECTRICITY' ? <Zap className="w-4 h-4" /> :
+                                                            meter.type === 'GAS' ? <Flame className="w-4 h-4" /> :
+                                                                <Droplets className="w-4 h-4" />}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-50">{meter.name}</div>
+                                                        <div className="text-xs font-bold">{meter.type}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-[10px] font-bold uppercase opacity-30">Tagesziel</div>
+                                                    <div className="text-xs font-mono font-bold text-primary">{data.dailyAverage} {meter.unit}</div>
+                                                </div>
                                             </div>
-                                            <div className="w-32 flex flex-col items-end">
-                                                <input
-                                                    type="text"
-                                                    value={meterTargets[meter.id] || ""}
-                                                    onChange={(e) => setMeterTargets({ ...meterTargets, [meter.id]: e.target.value })}
-                                                    className="w-full bg-accent/50 border-none rounded-lg p-2 text-right text-xs font-mono"
-                                                />
-                                                <span className="text-[10px] text-muted-foreground mt-1">{meter.unit}/Tag</span>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase tracking-tight opacity-50">Zielverbrauch / Jahr</label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={data.yearlyTarget}
+                                                            onChange={(e) => updateField(meter.id, "yearlyTarget", e.target.value)}
+                                                            placeholder="z.B. 3500"
+                                                            className="w-full bg-background border border-border/50 rounded-xl p-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 transition-all"
+                                                        />
+                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-30">{meter.unit}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase tracking-tight opacity-50">Preis pro {meter.unit}</label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={data.pricePerUnit}
+                                                            onChange={(e) => updateField(meter.id, "pricePerUnit", e.target.value)}
+                                                            placeholder="z.B. 0,35"
+                                                            className="w-full bg-background border border-border/50 rounded-xl p-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 transition-all"
+                                                        />
+                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-30">€</span>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[10px] font-black uppercase tracking-tight opacity-50">Monatlicher Abschlag</label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="text"
+                                                            value={data.monthlyPayment}
+                                                            onChange={(e) => updateField(meter.id, "monthlyPayment", e.target.value)}
+                                                            placeholder="z.B. 100"
+                                                            className="w-full bg-background border border-border/50 rounded-xl p-2.5 text-sm font-mono focus:ring-2 focus:ring-primary/20 transition-all"
+                                                        />
+                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold opacity-30">€</span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    );
+                                })}
                             </div>
 
                             <div className="pt-4">
@@ -209,3 +196,4 @@ export function EfficiencySettingsDialog({
         </AnimatePresence>
     );
 }
+

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition, useOptimistic } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus } from "lucide-react";
+import { Plus, User } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
 import {
   logout as logoutAction,
@@ -33,10 +33,14 @@ import {
   getHouseholdMembers,
   updateProfile,
   getUserProfile,
+  toggleMeterPin,
+  toggleTodoListPin,
+  toggleNotePin,
 } from "./actions";
 
 // Dashboard Components
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { BottomNav } from "@/components/navigation/BottomNav";
 import { HouseholdMenu } from "@/components/dashboard/household/HouseholdMenu";
 import { AddWidgetMenu } from "@/components/dashboard/AddWidgetMenu";
 import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
@@ -87,6 +91,7 @@ interface Meter {
   type: string;
   householdId: number;
   unit: string;
+  isPinned: string;
   createdAt: string | Date;
   readings?: Reading[];
 }
@@ -103,6 +108,7 @@ interface TodoList {
   id: number;
   name: string;
   householdId: number;
+  isPinned: string;
   createdAt: string | Date;
   items?: TodoItem[];
 }
@@ -112,10 +118,11 @@ interface Note {
   title: string;
   content: string | null;
   householdId: number;
+  isPinned: string;
   createdAt: string | Date;
 }
 
-type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' }) | { id: string | number; widgetType: 'EFFICIENCY', createdAt: string | Date, householdId: number };
+type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' }) | { id: string | number; widgetType: 'EFFICIENCY', createdAt: string | Date, householdId: number, isPinned?: string };
 
 interface ProfileData {
   name: string;
@@ -158,6 +165,7 @@ export default function Dashboard() {
   const [profileData, setProfileData] = useState<ProfileData>({ name: "", currentPassword: "", newPassword: "" });
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState("dashboard");
 
   const refreshHouseholds = async () => {
     const data = await getHouseholdsAction();
@@ -389,6 +397,7 @@ export default function Dashboard() {
                         widgetType: "NOTE",
                         title: "Neue Notiz",
                         content: "",
+                        isPinned: "false",
                         createdAt: new Date(),
                         householdId: selectedHouseholdId!,
                       });
@@ -408,6 +417,7 @@ export default function Dashboard() {
                         widgetType: "LIST",
                         name: "Neue Liste",
                         items: [],
+                        isPinned: "false",
                         createdAt: new Date(),
                         householdId: selectedHouseholdId!,
                       });
@@ -423,118 +433,259 @@ export default function Dashboard() {
                 }}
               />
 
-              {widgets.length > 0 ? (
-                <div className="space-y-12">
-                  {/* Meters Section */}
-                  {(optimisticWidgets.some((w) => w.widgetType === "METER") || selectedHousehold?.showEfficiency === "true") && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        <AnimatePresence mode="popLayout">
-                          {selectedHousehold?.showEfficiency === "true" && (
-                            <EfficiencyWidget
-                              key="efficiency-barometer"
-                              household={selectedHousehold}
-                              meters={widgets.filter(m => m.widgetType === 'METER')}
-                              onOpenSettings={() => setShowEfficiencySettings(true)}
-                              onOpenDetails={() => setShowEfficiencyDetails(true)}
-                            />
-                          )}
-                          {optimisticWidgets
-                            .filter((w) => w.widgetType === "METER")
-                            .map((w) => (
-                              <MeterWidget
-                                key={w.id}
-                                meter={w}
-                                onAddReading={() => setAddingReadingForMeter(w)}
-                                onEditMeter={() => setEditingMeter(w)}
-                              />
-                            ))}
-                        </AnimatePresence>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Other Widgets Section */}
-                  {optimisticWidgets.some((w) => w.widgetType !== "METER") && (
-                    <div className="space-y-4">
-                      <div className="px-2">
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                          Listen & Notizen
-                        </h3>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <AnimatePresence mode="popLayout">
-                          {optimisticWidgets
-                            .filter((w) => w.widgetType !== "METER")
-                            .map((w) => (
-                              <div key={w.id}>
-                                {w.widgetType === "NOTE" && (
-                                  <NoteWidget
-                                    note={w}
-                                    onEdit={() => setEditingNote(w)}
-                                    onDelete={() => {
-                                      if (window.confirm("Wirklich löschen?")) {
-                                        startTransition(async () => {
-                                          await deleteNote(w.id);
-                                          refreshWidgets(selectedHouseholdId!);
-                                        });
-                                      }
-                                    }}
-                                  />
-                                )}
-                                {w.widgetType === "LIST" && (
-                                  <ListWidget
-                                    list={w}
-                                    onEdit={() => setEditingList(w)}
-                                    onDelete={() => {
-                                      if (window.confirm("Wirklich löschen?")) {
-                                        startTransition(async () => {
-                                          await deleteTodoList(w.id);
-                                          refreshWidgets(selectedHouseholdId!);
-                                        });
-                                      }
-                                    }}
-                                    onToggleItem={(id, status) => {
+              {activeTab === "dashboard" && (
+                <div className="space-y-12 pb-24">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
+                      Gepinnt am Dashboard
+                    </h3>
+                  </div>
+                  {optimisticWidgets.filter(w => w.isPinned === 'true').length > 0 || selectedHousehold?.showEfficiency === "true" ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <AnimatePresence mode="popLayout">
+                        {selectedHousehold?.showEfficiency === "true" && (
+                          <EfficiencyWidget
+                            key="efficiency-barometer"
+                            household={selectedHousehold}
+                            meters={widgets.filter(m => m.widgetType === 'METER')}
+                            onOpenSettings={() => setShowEfficiencySettings(true)}
+                            onOpenDetails={() => setShowEfficiencyDetails(true)}
+                          />
+                        )}
+                        {optimisticWidgets
+                          .filter((w) => w.isPinned === "true")
+                          .map((w) => (
+                            <div key={w.id}>
+                              {w.widgetType === "METER" && (
+                                <MeterWidget
+                                  meter={w}
+                                  onAddReading={() => setAddingReadingForMeter(w)}
+                                  onEditMeter={() => setEditingMeter(w)}
+                                  onPin={() => {
+                                    startTransition(async () => {
+                                      await toggleMeterPin(w.id, "false");
+                                      refreshWidgets(selectedHouseholdId!);
+                                    });
+                                  }}
+                                />
+                              )}
+                              {w.widgetType === "NOTE" && (
+                                <NoteWidget
+                                  note={w}
+                                  onEdit={() => setEditingNote(w)}
+                                  onDelete={() => {
+                                    if (window.confirm("Wirklich löschen?")) {
                                       startTransition(async () => {
-                                        await toggleTodoItem(id, status);
+                                        await deleteNote(w.id);
                                         refreshWidgets(selectedHouseholdId!);
                                       });
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            ))}
-                        </AnimatePresence>
-                      </div>
+                                    }
+                                  }}
+                                  onPin={() => {
+                                    startTransition(async () => {
+                                      await toggleNotePin(w.id, "false");
+                                      refreshWidgets(selectedHouseholdId!);
+                                    });
+                                  }}
+                                />
+                              )}
+                              {w.widgetType === "LIST" && (
+                                <ListWidget
+                                  list={w}
+                                  onEdit={() => setEditingList(w)}
+                                  onDelete={() => {
+                                    if (window.confirm("Wirklich löschen?")) {
+                                      startTransition(async () => {
+                                        await deleteTodoList(w.id);
+                                        refreshWidgets(selectedHouseholdId!);
+                                      });
+                                    }
+                                  }}
+                                  onToggleItem={(id, status) => {
+                                    startTransition(async () => {
+                                      await toggleTodoItem(id, status);
+                                      refreshWidgets(selectedHouseholdId!);
+                                    });
+                                  }}
+                                  onPin={() => {
+                                    startTransition(async () => {
+                                      await toggleTodoListPin(w.id, "false");
+                                      refreshWidgets(selectedHouseholdId!);
+                                    });
+                                  }}
+                                />
+                              )}
+                            </div>
+                          ))}
+                      </AnimatePresence>
+                    </div>
+                  ) : (
+                    <div className="py-24 text-center border-2 border-dashed border-foreground/5 rounded-3xl">
+                      <p className="text-sm text-muted-foreground">Pinne Elemente aus den anderen Sektionen, um sie hier zu sehen.</p>
                     </div>
                   )}
                 </div>
-              ) : (
-                !showAddWidget && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="col-span-full py-24 flex flex-col items-center justify-center text-center gap-6"
-                  >
-                    <div className="w-16 h-16 rounded-3xl bg-accent flex items-center justify-center">
-                      <Plus className="w-8 h-8 text-muted-foreground/50" />
+              )}
+
+              {activeTab === "lists" && (
+                <div className="space-y-4 pb-24">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
+                      Alle Listen
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <AnimatePresence mode="popLayout">
+                      {optimisticWidgets
+                        .filter((w) => w.widgetType === "LIST")
+                        .map((w) => (
+                          <ListWidget
+                            key={w.id}
+                            list={w as TodoList}
+                            onEdit={() => setEditingList(w as TodoList)}
+                            onDelete={() => {
+                              if (window.confirm("Wirklich löschen?")) {
+                                startTransition(async () => {
+                                  await deleteTodoList(w.id);
+                                  refreshWidgets(selectedHouseholdId!);
+                                });
+                              }
+                            }}
+                            onToggleItem={(id, status) => {
+                              startTransition(async () => {
+                                await toggleTodoItem(id, status);
+                                refreshWidgets(selectedHouseholdId!);
+                              });
+                            }}
+                            onPin={() => {
+                              startTransition(async () => {
+                                await toggleTodoListPin(w.id, (w as TodoList).isPinned === "true" ? "false" : "true");
+                                refreshWidgets(selectedHouseholdId!);
+                              });
+                            }}
+                          />
+                        ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "notes" && (
+                <div className="space-y-4 pb-24">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
+                      Alle Notizen
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <AnimatePresence mode="popLayout">
+                      {optimisticWidgets
+                        .filter((w) => w.widgetType === "NOTE")
+                        .map((w) => (
+                          <NoteWidget
+                            key={w.id}
+                            note={w as Note}
+                            onEdit={() => setEditingNote(w as Note)}
+                            onDelete={() => {
+                              if (window.confirm("Wirklich löschen?")) {
+                                startTransition(async () => {
+                                  await deleteNote(w.id);
+                                  refreshWidgets(selectedHouseholdId!);
+                                });
+                              }
+                            }}
+                            onPin={() => {
+                              startTransition(async () => {
+                                await toggleNotePin(w.id, (w as Note).isPinned === "true" ? "false" : "true");
+                                refreshWidgets(selectedHouseholdId!);
+                              });
+                            }}
+                          />
+                        ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "meters" && (
+                <div className="space-y-4 pb-24">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
+                      Alle Zähler
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <AnimatePresence mode="popLayout">
+                      {optimisticWidgets
+                        .filter((w) => w.widgetType === "METER")
+                        .map((w) => (
+                          <MeterWidget
+                            key={w.id}
+                            meter={w as Meter}
+                            onAddReading={() => setAddingReadingForMeter(w as Meter)}
+                            onEditMeter={() => setEditingMeter(w as Meter)}
+                            onPin={() => {
+                              startTransition(async () => {
+                                await toggleMeterPin(w.id, (w as Meter).isPinned === "true" ? "false" : "true");
+                                refreshWidgets(selectedHouseholdId!);
+                              });
+                            }}
+                          />
+                        ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "profile" && (
+                <div className="space-y-8 pb-24">
+                  <div className="px-2">
+                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
+                      Profil & Einstellungen
+                    </h3>
+                  </div>
+
+                  <div className="bg-card/50 border border-border rounded-3xl p-6 space-y-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                        <User className="w-8 h-8 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="text-xl font-bold">{userProfile?.name}</h4>
+                        <p className="text-sm text-muted-foreground">{userProfile?.email}</p>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-foreground">
-                        Keine Widgets vorhanden
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Erstelle dein erstes Widget, um loszulegen.
-                      </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <button
+                        onClick={() => setIsProfileOpen(true)}
+                        className="btn btn-secondary w-full justify-start text-sm"
+                      >
+                        Benutzerprofil bearbeiten
+                      </button>
+                      <button
+                        onClick={() => setEditingHousehold(selectedHousehold!)}
+                        className="btn btn-secondary w-full justify-start text-sm"
+                      >
+                        Haushalt-Einstellungen
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setShowAddWidget(true)}
-                      className="btn btn-primary text-xs uppercase tracking-widest"
-                    >
-                      Widget erstellen
-                    </button>
-                  </motion.div>
-                )
+
+                    <div className="pt-6 border-t border-border">
+                      <button
+                        onClick={() => {
+                          startTransition(async () => {
+                            await logoutAction();
+                            setSession(null);
+                          });
+                        }}
+                        className="btn btn-danger w-full text-sm"
+                      >
+                        Abmelden
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </>
           )}
@@ -771,12 +922,12 @@ export default function Dashboard() {
         household={selectedHousehold!}
         meters={widgets.filter(w => w.widgetType === 'METER')}
         onUpdateHousehold={async (data) => {
-          await updateHouseholdAction(selectedHouseholdId!, selectedHousehold!.name); // Household name update is separate
           await updateHouseholdDetails(selectedHouseholdId!, data);
-          refreshHouseholds();
+          await refreshHouseholds();
+          await refreshWidgets(selectedHouseholdId!);
         }}
-        onUpdateMeter={async (id, name, type, unit, target) => {
-          await updateMeter(id, name, type, unit, target);
+        onUpdateMeter={async (id, name, type, unit, target, yearly, price, payment) => {
+          await updateMeter(id, name, type, unit, target, yearly, price, payment);
         }}
         isPending={isPending}
       />
@@ -786,6 +937,8 @@ export default function Dashboard() {
         onClose={() => setShowEfficiencyDetails(false)}
         meters={widgets.filter(w => w.widgetType === 'METER')}
       />
+
+      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </main>
   );
 }

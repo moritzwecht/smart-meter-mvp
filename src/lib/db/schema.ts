@@ -36,6 +36,10 @@ export const meters = pgTable("meters", {
     householdId: integer("household_id").references(() => households.id).notNull(),
     unit: text("unit").notNull(),
     expectedDailyAverage: text("expected_daily_average"),
+    yearlyTarget: text("yearly_target"),
+    pricePerUnit: text("price_per_unit"),
+    monthlyPayment: text("monthly_payment"),
+    isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -51,6 +55,7 @@ export const todoLists = pgTable("todo_lists", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
     householdId: integer("household_id").references(() => households.id).notNull(),
+    isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -67,6 +72,7 @@ export const notes = pgTable("notes", {
     title: text("title").notNull(),
     content: text("content"),
     householdId: integer("household_id").references(() => households.id).notNull(),
+    isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -1,16 +1,17 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Zap, Droplets, Flame, Plus, Settings } from "lucide-react";
+import { Zap, Droplets, Flame, Plus, Settings, Pin } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
 
 interface MeterWidgetProps {
     meter: any;
     onAddReading: (meter: any) => void;
     onEditMeter: (meter: any) => void;
+    onPin?: () => void;
 }
 
-export function MeterWidget({ meter, onAddReading, onEditMeter }: MeterWidgetProps) {
+export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWidgetProps) {
     const type = meter.type || "ELECTRICITY";
     const config = {
         ELECTRICITY: { icon: Zap, color: "text-amber-500", bg: "bg-amber-500/10" },
@@ -50,7 +51,7 @@ export function MeterWidget({ meter, onAddReading, onEditMeter }: MeterWidgetPro
             whileTap={{ scale: 0.98 }}
             className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
         >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 relative">
                 <div className={`w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
                     <config.icon className={`w-5 h-5 ${config.color}`} />
                 </div>
@@ -70,6 +71,21 @@ export function MeterWidget({ meter, onAddReading, onEditMeter }: MeterWidgetPro
                         </p>
                     )}
                 </div>
+
+                {onPin && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onPin();
+                        }}
+                        className={`p-2 rounded-xl transition-all duration-300 ${meter.isPinned === "true"
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
+                            }`}
+                    >
+                        <Pin className={`w-4 h-4 ${meter.isPinned === "true" ? "fill-current" : ""}`} />
+                    </button>
+                )}
             </div>
 
             <div className="flex gap-2">

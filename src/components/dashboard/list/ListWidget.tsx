@@ -2,16 +2,17 @@
 
 import { useOptimistic, useTransition } from "react";
 import { motion } from "framer-motion";
-import { ListTodo, Check, Edit2, Trash2 } from "lucide-react";
+import { ListTodo, Check, Edit2, Trash2, Pin } from "lucide-react";
 
 interface ListWidgetProps {
     list: any;
     onEdit: (list: any) => void;
     onDelete: (id: number) => void;
     onToggleItem: (id: number, status: "true" | "false") => void;
+    onPin?: () => void;
 }
 
-export function ListWidget({ list, onEdit, onDelete, onToggleItem }: ListWidgetProps) {
+export function ListWidget({ list, onEdit, onDelete, onToggleItem, onPin }: ListWidgetProps) {
     const [isPending, startTransition] = useTransition();
     const [optimisticList, addOptimisticToggle] = useOptimistic(
         list,
@@ -35,9 +36,25 @@ export function ListWidget({ list, onEdit, onDelete, onToggleItem }: ListWidgetP
             className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
         >
             <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    <ListTodo className="w-3 h-3" />
-                    LIST
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 px-2 py-1 bg-accent rounded-md text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <ListTodo className="w-3 h-3" />
+                        LIST
+                    </div>
+                    {onPin && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onPin();
+                            }}
+                            className={`p-1.5 rounded-lg transition-all duration-300 ${list.isPinned === "true"
+                                    ? "text-primary bg-primary/10"
+                                    : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
+                                }`}
+                        >
+                            <Pin className={`w-3 h-3 ${list.isPinned === "true" ? "fill-current" : ""}`} />
+                        </button>
+                    )}
                 </div>
                 <div className="text-[10px] font-mono opacity-30 uppercase">
                     {new Date(list.createdAt).toLocaleDateString()}
