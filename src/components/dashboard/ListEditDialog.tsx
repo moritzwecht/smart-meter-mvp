@@ -104,7 +104,7 @@ export function ListEditDialog({
                                     value={list.name}
                                     onChange={(e) => setList({ ...list, name: e.target.value })}
                                     onBlur={() => onUpdateList(list.id, list.name)}
-                                    className="w-full text-2xl font-black bg-transparent border-b-2 border-border/50 focus:border-primary focus:ring-0 p-0 outline-none transition-colors"
+                                    className="w-full text-lg font-black input-field"
                                 />
                             </div>
 

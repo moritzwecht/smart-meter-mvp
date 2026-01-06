@@ -44,7 +44,7 @@ export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPendi
                                     type="text"
                                     value={note.title}
                                     onChange={(e) => setNote({ ...note, title: e.target.value })}
-                                    className="w-full text-2xl font-black bg-transparent border-b-2 border-border/50 focus:border-primary focus:ring-0 p-0 outline-none placeholder:opacity-20 transition-colors"
+                                    className="w-full text-lg font-black input-field"
                                     placeholder="Titel der Notiz"
                                 />
                             </div>

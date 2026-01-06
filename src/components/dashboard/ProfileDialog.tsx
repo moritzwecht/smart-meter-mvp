@@ -65,7 +65,7 @@ export function ProfileDialog({
                                         type="text"
                                         value={profileData.name}
                                         onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                                        className="w-full bg-accent/20 rounded-xl px-4 py-2.5 text-sm outline-none focus:bg-accent/40 transition-colors"
+                                        className="w-full input-field"
                                     />
                                 </div>
 
@@ -81,7 +81,7 @@ export function ProfileDialog({
                                             onChange={(e) =>
                                                 setProfileData({ ...profileData, currentPassword: e.target.value })
                                             }
-                                            className="w-full bg-accent/20 rounded-xl px-4 py-2.5 text-sm outline-none focus:bg-accent/40 transition-colors"
+                                            className="w-full input-field"
                                         />
                                         <input
                                             type="password"
@@ -90,7 +90,7 @@ export function ProfileDialog({
                                             onChange={(e) =>
                                                 setProfileData({ ...profileData, newPassword: e.target.value })
                                             }
-                                            className="w-full bg-accent/20 rounded-xl px-4 py-2.5 text-sm outline-none focus:bg-accent/40 transition-colors"
+                                            className="w-full input-field"
                                         />
                                     </div>
                                 </div>

@@ -100,7 +100,7 @@ body {
 }
 
 .input-field {
-  @apply px-4 py-3 bg-accent/20 border-2 border-border/50 rounded-xl focus:border-primary/50 focus:bg-accent/40 outline-none transition-all;
+  @apply px-4 py-3 bg-accent/20 border-2 border-border/50 rounded-xl focus:border-primary/50 focus:bg-accent/40 outline-none transition-all text-sm;
 }
 
 /* Glassmorphism utility */
@@ -112,9 +112,11 @@ body {
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
   @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
 }

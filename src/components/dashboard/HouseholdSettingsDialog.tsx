@@ -76,7 +76,7 @@ export function HouseholdSettingsDialog({
                                         type="text"
                                         value={household.name}
                                         onChange={(e) => setHousehold({ ...household, name: e.target.value })}
-                                        className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
+                                        className="flex-1 input-field"
                                     />
                                     <button
                                         onClick={onRename}
@@ -101,7 +101,7 @@ export function HouseholdSettingsDialog({
                                             placeholder="email@beispiel.de"
                                             value={inviteEmail}
                                             onChange={(e) => setInviteEmail(e.target.value)}
-                                            className="w-full bg-accent/20 border-2 border-border/50 rounded-xl pl-11 pr-4 py-4 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
+                                            className="w-full input-field pl-11"
                                         />
                                     </div>
                                     <button type="submit" disabled={isPending} className="btn btn-primary px-8 text-xs disabled:opacity-70">

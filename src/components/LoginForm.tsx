@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 export function LoginForm() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
     const [isRegistering, setIsRegistering] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -19,6 +20,9 @@ export function LoginForm() {
         setError("");
         try {
             if (isRegistering) {
+                if (password !== confirmPassword) {
+                    throw new Error("Die Passwörter stimmen nicht überein.");
+                }
                 await register(email, password);
             } else {
                 await loginWithPassword(email, password);
@@ -42,8 +46,8 @@ export function LoginForm() {
                 <div className="space-y-3">
                     <div className="space-y-1.5">
                         <label htmlFor="email" className="text-[10px] font-bold uppercase tracking-widest opacity-40">E-Mail Adresse</label>
-                        <div className="relative">
-                            <Mail className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <div className="relative flex items-center">
+                            {/* <Mail className="absolute left-3.5 w-4 h-4 text-muted-foreground pointer-events-none" /> */}
                             <input
                                 id="email"
                                 type="email"
@@ -51,15 +55,15 @@ export function LoginForm() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="email@beispiel.de"
-                                className="w-full bg-transparent border-b-2 border-border/60 focus:border-primary outline-none pl-7 py-2.5 text-sm transition-colors"
+                                className="w-full input-field pl-30"
                             />
                         </div>
                     </div>
 
                     <div className="space-y-1.5">
                         <label htmlFor="password" className="text-[10px] font-bold uppercase tracking-widest opacity-40">Passwort</label>
-                        <div className="relative">
-                            <Lock className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <div className="relative flex items-center">
+                            {/* <Lock className="absolute left-3.5 w-4 h-4 text-muted-foreground pointer-events-none" /> */}
                             <input
                                 id="password"
                                 type={showPassword ? "text" : "password"}
@@ -67,17 +71,44 @@ export function LoginForm() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="••••••••"
-                                className="w-full bg-transparent border-b-2 border-border/60 focus:border-primary outline-none pl-7 py-2.5 text-sm transition-colors"
+                                className="w-full input-field pl-10 pr-10"
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-0 top-1/2 -translate-y-1/2 p-1 hover:text-primary transition-colors text-muted-foreground"
+                                className="absolute right-3 p-1 hover:text-primary transition-colors text-muted-foreground"
                             >
                                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </button>
                         </div>
                     </div>
+
+                    <AnimatePresence mode="popLayout">
+                        {isRegistering && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                animate={{ opacity: 1, height: "auto", marginTop: 12 }}
+                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <div className="space-y-1.5">
+                                    <label htmlFor="confirmPassword" className="text-[10px] font-bold uppercase tracking-widest opacity-40">Passwort bestätigen</label>
+                                    <div className="relative flex items-center">
+                                        {/* <Lock className="absolute left-3.5 w-4 h-4 text-muted-foreground pointer-events-none" /> */}
+                                        <input
+                                            id="confirmPassword"
+                                            type={showPassword ? "text" : "password"}
+                                            required={isRegistering}
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            placeholder="••••••••"
+                                            className="w-full input-field pl-10 pr-10"
+                                        />
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
                 {error && (

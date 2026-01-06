@@ -114,7 +114,7 @@ export function MeterSettingsDialog({
                                         placeholder="Andere..."
                                         value={units.includes(meter.unit) ? "" : meter.unit}
                                         onChange={(e) => onUpdateMeter(meter.id, meter.name, meter.type, e.target.value)}
-                                        className="flex-1 min-w-[120px] px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 border-border/50 focus:border-primary/30 outline-none transition-all"
+                                        className="flex-1 min-w-[120px] input-field font-bold"
                                     />
                                 </div>
                             </div>
