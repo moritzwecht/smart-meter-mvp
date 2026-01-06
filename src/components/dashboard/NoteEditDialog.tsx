@@ -44,7 +44,7 @@ export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPendi
                                     type="text"
                                     value={note.title}
                                     onChange={(e) => setNote({ ...note, title: e.target.value })}
-                                    className="w-full text-2xl font-black bg-transparent border-none focus:ring-0 p-0 outline-none placeholder:opacity-20"
+                                    className="w-full text-2xl font-black bg-transparent border-b-2 border-border/50 focus:border-primary focus:ring-0 p-0 outline-none placeholder:opacity-20 transition-colors"
                                     placeholder="Titel der Notiz"
                                 />
                             </div>
@@ -55,7 +55,7 @@ export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPendi
                                     rows={8}
                                     value={note.content || ""}
                                     onChange={(e) => setNote({ ...note, content: e.target.value })}
-                                    className="w-full bg-accent/30 rounded-xl p-4 outline-none focus:bg-accent/50 transition-colors resize-none text-sm leading-relaxed"
+                                    className="w-full bg-accent/30 border-2 border-border/30 rounded-xl p-4 outline-none focus:bg-accent/50 focus:border-primary/30 transition-colors resize-none text-sm leading-relaxed"
                                     placeholder="Schreibe etwas..."
                                 />
                             </div>

@@ -51,7 +51,7 @@ export function LoginForm() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="email@beispiel.de"
-                                className="w-full bg-transparent border-b-2 border-border focus:border-primary outline-none pl-7 py-2.5 text-sm transition-colors"
+                                className="w-full bg-transparent border-b-2 border-border/60 focus:border-primary outline-none pl-7 py-2.5 text-sm transition-colors"
                             />
                         </div>
                     </div>
@@ -67,7 +67,7 @@ export function LoginForm() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="••••••••"
-                                className="w-full bg-transparent border-b-2 border-border focus:border-primary outline-none pl-7 py-2.5 text-sm transition-colors"
+                                className="w-full bg-transparent border-b-2 border-border/60 focus:border-primary outline-none pl-7 py-2.5 text-sm transition-colors"
                             />
                             <button
                                 type="button"

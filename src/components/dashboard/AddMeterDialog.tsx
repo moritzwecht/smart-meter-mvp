@@ -94,7 +94,7 @@ export function AddMeterDialog({
                                                 onChange={(e) => setNewMeterData({ ...newMeterData, unit: e.target.value })}
                                                 className={`w-full px-4 py-2 rounded-xl text-sm font-bold bg-accent/30 border-2 transition-all outline-none ${!units.includes(newMeterData.unit) && newMeterData.unit !== ""
                                                     ? "border-primary/50"
-                                                    : "border-transparent focus:border-primary/30"
+                                                    : "border-border/50 focus:border-primary/30"
                                                     } `}
                                             />
                                         </div>

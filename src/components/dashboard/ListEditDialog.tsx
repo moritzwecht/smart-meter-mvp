@@ -104,7 +104,7 @@ export function ListEditDialog({
                                     value={list.name}
                                     onChange={(e) => setList({ ...list, name: e.target.value })}
                                     onBlur={() => onUpdateList(list.id, list.name)}
-                                    className="w-full text-2xl font-black bg-transparent border-none focus:ring-0 p-0 outline-none"
+                                    className="w-full text-2xl font-black bg-transparent border-b-2 border-border/50 focus:border-primary focus:ring-0 p-0 outline-none transition-colors"
                                 />
                             </div>
 
@@ -176,7 +176,7 @@ export function ListEditDialog({
                                             placeholder="Neuer Punkt..."
                                             value={newItemValue}
                                             onChange={(e) => setNewItemValue(e.target.value)}
-                                            className="flex-1 bg-accent/20 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 transition-colors"
+                                            className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
                                         />
                                         <button type="submit" disabled={isPending} className="btn btn-primary px-6 disabled:opacity-70">
                                             {isPending ? <Spinner className="text-primary-foreground" /> : <Plus className="w-5 h-5" />}

@@ -87,7 +87,7 @@ export function MeterReadingDialog({
                                                 const val = e.target.value.replace(/[^0-9,.]/g, "");
                                                 setValue(val);
                                             }}
-                                            className="w-full bg-accent/20 rounded-xl px-4 py-5 text-4xl font-black outline-none focus:bg-accent/40 transition-colors tabular-nums"
+                                            className="w-full bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-5 text-4xl font-black outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors tabular-nums"
                                         />
                                         <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground uppercase">
                                             {meter.unit}
