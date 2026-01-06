@@ -9,6 +9,7 @@ import {
   getHouseholds as getHouseholdsAction,
   createHousehold as createHouseholdAction,
   updateHousehold as updateHouseholdAction,
+  updateHouseholdDetails,
   deleteHousehold as deleteHouseholdAction,
   removeMember as removeMemberAction,
   getMeters,
@@ -41,6 +42,9 @@ import { AddWidgetMenu } from "@/components/dashboard/AddWidgetMenu";
 import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
 import { NoteWidget } from "@/components/dashboard/note/NoteWidget";
 import { ListWidget } from "@/components/dashboard/list/ListWidget";
+import { EfficiencyWidget } from "@/components/dashboard/EfficiencyWidget";
+import { EfficiencySettingsDialog } from "@/components/dashboard/EfficiencySettingsDialog";
+import { EfficiencyDetailsDialog } from "@/components/dashboard/EfficiencyDetailsDialog";
 
 // Dialog Components
 import { ProfileDialog } from "@/components/dashboard/profile/ProfileDialog";
@@ -61,6 +65,11 @@ interface Household {
   id: number;
   name: string;
   userId: number;
+  sqm?: number;
+  persons?: number;
+  heatingType?: string;
+  waterHeatingType?: string;
+  showEfficiency?: string;
   createdAt: string;
 }
 
@@ -106,7 +115,7 @@ interface Note {
   createdAt: string | Date;
 }
 
-type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' });
+type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' }) | { id: string | number; widgetType: 'EFFICIENCY', createdAt: string | Date, householdId: number };
 
 interface ProfileData {
   name: string;
@@ -136,6 +145,8 @@ export default function Dashboard() {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
+  const [showEfficiencySettings, setShowEfficiencySettings] = useState(false);
+  const [showEfficiencyDetails, setShowEfficiencyDetails] = useState(false);
   const [addingReadingForMeter, setAddingReadingForMeter] = useState<Meter | null>(null);
   const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
   const [newMeterData, setNewMeterData] = useState({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
@@ -402,8 +413,12 @@ export default function Dashboard() {
                       });
                       await addTodoList(selectedHouseholdId!, "Neue Liste");
                     }
+                    if (type === "EFFICIENCY") {
+                      await updateHouseholdDetails(selectedHouseholdId!, { showEfficiency: "true" });
+                    }
                     setShowAddWidget(false);
                     refreshWidgets(selectedHouseholdId!);
+                    refreshHouseholds();
                   });
                 }}
               />
@@ -411,10 +426,19 @@ export default function Dashboard() {
               {widgets.length > 0 ? (
                 <div className="space-y-12">
                   {/* Meters Section */}
-                  {optimisticWidgets.some((w) => w.widgetType === "METER") && (
+                  {(optimisticWidgets.some((w) => w.widgetType === "METER") || selectedHousehold?.showEfficiency === "true") && (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         <AnimatePresence mode="popLayout">
+                          {selectedHousehold?.showEfficiency === "true" && (
+                            <EfficiencyWidget
+                              key="efficiency-barometer"
+                              household={selectedHousehold}
+                              meters={widgets.filter(m => m.widgetType === 'METER')}
+                              onOpenSettings={() => setShowEfficiencySettings(true)}
+                              onOpenDetails={() => setShowEfficiencyDetails(true)}
+                            />
+                          )}
                           {optimisticWidgets
                             .filter((w) => w.widgetType === "METER")
                             .map((w) => (
@@ -739,6 +763,28 @@ export default function Dashboard() {
             setIsProfileOpen(false);
           });
         }}
+      />
+
+      <EfficiencySettingsDialog
+        isOpen={showEfficiencySettings}
+        onClose={() => setShowEfficiencySettings(false)}
+        household={selectedHousehold!}
+        meters={widgets.filter(w => w.widgetType === 'METER')}
+        onUpdateHousehold={async (data) => {
+          await updateHouseholdAction(selectedHouseholdId!, selectedHousehold!.name); // Household name update is separate
+          await updateHouseholdDetails(selectedHouseholdId!, data);
+          refreshHouseholds();
+        }}
+        onUpdateMeter={async (id, name, type, unit, target) => {
+          await updateMeter(id, name, type, unit, target);
+        }}
+        isPending={isPending}
+      />
+
+      <EfficiencyDetailsDialog
+        isOpen={showEfficiencyDetails}
+        onClose={() => setShowEfficiencyDetails(false)}
+        meters={widgets.filter(w => w.widgetType === 'METER')}
       />
     </main>
   );

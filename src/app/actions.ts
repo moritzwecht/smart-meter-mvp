@@ -57,7 +57,14 @@ export async function getHouseholds() {
 
     // Also get households where user is the direct owner (legacy/direct entry)
     const ownedHouseholds = await db.query.households.findMany({
-        where: eq(households.userId, user.id)
+        where: eq(households.userId, user.id),
+        with: {
+            meters: {
+                with: {
+                    readings: true
+                }
+            }
+        }
     });
 
     const owned = ownedHouseholds.map(h => ({ ...h, role: 'OWNER' }));
@@ -525,6 +532,28 @@ export async function addNote(householdId: number, title: string, content?: stri
     revalidatePath("/");
 }
 
+export async function updateHouseholdDetails(id: number, data: { sqm?: number; persons?: number; heatingType?: string; waterHeatingType?: string; showEfficiency?: string }) {
+    await ensureHouseholdAccess(id);
+    await db.update(households)
+        .set(data)
+        .where(eq(households.id, id));
+    revalidatePath("/");
+}
+
+export async function getHouseholdWithDetails(id: number) {
+    await ensureHouseholdAccess(id);
+    return await db.query.households.findFirst({
+        where: eq(households.id, id),
+        with: {
+            meters: {
+                with: {
+                    readings: true
+                }
+            }
+        }
+    });
+}
+
 export async function updateNote(id: number, title: string, content?: string) {
     const note = await db.query.notes.findFirst({ where: eq(notes.id, id) });
     if (!note) throw new Error("Notiz nicht gefunden");
@@ -603,13 +632,13 @@ export async function deleteTodoItem(id: number) {
     revalidatePath("/");
 }
 
-export async function updateMeter(id: number, name: string, type: string, unit: string) {
+export async function updateMeter(id: number, name: string, type: string, unit: string, expectedDailyAverage?: string) {
     const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
     if (!meter) throw new Error("Zähler nicht gefunden");
     await ensureHouseholdAccess(meter.householdId);
 
     await db.update(meters)
-        .set({ name, type, unit })
+        .set({ name, type, unit, expectedDailyAverage })
         .where(eq(meters.id, id));
     revalidatePath("/");
 }
