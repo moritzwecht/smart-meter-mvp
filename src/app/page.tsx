@@ -4,38 +4,10 @@ import { useEffect, useState, useTransition, useOptimistic } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, User } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
-import {
-  logout as logoutAction,
-  getHouseholds as getHouseholdsAction,
-  createHousehold as createHouseholdAction,
-  updateHousehold as updateHouseholdAction,
-  deleteHousehold as deleteHouseholdAction,
-  removeMember as removeMemberAction,
-  getMeters,
-  getTodoLists,
-  getNotes,
-  addNote,
-  addMeter,
-  addTodoList,
-  updateNote,
-  deleteNote,
-  updateTodoList,
-  deleteTodoList,
-  addTodoItem,
-  toggleTodoItem,
-  deleteTodoItem,
-  updateMeter,
-  deleteMeter,
-  addReading,
-  deleteReading,
-  inviteToHousehold,
-  getHouseholdMembers,
-  updateProfile,
-  getUserProfile,
-  toggleMeterPin,
-  toggleTodoListPin,
-  toggleNotePin,
-} from "./actions";
+import * as actions from "./actions";
+import { DataService } from "@/lib/offline/data-service";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/offline/db";
 
 // Dashboard Components
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -44,6 +16,7 @@ import { HouseholdMenu } from "@/components/dashboard/household/HouseholdMenu";
 import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
 import { NoteWidget } from "@/components/dashboard/note/NoteWidget";
 import { ListWidget } from "@/components/dashboard/list/ListWidget";
+import { OfflineIndicator } from "@/components/dashboard/offline/OfflineIndicator";
 
 // Dialog Components
 import { HouseholdSettingsDialog } from "@/components/dashboard/household/HouseholdSettingsDialog";
@@ -111,7 +84,10 @@ interface Note {
   createdAt: string | Date;
 }
 
-type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' });
+type Widget =
+  | (Meter & { widgetType: "METER" })
+  | (TodoList & { widgetType: "LIST" })
+  | (Note & { widgetType: "NOTE" });
 
 interface ProfileData {
   name: string;
@@ -125,41 +101,81 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [isWidgetsLoading, setIsWidgetsLoading] = useState(false);
   const [households, setHouseholds] = useState<Household[]>([]);
-  const [selectedHouseholdId, setSelectedHouseholdId] = useState<number | null>(null);
+  const [selectedHouseholdId, setSelectedHouseholdId] = useState<number | null>(
+    null,
+  );
   const [newHouseholdName, setNewHouseholdName] = useState("");
   const [isHouseholdMenuOpen, setIsHouseholdMenuOpen] = useState(false);
   const [members, setMembers] = useState<any[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteError, setInviteError] = useState("");
 
-  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const localWidgets = useLiveQuery(async () => {
+    if (!selectedHouseholdId) return [];
+    const m = await db.meters
+      .where("householdId")
+      .equals(selectedHouseholdId)
+      .toArray();
+    const l = await db.todoLists
+      .where("householdId")
+      .equals(selectedHouseholdId)
+      .toArray();
+    const n = await db.notes
+      .where("householdId")
+      .equals(selectedHouseholdId)
+      .toArray();
+
+    return [
+      ...m.map((i) => ({ ...i, widgetType: "METER" as const })),
+      ...l.map((i) => ({ ...i, widgetType: "LIST" as const })),
+      ...n.map((i) => ({ ...i, widgetType: "NOTE" as const })),
+    ].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [selectedHouseholdId]);
+
   const [optimisticWidgets, addOptimisticWidget] = useOptimistic(
-    widgets,
-    (state: Widget[], newWidget: Widget) => [newWidget, ...state]
+    localWidgets || [],
+    (state: Widget[], newWidget: Widget) => [newWidget, ...state],
   );
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
-  const [addingReadingForMeter, setAddingReadingForMeter] = useState<Meter | null>(null);
+  const [addingReadingForMeter, setAddingReadingForMeter] =
+    useState<Meter | null>(null);
   const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
-  const [newMeterData, setNewMeterData] = useState({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
-  const [editingHousehold, setEditingHousehold] = useState<Household | null>(null);
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [newMeterData, setNewMeterData] = useState({
+    name: "Neuer Zähler",
+    type: "ELECTRICITY",
+    unit: "kWh",
+  });
+  const [editingHousehold, setEditingHousehold] = useState<Household | null>(
+    null,
+  );
+  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [newItemValue, setNewItemValue] = useState("");
-  const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
-  const [profileData, setProfileData] = useState<ProfileData>({ name: "", currentPassword: "", newPassword: "" });
+  const [userProfile, setUserProfile] = useState<{
+    email: string;
+    name: string;
+  } | null>(null);
+  const [profileData, setProfileData] = useState<ProfileData>({
+    name: "",
+    currentPassword: "",
+    newPassword: "",
+  });
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
 
   const refreshHouseholds = async () => {
-    const data = await getHouseholdsAction();
+    const data = await DataService.getHouseholds();
     setHouseholds(data);
     if (data.length > 0 && !selectedHouseholdId) {
-      const lastId = localStorage.getItem('lastHouseholdId');
+      const lastId = localStorage.getItem("lastHouseholdId");
       if (lastId) {
         const id = parseInt(lastId);
-        if (data.find(h => h.id === id)) {
+        if (data.find((h) => h.id === id)) {
           setSelectedHouseholdId(id);
           return;
         }
@@ -170,7 +186,7 @@ export default function Dashboard() {
 
   const refreshMembers = async (hId: number) => {
     try {
-      const data = await getHouseholdMembers(hId);
+      const data = await actions.getHouseholdMembers(hId);
       setMembers(data);
     } catch (err) {
       console.error("Failed to fetch members:", err);
@@ -181,7 +197,10 @@ export default function Dashboard() {
     if (!editingHousehold || !editingHousehold.name.trim()) return;
     startTransition(async () => {
       try {
-        await updateHouseholdAction(editingHousehold.id, editingHousehold.name);
+        await actions.updateHousehold(
+          editingHousehold.id,
+          editingHousehold.name,
+        );
         refreshHouseholds();
       } catch (err: any) {
         alert(err.message);
@@ -191,32 +210,32 @@ export default function Dashboard() {
 
   useEffect(() => {
     // Load theme from localStorage
-    const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null;
+    const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
     if (savedTheme) {
       setTheme(savedTheme);
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setTheme('dark');
+    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
     }
   }, []);
 
   useEffect(() => {
     // Apply theme to document element
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
-    localStorage.setItem('theme', theme);
+    localStorage.setItem("theme", theme);
   }, [theme]);
 
   useEffect(() => {
     if (selectedHouseholdId) {
-      localStorage.setItem('lastHouseholdId', selectedHouseholdId.toString());
+      localStorage.setItem("lastHouseholdId", selectedHouseholdId.toString());
     }
   }, [selectedHouseholdId]);
 
   const refreshProfile = async () => {
-    const data = await getUserProfile();
+    const data = await actions.getUserProfile();
     if (data) {
       setUserProfile(data);
       setProfileData((prev: ProfileData) => ({ ...prev, name: data.name }));
@@ -232,42 +251,16 @@ export default function Dashboard() {
   const refreshWidgets = async (householdId: number) => {
     setIsWidgetsLoading(true);
     try {
-      const [m, l, n] = await Promise.all([
-        getMeters(householdId),
-        getTodoLists(householdId),
-        getNotes(householdId)
-      ]);
-
-      const allWidgets: Widget[] = [
-        ...m.map(i => ({ ...i, widgetType: 'METER' as const })),
-        ...l.map(i => ({ ...i, widgetType: 'LIST' as const })),
-        ...n.map(i => ({ ...i, widgetType: 'NOTE' as const }))
-      ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-      setWidgets(allWidgets);
-
-      // If we're currently editing a list, update its local state too (atomically)
-      setEditingList((prev: TodoList | null) => {
-        if (!prev) return null;
-        const updatedList = l.find((list: any) => list.id === prev.id);
-        return (updatedList as TodoList) || prev;
-      });
-
-      // If we're currently adding a reading, update its local state too (atomically)
-      setAddingReadingForMeter((prev: Meter | null) => {
-        if (!prev) return null;
-        const updatedMeter = m.find((meter: any) => meter.id === prev.id);
-        return (updatedMeter as Meter) || prev;
-      });
+      await DataService.getWidgets(householdId);
     } finally {
       setIsWidgetsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then(res => res.json())
-      .then(async data => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then(async (data) => {
         setSession(data.session);
         if (data.session) {
           await refreshHouseholds();
@@ -298,7 +291,7 @@ export default function Dashboard() {
     e.preventDefault();
     if (!newHouseholdName.trim()) return;
     startTransition(async () => {
-      await createHouseholdAction(newHouseholdName);
+      await actions.createHousehold(newHouseholdName);
       setNewHouseholdName("");
       setIsHouseholdMenuOpen(false);
       refreshHouseholds();
@@ -316,8 +309,7 @@ export default function Dashboard() {
         createdAt: new Date(),
         householdId: selectedHouseholdId!,
       });
-      await addNote(selectedHouseholdId!, "Neue Notiz");
-      refreshWidgets(selectedHouseholdId!);
+      await DataService.addNote(selectedHouseholdId!, "Neue Notiz");
     });
   };
 
@@ -341,8 +333,7 @@ export default function Dashboard() {
         createdAt: new Date(),
         householdId: selectedHouseholdId!,
       });
-      await addTodoList(selectedHouseholdId!, "Neue Liste");
-      refreshWidgets(selectedHouseholdId!);
+      await DataService.addTodoList(selectedHouseholdId!, "Neue Liste");
     });
   };
 
@@ -357,7 +348,9 @@ export default function Dashboard() {
           className="w-full max-sm space-y-8"
         >
           <div className="text-center space-y-2">
-            <h1 className="text-4xl font-black tracking-tighter text-foreground">HOME</h1>
+            <h1 className="text-4xl font-black tracking-tighter text-foreground">
+              HOME
+            </h1>
             <p className="text-sm text-muted-foreground font-mono">v1.4.2</p>
           </div>
           <div className="bg-card text-card-foreground rounded-lg border border-border p-3 shadow-xl shadow-foreground/5">
@@ -368,12 +361,16 @@ export default function Dashboard() {
     );
   }
 
-  const selectedHousehold = households.find(h => h.id === selectedHouseholdId);
+  const selectedHousehold = households.find(
+    (h) => h.id === selectedHouseholdId,
+  );
 
   return (
     <main className="min-h-screen p-4 md:p-8 pt-17 md:pt-17 max-w-7xl mx-auto space-y-8 bg-background text-foreground">
       <DashboardHeader
-        selectedHouseholdName={selectedHousehold ? selectedHousehold.name : "Wähle Haushalt"}
+        selectedHouseholdName={
+          selectedHousehold ? selectedHousehold.name : "Wähle Haushalt"
+        }
         isHouseholdMenuOpen={isHouseholdMenuOpen}
         setIsHouseholdMenuOpen={setIsHouseholdMenuOpen}
         theme={theme}
@@ -386,9 +383,6 @@ export default function Dashboard() {
           households={households}
           selectedHouseholdId={selectedHouseholdId}
           onSelectHousehold={(id) => {
-            if (id !== selectedHouseholdId) {
-              setWidgets([]);
-            }
             setSelectedHouseholdId(id);
             setIsHouseholdMenuOpen(false);
           }}
@@ -405,7 +399,7 @@ export default function Dashboard() {
 
       {selectedHousehold ? (
         <div className="space-y-3">
-          {(isWidgetsLoading && widgets.length === 0) ? (
+          {isWidgetsLoading && optimisticWidgets.length === 0 ? (
             <div className="pt-4">
               <DashboardSkeleton hideHeader />
             </div>
@@ -413,7 +407,8 @@ export default function Dashboard() {
             <>
               {activeTab === "dashboard" && (
                 <div className="space-y-12 pb-24">
-                  {optimisticWidgets.filter(w => w.isPinned === 'true').length > 0 ? (
+                  {optimisticWidgets.filter((w) => w.isPinned === "true")
+                    .length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {optimisticWidgets
                         .filter((w) => w.isPinned === "true")
@@ -426,8 +421,10 @@ export default function Dashboard() {
                                 onEditMeter={() => setEditingMeter(w)}
                                 onPin={() => {
                                   startTransition(async () => {
-                                    await toggleMeterPin(w.id, "false");
-                                    refreshWidgets(selectedHouseholdId!);
+                                    await DataService.toggleMeterPin(
+                                      w.id,
+                                      "false",
+                                    );
                                   });
                                 }}
                               />
@@ -438,20 +435,24 @@ export default function Dashboard() {
                                 onEdit={() => setEditingNote(w)}
                                 onPin={() => {
                                   startTransition(async () => {
-                                    await toggleNotePin(w.id, "false");
-                                    refreshWidgets(selectedHouseholdId!);
+                                    await DataService.toggleNotePin(
+                                      w.id,
+                                      "false",
+                                    );
                                   });
                                 }}
                               />
                             )}
                             {w.widgetType === "LIST" && (
                               <ListWidget
-                                list={w}
-                                onEdit={() => setEditingList(w)}
+                                list={w as TodoList}
+                                onEdit={() => setEditingList(w as TodoList)}
                                 onPin={() => {
                                   startTransition(async () => {
-                                    await toggleTodoListPin(w.id, "false");
-                                    refreshWidgets(selectedHouseholdId!);
+                                    await DataService.toggleTodoListPin(
+                                      w.id,
+                                      "false",
+                                    );
                                   });
                                 }}
                               />
@@ -461,7 +462,10 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="py-24 text-center border-2 border-dashed border-foreground/5 rounded-3xl">
-                      <p className="text-sm text-muted-foreground">Pinne Elemente aus den anderen Sektionen, um sie hier zu sehen.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Pinne Elemente aus den anderen Sektionen, um sie hier zu
+                        sehen.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -479,8 +483,12 @@ export default function Dashboard() {
                           onEdit={() => setEditingList(w as TodoList)}
                           onPin={() => {
                             startTransition(async () => {
-                              await toggleTodoListPin(w.id, (w as TodoList).isPinned === "true" ? "false" : "true");
-                              refreshWidgets(selectedHouseholdId!);
+                              await DataService.toggleTodoListPin(
+                                w.id,
+                                (w as TodoList).isPinned === "true"
+                                  ? "false"
+                                  : "true",
+                              );
                             });
                           }}
                         />
@@ -512,8 +520,12 @@ export default function Dashboard() {
                           onEdit={() => setEditingNote(w as Note)}
                           onPin={() => {
                             startTransition(async () => {
-                              await toggleNotePin(w.id, (w as Note).isPinned === "true" ? "false" : "true");
-                              refreshWidgets(selectedHouseholdId!);
+                              await DataService.toggleNotePin(
+                                w.id,
+                                (w as Note).isPinned === "true"
+                                  ? "false"
+                                  : "true",
+                              );
                             });
                           }}
                         />
@@ -542,12 +554,18 @@ export default function Dashboard() {
                         <MeterWidget
                           key={w.id}
                           meter={w as Meter}
-                          onAddReading={() => setAddingReadingForMeter(w as Meter)}
+                          onAddReading={() =>
+                            setAddingReadingForMeter(w as Meter)
+                          }
                           onEditMeter={() => setEditingMeter(w as Meter)}
                           onPin={() => {
                             startTransition(async () => {
-                              await toggleMeterPin(w.id, (w as Meter).isPinned === "true" ? "false" : "true");
-                              refreshWidgets(selectedHouseholdId!);
+                              await DataService.toggleMeterPin(
+                                w.id,
+                                (w as Meter).isPinned === "true"
+                                  ? "false"
+                                  : "true",
+                              );
                             });
                           }}
                         />
@@ -575,8 +593,12 @@ export default function Dashboard() {
                         <User className="w-8 h-8 text-primary" />
                       </div>
                       <div className="min-w-0">
-                        <h4 className="text-xl font-bold truncate">{userProfile?.name}</h4>
-                        <p className="text-sm text-muted-foreground truncate">{userProfile?.email}</p>
+                        <h4 className="text-xl font-bold truncate">
+                          {userProfile?.name}
+                        </h4>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {userProfile?.email}
+                        </p>
                       </div>
                     </div>
 
@@ -588,7 +610,12 @@ export default function Dashboard() {
                         <input
                           type="text"
                           value={profileData.name}
-                          onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              name: e.target.value,
+                            })
+                          }
                           className="w-full input-field"
                         />
                       </div>
@@ -603,7 +630,10 @@ export default function Dashboard() {
                             placeholder="Aktuelles Passwort"
                             value={profileData.currentPassword}
                             onChange={(e) =>
-                              setProfileData({ ...profileData, currentPassword: e.target.value })
+                              setProfileData({
+                                ...profileData,
+                                currentPassword: e.target.value,
+                              })
                             }
                             className="w-full input-field"
                           />
@@ -612,7 +642,10 @@ export default function Dashboard() {
                             placeholder="Neues Passwort"
                             value={profileData.newPassword}
                             onChange={(e) =>
-                              setProfileData({ ...profileData, newPassword: e.target.value })
+                              setProfileData({
+                                ...profileData,
+                                newPassword: e.target.value,
+                              })
                             }
                             className="w-full input-field"
                           />
@@ -637,7 +670,7 @@ export default function Dashboard() {
                             setProfileSuccess(false);
                             startTransition(async () => {
                               try {
-                                await updateProfile(profileData);
+                                await actions.updateProfile(profileData);
                                 setProfileSuccess(true);
                                 setProfileData((prev: ProfileData) => ({
                                   ...prev,
@@ -660,7 +693,7 @@ export default function Dashboard() {
                           onClick={() => {
                             if (window.confirm("Abmelden?")) {
                               startTransition(async () => {
-                                await logoutAction();
+                                await actions.logout();
                                 setSession(null);
                               });
                             }
@@ -674,12 +707,15 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
+              <OfflineIndicator />
             </>
           )}
         </div>
       ) : (
         <div className="py-24 text-center border-2 border-dashed border-foreground/5 rounded-3xl">
-          <p className="text-sm text-muted-foreground">Wähle oder erstelle einen Haushalt</p>
+          <p className="text-sm text-muted-foreground">
+            Wähle oder erstelle einen Haushalt
+          </p>
         </div>
       )}
 
@@ -691,13 +727,12 @@ export default function Dashboard() {
         isPending={isPending}
         onAdd={() => {
           startTransition(async () => {
-            await addMeter(
+            await DataService.addMeter(
               selectedHouseholdId!,
               newMeterData.type,
-              newMeterData.unit
+              newMeterData.unit,
             );
             setShowAddMeterDialog(false);
-            refreshWidgets(selectedHouseholdId!);
           });
         }}
       />
@@ -713,10 +748,13 @@ export default function Dashboard() {
           e.preventDefault();
           if (!newItemValue.trim() || !addingReadingForMeter) return;
           startTransition(async () => {
-            await addReading(addingReadingForMeter.id, newItemValue, new Date());
+            await DataService.addReading(
+              addingReadingForMeter.id,
+              newItemValue,
+              new Date(),
+            );
             setNewItemValue("");
             setAddingReadingForMeter(null);
-            refreshWidgets(selectedHouseholdId!);
           });
         }}
         onOpenSettings={() => {
@@ -737,18 +775,16 @@ export default function Dashboard() {
         onSave={() => {
           if (!editingNote) return;
           startTransition(async () => {
-            await updateNote(
+            await DataService.updateNote(
               editingNote.id,
               editingNote.title,
-              editingNote.content || undefined
+              editingNote.content || undefined,
             );
-            refreshWidgets(selectedHouseholdId!);
           });
         }}
         onDelete={(id) => {
           startTransition(async () => {
-            await deleteNote(id);
-            refreshWidgets(selectedHouseholdId!);
+            await DataService.deleteNote(id);
           });
         }}
       />
@@ -760,26 +796,21 @@ export default function Dashboard() {
         onClose={() => setEditingList(null)}
         isPending={isPending}
         onUpdateList={async (id, name) => {
-          await updateTodoList(id, name);
-          refreshWidgets(selectedHouseholdId!);
+          await DataService.updateTodoList(id, name);
         }}
         onAddItem={async (content) => {
           if (!editingList) return;
-          await addTodoItem(editingList.id, content);
-          refreshWidgets(selectedHouseholdId!);
+          await DataService.addTodoItem(editingList.id, content);
         }}
         onToggleItem={async (id, status) => {
-          await toggleTodoItem(id, status);
-          refreshWidgets(selectedHouseholdId!);
+          await DataService.toggleTodoItem(id, status);
         }}
         onDeleteItem={async (id) => {
-          await deleteTodoItem(id);
-          refreshWidgets(selectedHouseholdId!);
+          await DataService.deleteTodoItem(id);
         }}
         onDeleteList={(id) => {
           startTransition(async () => {
-            await deleteTodoList(id);
-            refreshWidgets(selectedHouseholdId!);
+            await DataService.deleteTodoList(id);
           });
         }}
         newItemValue={newItemValue}
@@ -793,24 +824,26 @@ export default function Dashboard() {
         isPending={isPending}
         onUpdateMeter={(id, type, unit) => {
           startTransition(async () => {
-            await updateMeter(id, type, unit);
-            refreshWidgets(selectedHouseholdId!);
+            await DataService.updateMeter(id, type, unit);
           });
         }}
         onDeleteReading={(id) => {
           if (window.confirm("Ablesung löschen?")) {
             startTransition(async () => {
-              await deleteReading(id);
+              await actions.deleteReading(id);
               refreshWidgets(selectedHouseholdId!);
             });
           }
         }}
         onDeleteMeter={(id) => {
-          if (window.confirm("Möchtest du diesen Zähler wirklich löschen? Alle zugehörigen Ablesungen werden ebenfalls gelöscht.")) {
+          if (
+            window.confirm(
+              "Möchtest du diesen Zähler wirklich löschen? Alle zugehörigen Ablesungen werden ebenfalls gelöscht.",
+            )
+          ) {
             startTransition(async () => {
-              await deleteMeter(id);
+              await DataService.deleteMeter(id);
               setEditingMeter(null);
-              refreshWidgets(selectedHouseholdId!);
             });
           }
         }}
@@ -827,14 +860,14 @@ export default function Dashboard() {
           if (
             !editingHousehold ||
             !window.confirm(
-              `Möchtest du "${editingHousehold.name}" wirklich löschen?`
+              `Möchtest du "${editingHousehold.name}" wirklich löschen?`,
             )
           ) {
             return;
           }
           startTransition(async () => {
             try {
-              await deleteHouseholdAction(editingHousehold.id);
+              await actions.deleteHousehold(editingHousehold.id);
               if (selectedHouseholdId === editingHousehold.id)
                 setSelectedHouseholdId(null);
               setEditingHousehold(null);
@@ -852,7 +885,7 @@ export default function Dashboard() {
           setInviteError("");
           startTransition(async () => {
             try {
-              await inviteToHousehold(editingHousehold.id, inviteEmail);
+              await actions.inviteToHousehold(editingHousehold.id, inviteEmail);
               setInviteEmail("");
               refreshMembers(editingHousehold.id);
             } catch (err: any) {
@@ -866,7 +899,7 @@ export default function Dashboard() {
           if (!editingHousehold) return;
           if (window.confirm(`${email} wirklich aus dem Haushalt entfernen?`)) {
             startTransition(async () => {
-              await removeMemberAction(editingHousehold.id, email);
+              await actions.removeMember(editingHousehold.id, email);
               refreshMembers(editingHousehold.id);
             });
           }
