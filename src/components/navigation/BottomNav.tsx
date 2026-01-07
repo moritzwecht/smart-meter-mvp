@@ -28,7 +28,7 @@ export const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
                         <button
                             key={tab.id}
                             onClick={() => onTabChange(tab.id)}
-                            className={`relative flex flex-col items-center justify-center p-2 rounded-full transition-all duration-300 min-w-16 ${isActive
+                            className={`relative flex flex-col items-center justify-center p-2 rounded-full transition-all duration-300 min-w-13 aspect-square ${isActive
                                 ? "text-background"
                                 : "text-background/60 hover:text-background"
                                 }`}
@@ -40,7 +40,7 @@ export const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
                                     transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                                 />
                             )}
-                            <Icon className={`w-5 h-5 mb-1 ${isActive ? "scale-110" : "scale-100"} transition-transform`} />
+                            <Icon className={`w-5 h-5 ${isActive ? "scale-120" : "scale-100"} transition-transform`} />
                             {/* <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span> */}
                         </button>
                     );
