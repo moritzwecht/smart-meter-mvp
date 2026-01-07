@@ -1,9 +1,8 @@
-"use client";
-
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Zap, Droplets, Flame, History, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Zap, Droplets, Flame, History, Trash2 } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Spinner";
+import { BaseDialog } from "@/components/ui/BaseDialog";
 
 interface MeterSettingsDialogProps {
     isOpen: boolean;
@@ -24,7 +23,14 @@ export function MeterSettingsDialog({
     onDeleteMeter,
     isPending,
 }: MeterSettingsDialogProps) {
-    if (!meter) return null;
+    const [lastMeter, setLastMeter] = useState(meter);
+    useEffect(() => {
+        if (meter) setLastMeter(meter);
+    }, [meter]);
+
+    const activeMeter = meter || lastMeter;
+
+    if (!activeMeter) return null;
 
     const types = [
         { type: "ELECTRICITY", icon: Zap, color: "text-amber-500", bg: "bg-amber-500/10", label: "Strom" },
@@ -32,10 +38,8 @@ export function MeterSettingsDialog({
         { type: "GAS", icon: Flame, color: "text-orange-500", bg: "bg-orange-500/10", label: "Gas" },
     ] as const;
 
-    const units = ["kWh", "m³", "l"];
-
     const calculateStats = () => {
-        const readings = meter.readings || [];
+        const readings = activeMeter.readings || [];
         if (readings.length < 2) return null;
 
         const sorted = [...readings].sort(
@@ -53,111 +57,92 @@ export function MeterSettingsDialog({
     const stats = calculateStats();
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
+        <BaseDialog
+            isOpen={isOpen}
+            onClose={onClose}
+            title={`${types.find(t => t.type === activeMeter.type)?.label || "Zähler"}zähler`}
+            className="sm:max-w-2xl"
+            footer={
+                <div className="flex gap-2">
+                    <button
+                        disabled={isPending}
+                        onClick={() => onDeleteMeter(activeMeter.id)}
+                        className="flex-1 btn btn-danger py-3 flex items-center justify-center gap-2"
                     >
-                        <div className="flex justify-between items-center p-3 border-b border-border">
-                            <h2 className="text-xl font-black tracking-tight">
-                                {types.find(t => t.type === meter.type)?.label || "Zähler"}zähler
-                            </h2>
-                            <button
-                                onClick={onClose}
-                                className="p-2 hover:bg-accent rounded-full transition-colors"
-                                aria-label="Schließen"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
-
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Statistik</label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {stats ? (
-                                        <>
-                                            <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50">
-                                                <div className="text-[10px] uppercase font-bold text-muted-foreground">Gesamtverbrauch</div>
-                                                <div className="text-2xl font-black">{formatNumber(stats.diff, 3)} {meter.unit}</div>
-                                                <div className="text-[10px] opacity-40">über {Math.floor(stats.days)} Tage</div>
-                                            </div>
-                                            <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50">
-                                                <div className="text-[10px] uppercase font-bold text-muted-foreground">Tagesdurchschnitt</div>
-                                                <div className="text-2xl font-black">{formatNumber(stats.avg, 2)} {meter.unit}</div>
-                                                <div className="text-[10px] opacity-40">pro 24 Stunden</div>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="col-span-full p-8 text-center bg-accent/20 rounded-2xl border border-dashed border-border text-xs text-muted-foreground italic">
-                                            Mindestens zwei Ablesungen für Statistik benötigt...
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Verlauf</label>
-                                <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50 relative">
-                                    {isPending && (
-                                        <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
-                                            <Spinner size={24} />
-                                        </div>
-                                    )}
-                                    {meter.readings && meter.readings.length > 0 ? (
-                                        [...meter.readings]
-                                            .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                            .map((r: any) => (
-                                                <div key={r.id} className="flex justify-between items-center p-3 hover:bg-accent/20 transition-colors group">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shrink-0">
-                                                            <History className="w-4 h-4 text-muted-foreground" />
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-sm font-black">{r.value} {meter.unit}</div>
-                                                            <div className="text-[10px] text-muted-foreground uppercase">
-                                                                {new Date(r.date).toLocaleDateString()},&nbsp;
-                                                                {new Date(r.date).toLocaleTimeString()}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <button
-                                                        disabled={isPending}
-                                                        onClick={() => onDeleteReading(r.id)}
-                                                        className="p-2 text-muted-foreground hover:text-red-500 transition-all disabled:pointer-events-none"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            ))
-                                    ) : (
-                                        <div className="p-12 text-center text-xs text-muted-foreground italic">Noch keine Ablesungen vorhanden...</div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-3 border-t border-border bg-accent/10 flex gap-2">
-                            <button
-                                disabled={isPending}
-                                onClick={() => onDeleteMeter(meter.id)}
-                                className="flex-1 btn btn-danger py-3 flex items-center justify-center gap-2"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                Zähler löschen
-                            </button>
-                            <button onClick={onClose} className="flex-1 btn btn-secondary py-3">
-                                Schließen
-                            </button>
-                        </div>
-                    </motion.div>
+                        <Trash2 className="w-4 h-4" />
+                        Zähler löschen
+                    </button>
+                    <button onClick={onClose} className="flex-1 btn btn-secondary py-3">
+                        Schließen
+                    </button>
                 </div>
-            )}
-        </AnimatePresence>
+            }
+        >
+            <div className="space-y-8">
+                <div className="space-y-4">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Statistik</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {stats ? (
+                            <>
+                                <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50">
+                                    <div className="text-[10px] uppercase font-bold text-muted-foreground">Gesamtverbrauch</div>
+                                    <div className="text-2xl font-black">{formatNumber(stats.diff, 3)} {activeMeter.unit}</div>
+                                    <div className="text-[10px] opacity-40">über {Math.floor(stats.days)} Tage</div>
+                                </div>
+                                <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50">
+                                    <div className="text-[10px] uppercase font-bold text-muted-foreground">Tagesdurchschnitt</div>
+                                    <div className="text-2xl font-black">{formatNumber(stats.avg, 2)} {activeMeter.unit}</div>
+                                    <div className="text-[10px] opacity-40">pro 24 Stunden</div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="col-span-full p-8 text-center bg-accent/20 rounded-2xl border border-dashed border-border text-xs text-muted-foreground italic">
+                                Mindestens zwei Ablesungen für Statistik benötigt...
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Verlauf</label>
+                    <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50 relative">
+                        {isPending && (
+                            <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
+                                <Spinner size={24} />
+                            </div>
+                        )}
+                        {activeMeter.readings && activeMeter.readings.length > 0 ? (
+                            [...activeMeter.readings]
+                                .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                .map((r: any) => (
+                                    <div key={r.id} className="flex justify-between items-center p-3 hover:bg-accent/20 transition-colors group">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shrink-0">
+                                                <History className="w-4 h-4 text-muted-foreground" />
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-black">{r.value} {activeMeter.unit}</div>
+                                                <div className="text-[10px] text-muted-foreground uppercase">
+                                                    {new Date(r.date).toLocaleDateString()},&nbsp;
+                                                    {new Date(r.date).toLocaleTimeString()}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            disabled={isPending}
+                                            onClick={() => onDeleteReading(r.id)}
+                                            className="p-2 text-muted-foreground hover:text-red-500 transition-all disabled:pointer-events-none"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))
+                        ) : (
+                            <div className="p-12 text-center text-xs text-muted-foreground italic">Noch keine Ablesungen vorhanden...</div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </BaseDialog>
     );
 }

@@ -2,8 +2,9 @@
 
 import { useOptimistic, useTransition, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Check, Trash2, Plus } from "lucide-react";
+import { Check, Trash2, Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
+import { BaseDialog } from "@/components/ui/BaseDialog";
 
 interface ListEditDialogProps {
     isOpen: boolean;
@@ -44,8 +45,9 @@ export function ListEditDialog({
     const activeList = list || lastList;
 
     const [optimisticList, addOptimisticAction] = useOptimistic(
-        activeList,
+        activeList || { name: "", items: [] },
         (state, action: { type: "toggle" | "add" | "delete"; payload: any }) => {
+            if (!state) return state;
             switch (action.type) {
                 case "toggle":
                     return {
@@ -80,139 +82,120 @@ export function ListEditDialog({
         }
     );
 
-    // Remove early null return to allow AnimatePresence to handle the exit animation
-    // if (!list) return null;
+    if (!activeList) return null;
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-3">
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
-                    >
-                        <div className="flex justify-between items-center p-3 border-b border-border">
-                            <h2 className="text-xl font-black tracking-tight">Liste bearbeiten</h2>
-                            <button
-                                onClick={onClose}
-                                className="p-2 hover:bg-accent rounded-full transition-colors"
-                                aria-label="Schließen"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
-                            <div className="space-y-2">
-                                <input
-                                    type="text"
-                                    value={activeList?.name || ""}
-                                    onChange={(e) => setList({ ...activeList, name: e.target.value })}
-                                    onBlur={() => activeList && onUpdateList(activeList.id, activeList.name)}
-                                    className="w-full text-lg font-black input-field"
-                                />
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <AnimatePresence mode="popLayout" initial={false}>
-                                        {[...(optimisticList.items || [])]
-                                            .filter((item, index, self) => {
-                                                if (!item.isOptimistic) return true;
-                                                // Only show optimistic item if no real item with same content exists yet
-                                                return !self.some(other => !other.isOptimistic && other.content === item.content);
-                                            })
-                                            .sort((a, b) => {
-                                                if (a.completed === b.completed) return 0;
-                                                return a.completed === "true" ? 1 : -1;
-                                            })
-                                            .map((item: any) => (
-                                                <motion.div
-                                                    key={item.id}
-                                                    layout
-                                                    initial={{ opacity: 0, scale: 0.9 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    exit={{ opacity: 0, scale: 0.9 }}
-                                                    transition={{
-                                                        layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
-                                                        opacity: { duration: 0.2 }
-                                                    }}
-                                                    className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
-                                                >
-                                                    <button
-                                                        onClick={() => {
-                                                            const newStatus = item.completed === "true" ? "false" : "true";
-                                                            startTransition(async () => {
-                                                                addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
-                                                                await onToggleItem(item.id, newStatus);
-                                                            });
-                                                        }}
-                                                        className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
-                                                            ? "bg-primary border-primary text-primary-foreground transform scale-105"
-                                                            : "hover:border-primary"
-                                                            } `}
-                                                    >
-                                                        {item.completed === "true" && <Check className="w-4 h-4" />}
-                                                    </button>
-                                                    <span
-                                                        className={`flex-1 text-sm font-medium ${item.completed === "true" ? "line-through opacity-40" : "text-foreground"
-                                                            } `}
-                                                    >
-                                                        {item.content}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => {
-                                                            startTransition(async () => {
-                                                                addOptimisticAction({ type: "delete", payload: { id: item.id } });
-                                                                await onDeleteItem(item.id);
-                                                            });
-                                                        }}
-                                                        className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </motion.div>
-                                            ))}
-                                    </AnimatePresence>
-
-                                    <form
-                                        onSubmit={(e) => {
-                                            e.preventDefault();
-                                            const content = newItemValue.trim();
-                                            if (!content) return;
-                                            setNewItemValue(""); // Instant clear
-                                            startTransition(async () => {
-                                                addOptimisticAction({ type: "add", payload: { content } });
-                                                await onAddItem(content);
-                                            });
-                                        }}
-                                        className="flex gap-2 mt-4"
-                                    >
-                                        <input
-                                            type="text"
-                                            placeholder="Neuer Punkt..."
-                                            value={newItemValue}
-                                            onChange={(e) => setNewItemValue(e.target.value)}
-                                            className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
-                                        />
-                                        <button type="submit" disabled={!newItemValue.trim()} className="btn btn-primary px-6 disabled:opacity-50">
-                                            <Plus className="w-5 h-5" />
-                                        </button>
-                                    </form>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-3 border-t border-border bg-accent/10">
-                            <button onClick={onClose} className="w-full btn btn-primary py-3">
-                                Fertig
-                            </button>
-                        </div>
-                    </motion.div>
+        <BaseDialog
+            isOpen={isOpen}
+            onClose={onClose}
+            title="Liste bearbeiten"
+            className="sm:max-w-2xl"
+            footer={
+                <button onClick={onClose} className="w-full btn btn-primary py-3">
+                    Fertig
+                </button>
+            }
+        >
+            <div className="space-y-8">
+                <div className="space-y-2">
+                    <input
+                        type="text"
+                        value={activeList?.name || ""}
+                        onChange={(e) => setList({ ...activeList, name: e.target.value })}
+                        onBlur={() => activeList && onUpdateList(activeList.id, activeList.name)}
+                        className="w-full text-lg font-black input-field"
+                    />
                 </div>
-            )}
-        </AnimatePresence>
+
+                <div className="space-y-4">
+                    <div className="space-y-2">
+                        <AnimatePresence mode="popLayout" initial={false}>
+                            {[...(optimisticList.items || [])]
+                                .filter((item, index, self) => {
+                                    if (!item.isOptimistic) return true;
+                                    // Only show optimistic item if no real item with same content exists yet
+                                    return !self.some(other => !other.isOptimistic && other.content === item.content);
+                                })
+                                .sort((a, b) => {
+                                    if (a.completed === b.completed) return 0;
+                                    return a.completed === "true" ? 1 : -1;
+                                })
+                                .map((item: any) => (
+                                    <motion.div
+                                        key={item.id}
+                                        layout
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{
+                                            layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
+                                            opacity: { duration: 0.2 }
+                                        }}
+                                        className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
+                                    >
+                                        <button
+                                            onClick={() => {
+                                                const newStatus = item.completed === "true" ? "false" : "true";
+                                                startTransition(async () => {
+                                                    addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
+                                                    await onToggleItem(item.id, newStatus);
+                                                });
+                                            }}
+                                            className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
+                                                ? "bg-primary border-primary text-primary-foreground transform scale-105"
+                                                : "hover:border-primary"
+                                                } `}
+                                        >
+                                            {item.completed === "true" && <Check className="w-4 h-4" />}
+                                        </button>
+                                        <span
+                                            className={`flex-1 text-sm font-medium ${item.completed === "true" ? "line-through opacity-40" : "text-foreground"
+                                                } `}
+                                        >
+                                            {item.content}
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                startTransition(async () => {
+                                                    addOptimisticAction({ type: "delete", payload: { id: item.id } });
+                                                    await onDeleteItem(item.id);
+                                                });
+                                            }}
+                                            className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </motion.div>
+                                ))}
+                        </AnimatePresence>
+
+                        <form
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                const content = newItemValue.trim();
+                                if (!content) return;
+                                setNewItemValue(""); // Instant clear
+                                startTransition(async () => {
+                                    addOptimisticAction({ type: "add", payload: { content } });
+                                    await onAddItem(content);
+                                });
+                            }}
+                            className="flex gap-2 mt-4"
+                        >
+                            <input
+                                type="text"
+                                placeholder="Neuer Punkt..."
+                                value={newItemValue}
+                                onChange={(e) => setNewItemValue(e.target.value)}
+                                className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
+                            />
+                            <button type="submit" disabled={!newItemValue.trim()} className="btn btn-primary px-6 disabled:opacity-50">
+                                <Plus className="w-5 h-5" />
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </BaseDialog>
     );
 }
