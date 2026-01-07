@@ -11,7 +11,7 @@ interface EfficiencySettingsDialogProps {
     household: any;
     meters: any[];
     onUpdateHousehold: (data: any) => Promise<void>;
-    onUpdateMeter: (id: number, name: string, type: string, unit: string, expectedDailyAverage: string, yearlyTarget: string, pricePerUnit: string, monthlyPayment: string) => Promise<void>;
+    onUpdateMeter: (id: number, type: string, unit: string, expectedDailyAverage: string, yearlyTarget: string, pricePerUnit: string, monthlyPayment: string) => Promise<void>;
     isPending: boolean;
 }
 
@@ -67,7 +67,6 @@ export function EfficiencySettingsDialog({
             if (data) {
                 await onUpdateMeter(
                     meter.id,
-                    meter.name,
                     meter.type,
                     meter.unit,
                     data.dailyAverage,
@@ -124,7 +123,9 @@ export function EfficiencySettingsDialog({
                                                                 <Droplets className="w-4 h-4" />}
                                                     </div>
                                                     <div>
-                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-50">{meter.name}</div>
+                                                        <div className="text-[10px] font-black uppercase tracking-widest opacity-50">
+                                                            {meter.type === "ELECTRICITY" ? "Strom" : meter.type === "WATER" ? "Wasser" : meter.type === "GAS" ? "Gas" : "Zähler"}
+                                                        </div>
                                                         <div className="text-xs font-bold">{meter.type}</div>
                                                     </div>
                                                 </div>

@@ -485,8 +485,9 @@ export async function getMeters(householdId: number) {
     });
 }
 
-export async function addMeter(householdId: number, name: string, type: string, unit: string) {
+export async function addMeter(householdId: number, type: string, unit: string) {
     await ensureHouseholdAccess(householdId);
+    const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
     await db.insert(meters).values({
         name,
         type,
@@ -634,7 +635,6 @@ export async function deleteTodoItem(id: number) {
 
 export async function updateMeter(
     id: number,
-    name: string,
     type: string,
     unit: string,
     expectedDailyAverage?: string,
@@ -645,6 +645,8 @@ export async function updateMeter(
     const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
     if (!meter) throw new Error("Zähler nicht gefunden");
     await ensureHouseholdAccess(meter.householdId);
+
+    const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
 
     await db.update(meters)
         .set({

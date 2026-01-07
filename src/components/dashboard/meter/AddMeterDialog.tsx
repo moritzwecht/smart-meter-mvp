@@ -58,7 +58,7 @@ export function AddMeterDialog({
                                         {types.map((t) => (
                                             <button
                                                 key={t.type}
-                                                onClick={() => setNewMeterData({ ...newMeterData, type: t.type, name: t.label })}
+                                                onClick={() => setNewMeterData({ ...newMeterData, type: t.type })}
                                                 className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${newMeterData.type === t.type
                                                     ? "border-primary bg-primary/5"
                                                     : "border-transparent bg-accent/30 hover:bg-accent/50"

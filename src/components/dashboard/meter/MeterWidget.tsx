@@ -57,7 +57,6 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    {/* <div className="font-bold text-sm uppercase tracking-tight truncate">{meter.name}</div> */}
                     {avg ? (
                         <div className="flex items-baseline gap-1">
                             <span className="text-xl font-black tabular-nums">{avg}</span>

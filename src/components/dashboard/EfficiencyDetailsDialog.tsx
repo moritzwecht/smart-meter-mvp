@@ -86,7 +86,9 @@ export function EfficiencyDetailsDialog({
                                         </div>
 
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-xs font-black uppercase tracking-widest opacity-50">{meter.name}</div>
+                                            <div className="text-xs font-black uppercase tracking-widest opacity-50">
+                                                {meter.type === "ELECTRICITY" ? "Strom" : meter.type === "WATER" ? "Wasser" : meter.type === "GAS" ? "Gas" : "Zähler"}
+                                            </div>
                                             <div className="flex items-baseline gap-2">
                                                 <span className="text-lg font-bold">{formatNumber(actual, 2)}</span>
                                                 <span className="text-[10px] font-bold text-muted-foreground">{meter.unit}/Tag</span>

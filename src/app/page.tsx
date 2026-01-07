@@ -702,7 +702,6 @@ export default function Dashboard() {
           startTransition(async () => {
             await addMeter(
               selectedHouseholdId!,
-              newMeterData.name,
               newMeterData.type,
               newMeterData.unit
             );
@@ -798,9 +797,9 @@ export default function Dashboard() {
         onClose={() => setEditingMeter(null)}
         meter={editingMeter!}
         isPending={isPending}
-        onUpdateMeter={(id, name, type, unit) => {
+        onUpdateMeter={(id, type, unit) => {
           startTransition(async () => {
-            await updateMeter(id, name, type, unit);
+            await updateMeter(id, type, unit);
             refreshWidgets(selectedHouseholdId!);
           });
         }}
@@ -922,8 +921,8 @@ export default function Dashboard() {
           await refreshHouseholds();
           await refreshWidgets(selectedHouseholdId!);
         }}
-        onUpdateMeter={async (id, name, type, unit, target, yearly, price, payment) => {
-          await updateMeter(id, name, type, unit, target, yearly, price, payment);
+        onUpdateMeter={async (id, type, unit, target, yearly, price, payment) => {
+          await updateMeter(id, type, unit, target, yearly, price, payment);
         }}
         isPending={isPending}
       />

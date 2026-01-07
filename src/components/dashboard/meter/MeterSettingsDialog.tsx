@@ -9,7 +9,7 @@ interface MeterSettingsDialogProps {
     isOpen: boolean;
     onClose: () => void;
     meter: any;
-    onUpdateMeter: (id: number, name: string, type: string, unit: string) => void;
+    onUpdateMeter: (id: number, type: string, unit: string) => void;
     onDeleteReading: (id: number) => void;
     isPending?: boolean;
 }
@@ -79,7 +79,7 @@ export function MeterSettingsDialog({
                                         <button
                                             key={t.type}
                                             disabled={isPending}
-                                            onClick={() => onUpdateMeter(meter.id, t.label, t.type, meter.unit)}
+                                            onClick={() => onUpdateMeter(meter.id, t.type, meter.unit)}
                                             className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${meter.type === t.type
                                                 ? "border-primary bg-primary/5"
                                                 : "border-transparent bg-accent/30 hover:bg-accent/50"
@@ -99,7 +99,7 @@ export function MeterSettingsDialog({
                                         <button
                                             key={u}
                                             disabled={isPending}
-                                            onClick={() => onUpdateMeter(meter.id, meter.name, meter.type, u)}
+                                            onClick={() => onUpdateMeter(meter.id, meter.type, u)}
                                             className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${meter.unit === u
                                                 ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                                                 : "bg-accent/50 hover:bg-accent text-muted-foreground"
@@ -113,7 +113,7 @@ export function MeterSettingsDialog({
                                         disabled={isPending}
                                         placeholder="Andere..."
                                         value={units.includes(meter.unit) ? "" : meter.unit}
-                                        onChange={(e) => onUpdateMeter(meter.id, meter.name, meter.type, e.target.value)}
+                                        onChange={(e) => onUpdateMeter(meter.id, meter.type, e.target.value)}
                                         className="flex-1 min-w-[120px] input-field font-bold"
                                     />
                                 </div>
