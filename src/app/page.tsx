@@ -372,7 +372,7 @@ export default function Dashboard() {
   const selectedHousehold = households.find(h => h.id === selectedHouseholdId);
 
   return (
-    <main className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto space-y-8 bg-background text-foreground">
+    <main className="min-h-screen p-4 pt-17 md:p-8 max-w-7xl mx-auto space-y-8 bg-background text-foreground">
       <DashboardHeader
         selectedHouseholdName={selectedHousehold ? selectedHousehold.name : "Wähle Haushalt"}
         isHouseholdMenuOpen={isHouseholdMenuOpen}
