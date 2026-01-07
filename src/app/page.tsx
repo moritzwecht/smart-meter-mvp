@@ -125,9 +125,21 @@ export default function Dashboard() {
       .equals(selectedHouseholdId)
       .toArray();
 
+    // Join readings and items
+    const [metersWithReadings, listsWithItems] = await Promise.all([
+      Promise.all(m.map(async meter => ({
+        ...meter,
+        readings: await db.readings.where('meterId').equals(meter.id).sortBy('date')
+      }))),
+      Promise.all(l.map(async list => ({
+        ...list,
+        items: await db.todoItems.where('listId').equals(list.id).sortBy('createdAt')
+      })))
+    ]);
+
     return [
-      ...m.map((i) => ({ ...i, widgetType: "METER" as const })),
-      ...l.map((i) => ({ ...i, widgetType: "LIST" as const })),
+      ...metersWithReadings.map((i) => ({ ...i, widgetType: "METER" as const })),
+      ...listsWithItems.map((i) => ({ ...i, widgetType: "LIST" as const })),
       ...n.map((i) => ({ ...i, widgetType: "NOTE" as const })),
     ].sort(
       (a, b) =>
@@ -139,11 +151,11 @@ export default function Dashboard() {
     localWidgets || [],
     (state: Widget[], newWidget: Widget) => [newWidget, ...state],
   );
-  const [editingNote, setEditingNote] = useState<Note | null>(null);
-  const [editingList, setEditingList] = useState<TodoList | null>(null);
-  const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
-  const [addingReadingForMeter, setAddingReadingForMeter] =
-    useState<Meter | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingListId, setEditingListId] = useState<number | null>(null);
+  const [editingMeterId, setEditingMeterId] = useState<number | null>(null);
+  const [addingReadingForMeterId, setAddingReadingForMeterId] =
+    useState<number | null>(null);
   const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
   const [newMeterData, setNewMeterData] = useState({
     name: "Neuer Zähler",
@@ -167,6 +179,11 @@ export default function Dashboard() {
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  const editingNote = optimisticWidgets.find(w => w.id === editingNoteId && w.widgetType === "NOTE") as Note | undefined;
+  const editingList = optimisticWidgets.find(w => w.id === editingListId && w.widgetType === "LIST") as TodoList | undefined;
+  const editingMeter = optimisticWidgets.find(w => w.id === editingMeterId && w.widgetType === "METER") as Meter | undefined;
+  const addingReadingForMeter = optimisticWidgets.find(w => w.id === addingReadingForMeterId && w.widgetType === "METER") as Meter | undefined;
 
   const refreshHouseholds = async () => {
     const data = await DataService.getHouseholds();
@@ -249,9 +266,16 @@ export default function Dashboard() {
   }, [session]);
 
   const refreshWidgets = async (householdId: number) => {
-    setIsWidgetsLoading(true);
+    // Only show loading if we don't have local widgets yet
+    const hasLocal = (await db.meters.where('householdId').equals(householdId).count()) > 0;
+    if (!hasLocal) setIsWidgetsLoading(true);
+
     try {
-      await DataService.getWidgets(householdId);
+      await DataService.getWidgets(householdId, {
+        notes: editingNoteId ? [editingNoteId] : [],
+        lists: editingListId ? [editingListId] : [],
+        meters: editingMeterId ? [editingMeterId] : []
+      });
     } finally {
       setIsWidgetsLoading(false);
     }
@@ -285,8 +309,7 @@ export default function Dashboard() {
     } else if (session && households.length === 0) {
       setLoading(false);
     }
-  }, [selectedHouseholdId, session, households.length]);
-
+  }, [selectedHouseholdId, session, households.length, editingNoteId, editingListId, editingMeterId]);
   const handleCreateHousehold = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newHouseholdName.trim()) return;
@@ -417,8 +440,8 @@ export default function Dashboard() {
                             {w.widgetType === "METER" && (
                               <MeterWidget
                                 meter={w}
-                                onAddReading={() => setAddingReadingForMeter(w)}
-                                onEditMeter={() => setEditingMeter(w)}
+                                onAddReading={() => setAddingReadingForMeterId(w.id)}
+                                onEditMeter={() => setEditingMeterId(w.id)}
                                 onPin={() => {
                                   startTransition(async () => {
                                     await DataService.toggleMeterPin(
@@ -432,7 +455,7 @@ export default function Dashboard() {
                             {w.widgetType === "NOTE" && (
                               <NoteWidget
                                 note={w}
-                                onEdit={() => setEditingNote(w)}
+                                onEdit={() => setEditingNoteId(w.id)}
                                 onPin={() => {
                                   startTransition(async () => {
                                     await DataService.toggleNotePin(
@@ -446,7 +469,7 @@ export default function Dashboard() {
                             {w.widgetType === "LIST" && (
                               <ListWidget
                                 list={w as TodoList}
-                                onEdit={() => setEditingList(w as TodoList)}
+                                onEdit={() => setEditingListId(w.id)}
                                 onPin={() => {
                                   startTransition(async () => {
                                     await DataService.toggleTodoListPin(
@@ -480,7 +503,7 @@ export default function Dashboard() {
                         <ListWidget
                           key={w.id}
                           list={w as TodoList}
-                          onEdit={() => setEditingList(w as TodoList)}
+                          onEdit={() => setEditingListId(w.id)}
                           onPin={() => {
                             startTransition(async () => {
                               await DataService.toggleTodoListPin(
@@ -517,7 +540,7 @@ export default function Dashboard() {
                         <NoteWidget
                           key={w.id}
                           note={w as Note}
-                          onEdit={() => setEditingNote(w as Note)}
+                          onEdit={() => setEditingNoteId(w.id)}
                           onPin={() => {
                             startTransition(async () => {
                               await DataService.toggleNotePin(
@@ -554,10 +577,8 @@ export default function Dashboard() {
                         <MeterWidget
                           key={w.id}
                           meter={w as Meter}
-                          onAddReading={() =>
-                            setAddingReadingForMeter(w as Meter)
-                          }
-                          onEditMeter={() => setEditingMeter(w as Meter)}
+                          onAddReading={() => setAddingReadingForMeterId(w.id)}
+                          onEditMeter={() => setEditingMeterId(w.id)}
                           onPin={() => {
                             startTransition(async () => {
                               await DataService.toggleMeterPin(
@@ -739,7 +760,7 @@ export default function Dashboard() {
 
       <MeterReadingDialog
         isOpen={!!addingReadingForMeter}
-        onClose={() => setAddingReadingForMeter(null)}
+        onClose={() => setAddingReadingForMeterId(null)}
         meter={addingReadingForMeter!}
         value={newItemValue}
         setValue={setNewItemValue}
@@ -754,14 +775,14 @@ export default function Dashboard() {
               new Date(),
             );
             setNewItemValue("");
-            setAddingReadingForMeter(null);
+            setAddingReadingForMeterId(null);
           });
         }}
         onOpenSettings={() => {
           if (addingReadingForMeter) {
-            const meter = addingReadingForMeter;
-            setAddingReadingForMeter(null);
-            setEditingMeter(meter);
+            const meterId = addingReadingForMeter.id;
+            setAddingReadingForMeterId(null);
+            setEditingMeterId(meterId);
           }
         }}
       />
@@ -769,38 +790,41 @@ export default function Dashboard() {
       <NoteEditDialog
         isOpen={!!editingNote}
         note={editingNote!}
-        setNote={setEditingNote}
-        onClose={() => setEditingNote(null)}
-        isPending={isPending}
-        onSave={() => {
-          if (!editingNote) return;
-          startTransition(async () => {
-            await DataService.updateNote(
-              editingNote.id,
-              editingNote.title,
-              editingNote.content || undefined,
-            );
+        setNote={(note) => {
+          db.notes.update(note.id, {
+            title: note.title,
+            content: note.content,
           });
         }}
+        onClose={() => setEditingNoteId(null)}
+        isPending={isPending}
+        onSave={(title, content) => {
+          if (!editingNoteId) return;
+          DataService.updateNote(
+            editingNoteId,
+            title,
+            content || undefined,
+          );
+        }}
         onDelete={(id) => {
-          startTransition(async () => {
-            await DataService.deleteNote(id);
-          });
+          DataService.deleteNote(id);
         }}
       />
 
       <ListEditDialog
         isOpen={!!editingList}
         list={editingList!}
-        setList={setEditingList}
-        onClose={() => setEditingList(null)}
+        setList={(list) => {
+          db.todoLists.update(list.id, { name: list.name });
+        }}
+        onClose={() => setEditingListId(null)}
         isPending={isPending}
         onUpdateList={async (id, name) => {
           await DataService.updateTodoList(id, name);
         }}
         onAddItem={async (content) => {
-          if (!editingList) return;
-          await DataService.addTodoItem(editingList.id, content);
+          if (!editingListId) return;
+          await DataService.addTodoItem(editingListId, content);
         }}
         onToggleItem={async (id, status) => {
           await DataService.toggleTodoItem(id, status);
@@ -809,9 +833,8 @@ export default function Dashboard() {
           await DataService.deleteTodoItem(id);
         }}
         onDeleteList={(id) => {
-          startTransition(async () => {
-            await DataService.deleteTodoList(id);
-          });
+          DataService.deleteTodoList(id);
+          setEditingListId(null);
         }}
         newItemValue={newItemValue}
         setNewItemValue={setNewItemValue}
@@ -819,20 +842,15 @@ export default function Dashboard() {
 
       <MeterSettingsDialog
         isOpen={!!editingMeter}
-        onClose={() => setEditingMeter(null)}
+        onClose={() => setEditingMeterId(null)}
         meter={editingMeter!}
         isPending={isPending}
         onUpdateMeter={(id, type, unit) => {
-          startTransition(async () => {
-            await DataService.updateMeter(id, type, unit);
-          });
+          DataService.updateMeter(id, type, unit);
         }}
         onDeleteReading={(id) => {
           if (window.confirm("Ablesung löschen?")) {
-            startTransition(async () => {
-              await actions.deleteReading(id);
-              refreshWidgets(selectedHouseholdId!);
-            });
+            DataService.deleteReading(id);
           }
         }}
         onDeleteMeter={(id) => {
@@ -841,10 +859,8 @@ export default function Dashboard() {
               "Möchtest du diesen Zähler wirklich löschen? Alle zugehörigen Ablesungen werden ebenfalls gelöscht.",
             )
           ) {
-            startTransition(async () => {
-              await DataService.deleteMeter(id);
-              setEditingMeter(null);
-            });
+            DataService.deleteMeter(id);
+            setEditingMeterId(null);
           }
         }}
       />

@@ -488,13 +488,14 @@ export async function getMeters(householdId: number) {
 export async function addMeter(householdId: number, type: string, unit: string) {
     await ensureHouseholdAccess(householdId);
     const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
-    await db.insert(meters).values({
+    const [row] = await db.insert(meters).values({
         name,
         type,
         unit,
         householdId,
-    });
+    }).returning();
     revalidatePath("/");
+    return row;
 }
 
 export async function getTodoLists(householdId: number) {
@@ -509,11 +510,12 @@ export async function getTodoLists(householdId: number) {
 
 export async function addTodoList(householdId: number, name: string) {
     await ensureHouseholdAccess(householdId);
-    await db.insert(todoLists).values({
+    const [row] = await db.insert(todoLists).values({
         name,
         householdId,
-    });
+    }).returning();
     revalidatePath("/");
+    return row;
 }
 
 export async function getNotes(householdId: number) {
@@ -525,12 +527,13 @@ export async function getNotes(householdId: number) {
 
 export async function addNote(householdId: number, title: string, content?: string) {
     await ensureHouseholdAccess(householdId);
-    await db.insert(notes).values({
+    const [row] = await db.insert(notes).values({
         title,
         content,
         householdId,
-    });
+    }).returning();
     revalidatePath("/");
+    return row;
 }
 
 
@@ -593,11 +596,12 @@ export async function addTodoItem(listId: number, content: string) {
     if (!list) throw new Error("Liste nicht gefunden");
     await ensureHouseholdAccess(list.householdId);
 
-    await db.insert(todoItems).values({
+    const [row] = await db.insert(todoItems).values({
         listId,
         content,
-    });
+    }).returning();
     revalidatePath("/");
+    return row;
 }
 
 export async function toggleTodoItem(id: number, completed: string) {
@@ -676,12 +680,13 @@ export async function addReading(meterId: number, value: string, date: Date) {
         normalized = parts.join(""); // something is weird, just strip dots
     }
 
-    await db.insert(readings).values({
+    const [row] = await db.insert(readings).values({
         meterId,
         value: normalized,
         date,
-    });
+    }).returning();
     revalidatePath("/");
+    return row;
 }
 
 export async function deleteReading(id: number) {

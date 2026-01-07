@@ -18,7 +18,7 @@ export const DataService = {
         return await db.households.toArray();
     },
 
-    async getWidgets(householdId: number) {
+    async getWidgets(householdId: number, lockedIds?: { meters?: number[], lists?: number[], notes?: number[] }) {
         if (navigator.onLine) {
             try {
                 const [m, l, n] = await Promise.all([
@@ -27,24 +27,72 @@ export const DataService = {
                     actions.getNotes(householdId)
                 ]);
 
-                const meters = m.map(i => ({ ...i, widgetType: 'METER' as const }));
-                const lists = l.map(i => ({ ...i, widgetType: 'LIST' as const }));
-                const notes = n.map(i => ({ ...i, widgetType: 'NOTE' as const }));
+                // Get pending IDs to avoid overwriting local drafts
+                const pendingOps = await db.syncQueue.toArray();
+                const pendingIds = {
+                    METER: new Set([
+                        ...pendingOps.filter(o => o.entity === 'METER').map(o => (o.data as any).id || (o.data as any).tempId),
+                        ...(lockedIds?.meters || [])
+                    ]),
+                    LIST: new Set([
+                        ...pendingOps.filter(o => o.entity === 'LIST').map(o => (o.data as any).id || (o.data as any).tempId),
+                        ...(lockedIds?.lists || [])
+                    ]),
+                    NOTE: new Set([
+                        ...pendingOps.filter(o => o.entity === 'NOTE').map(o => (o.data as any).id || (o.data as any).tempId),
+                        ...(lockedIds?.notes || [])
+                    ]),
+                };
 
-                // Clear and update local tables for this household
-                // In a real app we'd be more surgical, but for MVP bulk is fine
-                await db.meters.where('householdId').equals(householdId).delete();
-                await db.meters.bulkAdd(m);
+                // Surgical update to avoid flicker and respect drafts
+                await db.transaction('rw', [db.meters, db.todoLists, db.notes, db.readings, db.todoItems], async () => {
+                    // Update Meters
+                    const serverMeterIds = new Set(m.map(i => i.id));
+                    await db.meters.where('householdId').equals(householdId)
+                        .filter(local => local.id > 0 && !serverMeterIds.has(local.id) && !pendingIds.METER.has(local.id))
+                        .delete();
+                    await db.meters.bulkPut(m.filter(i => !pendingIds.METER.has(i.id)));
 
-                await db.todoLists.where('householdId').equals(householdId).delete();
-                await db.todoLists.bulkAdd(l);
+                    // Update Lists
+                    const serverListIds = new Set(l.map(i => i.id));
+                    await db.todoLists.where('householdId').equals(householdId)
+                        .filter(local => local.id > 0 && !serverListIds.has(local.id) && !pendingIds.LIST.has(local.id))
+                        .delete();
+                    await db.todoLists.bulkPut(l.filter(i => !pendingIds.LIST.has(i.id)));
 
-                await db.notes.where('householdId').equals(householdId).delete();
-                await db.notes.bulkAdd(n);
+                    // Update Notes
+                    const serverNoteIds = new Set(n.map(i => i.id));
+                    await db.notes.where('householdId').equals(householdId)
+                        .filter(local => local.id > 0 && !serverNoteIds.has(local.id) && !pendingIds.NOTE.has(local.id))
+                        .delete();
+                    await db.notes.bulkPut(n.filter(i => !pendingIds.NOTE.has(i.id)));
 
-                const all = [...meters, ...lists, ...notes].sort((a, b) =>
-                    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                );
+                    // Also sync sub-entities (readings and items)
+                    for (const meter of m) {
+                        if (meter.readings) {
+                            const sIds = new Set(meter.readings.map(r => r.id));
+                            await db.readings.where('meterId').equals(meter.id)
+                                .filter(local => local.id > 0 && !sIds.has(local.id))
+                                .delete();
+                            await db.readings.bulkPut(meter.readings);
+                        }
+                    }
+                    for (const list of l) {
+                        if (list.items) {
+                            const sIds = new Set(list.items.map(i => i.id));
+                            await db.todoItems.where('listId').equals(list.id)
+                                .filter(local => local.id > 0 && !sIds.has(local.id))
+                                .delete();
+                            await db.todoItems.bulkPut(list.items);
+                        }
+                    }
+                });
+
+                const all = [
+                    ...m.map(i => ({ ...i, widgetType: 'METER' as const })),
+                    ...l.map(i => ({ ...i, widgetType: 'LIST' as const })),
+                    ...n.map(i => ({ ...i, widgetType: 'NOTE' as const }))
+                ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
                 return all;
             } catch (e) {
                 console.error("Failed to fetch remote widgets", e);
@@ -75,10 +123,19 @@ export const DataService = {
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'READING',
-            data: { meterId, value, date }
+            data: { meterId, value, date, tempId }
         });
 
         return reading;
+    },
+
+    async deleteReading(id: number) {
+        await db.readings.delete(id);
+        await SyncManager.enqueue({
+            type: 'DELETE',
+            entity: 'READING',
+            data: { id }
+        });
     },
 
     async addNote(householdId: number, title: string, content?: string) {
@@ -89,7 +146,7 @@ export const DataService = {
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'NOTE',
-            data: { householdId, title, content }
+            data: { householdId, title, content, tempId }
         });
 
         return note;
@@ -121,7 +178,7 @@ export const DataService = {
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'LIST',
-            data: { householdId, name }
+            data: { householdId, name, tempId }
         });
 
         return list;
@@ -153,7 +210,7 @@ export const DataService = {
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'ITEM',
-            data: { listId, content }
+            data: { listId, content, tempId }
         });
 
         return item;
@@ -186,7 +243,7 @@ export const DataService = {
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'METER',
-            data: { householdId, type, unit }
+            data: { householdId, type, unit, tempId }
         });
 
         return meter;

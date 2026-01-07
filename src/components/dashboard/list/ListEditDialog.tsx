@@ -84,12 +84,19 @@ export function ListEditDialog({
         }
     );
 
+    const handleClose = () => {
+        if (activeList) {
+            onUpdateList(activeList.id, activeList.name);
+        }
+        onClose();
+    };
+
     if (!activeList) return null;
 
     return (
         <BaseDialog
             isOpen={isOpen}
-            onClose={onClose}
+            onClose={handleClose}
             title="Liste bearbeiten"
             className="sm:max-w-2xl"
             headerAction={
@@ -106,7 +113,7 @@ export function ListEditDialog({
                 </button>
             }
             footer={
-                <button onClick={onClose} className="w-full btn btn-primary py-3">
+                <button onClick={handleClose} className="w-full btn btn-primary py-3">
                     Fertig
                 </button>
             }
