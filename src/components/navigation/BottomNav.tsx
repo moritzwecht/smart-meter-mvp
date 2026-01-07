@@ -18,8 +18,8 @@ export const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
     ];
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-6 pt-2 bg-gradient-to-t from-background via-background to-transparent md:max-w-md md:mx-auto">
-            <div className="bg-foreground text-background backdrop-blur-xl border border-foreground/10 rounded-2xl flex items-center justify-between p-2 shadow-2xl shadow-foreground/20">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 px-5 pb-5 pt-2 bg-gradient-to-t from-background via-background to-transparent md:max-w-md md:mx-auto">
+            <div className="bg-foreground text-background backdrop-blur-xl border border-foreground/10 rounded-full flex items-center justify-between p-2 shadow-2xl shadow-foreground/20">
                 {tabs.map((tab) => {
                     const isActive = activeTab === tab.id;
                     const Icon = tab.icon;
@@ -28,20 +28,20 @@ export const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
                         <button
                             key={tab.id}
                             onClick={() => onTabChange(tab.id)}
-                            className={`relative flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 min-w-16 ${isActive
-                                    ? "text-background"
-                                    : "text-background/60 hover:text-background"
+                            className={`relative flex flex-col items-center justify-center p-2 rounded-full transition-all duration-300 min-w-16 ${isActive
+                                ? "text-background"
+                                : "text-background/60 hover:text-background"
                                 }`}
                         >
                             {isActive && (
                                 <motion.div
                                     layoutId="activeTab"
-                                    className="absolute inset-0 bg-background/10 rounded-xl"
+                                    className="absolute inset-0 bg-background/10 rounded-full"
                                     transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                                 />
                             )}
                             <Icon className={`w-5 h-5 mb-1 ${isActive ? "scale-110" : "scale-100"} transition-transform`} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span>
+                            {/* <span className="text-[10px] font-bold uppercase tracking-wider">{tab.label}</span> */}
                         </button>
                     );
                 })}
