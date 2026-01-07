@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition } from "react";
+import { useOptimistic, useTransition, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Check, Trash2, Plus } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
@@ -35,8 +35,16 @@ export function ListEditDialog({
     const [isTransitionPending, startTransition] = useTransition();
     const isPending = parentIsPending || isTransitionPending;
 
+    // Preserve list for exit animations
+    const [lastList, setLastList] = useState(list);
+    useEffect(() => {
+        if (list) setLastList(list);
+    }, [list]);
+
+    const activeList = list || lastList;
+
     const [optimisticList, addOptimisticAction] = useOptimistic(
-        list,
+        activeList,
         (state, action: { type: "toggle" | "add" | "delete"; payload: any }) => {
             switch (action.type) {
                 case "toggle":
@@ -54,7 +62,7 @@ export function ListEditDialog({
                         items: [
                             ...(state.items || []),
                             {
-                                id: `temp-${Math.random()}`,
+                                id: `temp-${Date.now()}`,
                                 content: action.payload.content,
                                 completed: "false",
                                 isOptimistic: true,
@@ -72,7 +80,8 @@ export function ListEditDialog({
         }
     );
 
-    if (!list) return null;
+    // Remove early null return to allow AnimatePresence to handle the exit animation
+    // if (!list) return null;
 
     return (
         <AnimatePresence>
@@ -99,9 +108,9 @@ export function ListEditDialog({
                             <div className="space-y-2">
                                 <input
                                     type="text"
-                                    value={list.name}
-                                    onChange={(e) => setList({ ...list, name: e.target.value })}
-                                    onBlur={() => onUpdateList(list.id, list.name)}
+                                    value={activeList?.name || ""}
+                                    onChange={(e) => setList({ ...activeList, name: e.target.value })}
+                                    onBlur={() => activeList && onUpdateList(activeList.id, activeList.name)}
                                     className="w-full text-lg font-black input-field"
                                 />
                             </div>
