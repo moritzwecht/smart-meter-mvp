@@ -21,11 +21,6 @@ export const households = pgTable("households", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
     userId: integer("user_id").references(() => users.id).notNull(),
-    sqm: integer("sqm"),
-    persons: integer("persons"),
-    heatingType: text("heating_type"), // 'CENTRAL', 'GAS', 'ELECTRIC', 'HEAT_PUMP'
-    waterHeatingType: text("water_heating_type"), // 'CENTRAL', 'GAS', 'ELECTRIC'
-    showEfficiency: text("show_efficiency").default("false"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -35,10 +30,6 @@ export const meters = pgTable("meters", {
     type: text("type").notNull(), // 'ELECTRICITY', 'GAS', 'WATER'
     householdId: integer("household_id").references(() => households.id).notNull(),
     unit: text("unit").notNull(),
-    expectedDailyAverage: text("expected_daily_average"),
-    yearlyTarget: text("yearly_target"),
-    pricePerUnit: text("price_per_unit"),
-    monthlyPayment: text("monthly_payment"),
     isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });

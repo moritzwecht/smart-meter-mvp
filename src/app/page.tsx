@@ -9,7 +9,6 @@ import {
   getHouseholds as getHouseholdsAction,
   createHousehold as createHouseholdAction,
   updateHousehold as updateHouseholdAction,
-  updateHouseholdDetails,
   deleteHousehold as deleteHouseholdAction,
   removeMember as removeMemberAction,
   getMeters,
@@ -45,11 +44,7 @@ import { HouseholdMenu } from "@/components/dashboard/household/HouseholdMenu";
 import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
 import { NoteWidget } from "@/components/dashboard/note/NoteWidget";
 import { ListWidget } from "@/components/dashboard/list/ListWidget";
-import { EfficiencyWidget } from "@/components/dashboard/EfficiencyWidget";
-import { EfficiencySettingsDialog } from "@/components/dashboard/EfficiencySettingsDialog";
-import { EfficiencyDetailsDialog } from "@/components/dashboard/EfficiencyDetailsDialog";
 
-// Dialog Components
 // Dialog Components
 import { HouseholdSettingsDialog } from "@/components/dashboard/household/HouseholdSettingsDialog";
 import { AddMeterDialog } from "@/components/dashboard/meter/AddMeterDialog";
@@ -68,11 +63,6 @@ interface Household {
   id: number;
   name: string;
   userId: number;
-  sqm?: number;
-  persons?: number;
-  heatingType?: string;
-  waterHeatingType?: string;
-  showEfficiency?: string;
   createdAt: string;
 }
 
@@ -121,7 +111,7 @@ interface Note {
   createdAt: string | Date;
 }
 
-type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' }) | { id: string | number; widgetType: 'EFFICIENCY', createdAt: string | Date, householdId: number, isPinned?: string };
+type Widget = (Meter & { widgetType: 'METER' }) | (TodoList & { widgetType: 'LIST' }) | (Note & { widgetType: 'NOTE' });
 
 interface ProfileData {
   name: string;
@@ -150,8 +140,6 @@ export default function Dashboard() {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [editingMeter, setEditingMeter] = useState<Meter | null>(null);
-  const [showEfficiencySettings, setShowEfficiencySettings] = useState(false);
-  const [showEfficiencyDetails, setShowEfficiencyDetails] = useState(false);
   const [addingReadingForMeter, setAddingReadingForMeter] = useState<Meter | null>(null);
   const [showAddMeterDialog, setShowAddMeterDialog] = useState(false);
   const [newMeterData, setNewMeterData] = useState({ name: "Neuer Zähler", type: "ELECTRICITY", unit: "kWh" });
@@ -283,7 +271,6 @@ export default function Dashboard() {
         setSession(data.session);
         if (data.session) {
           await refreshHouseholds();
-          // The selectedHouseholdId useEffect will trigger refreshWidgets
         } else {
           setLoading(false);
         }
@@ -303,7 +290,6 @@ export default function Dashboard() {
 
       return () => clearInterval(interval);
     } else if (session && households.length === 0) {
-      // If session exists but no households, we can stop loading (will show 0 results or prompt)
       setLoading(false);
     }
   }, [selectedHouseholdId, session, households.length]);
@@ -368,7 +354,7 @@ export default function Dashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-sm space-y-8"
+          className="w-full max-sm space-y-8"
         >
           <div className="text-center space-y-2">
             <h1 className="text-4xl font-black tracking-tighter text-foreground">HOME</h1>
@@ -401,7 +387,7 @@ export default function Dashboard() {
           selectedHouseholdId={selectedHouseholdId}
           onSelectHousehold={(id) => {
             if (id !== selectedHouseholdId) {
-              setWidgets([]); // Clear widgets to show skeleton
+              setWidgets([]);
             }
             setSelectedHouseholdId(id);
             setIsHouseholdMenuOpen(false);
@@ -425,20 +411,10 @@ export default function Dashboard() {
             </div>
           ) : (
             <>
-
               {activeTab === "dashboard" && (
                 <div className="space-y-12 pb-24">
-                  {optimisticWidgets.filter(w => w.isPinned === 'true').length > 0 || selectedHousehold?.showEfficiency === "true" ? (
+                  {optimisticWidgets.filter(w => w.isPinned === 'true').length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {selectedHousehold?.showEfficiency === "true" && (
-                        <EfficiencyWidget
-                          key="efficiency-barometer"
-                          household={selectedHousehold}
-                          meters={widgets.filter(m => m.widgetType === 'METER')}
-                          onOpenSettings={() => setShowEfficiencySettings(true)}
-                          onOpenDetails={() => setShowEfficiencyDetails(true)}
-                        />
-                      )}
                       {optimisticWidgets
                         .filter((w) => w.isPinned === "true")
                         .map((w) => (
@@ -746,8 +722,8 @@ export default function Dashboard() {
           )}
         </div>
       ) : (
-        <div className="py-24 text-center border-2 border-dashed border-black/20">
-          <p className="font-bold uppercase tracking-widest opacity-30">Wähle oder erstelle einen Haushalt</p>
+        <div className="py-24 text-center border-2 border-dashed border-foreground/5 rounded-3xl">
+          <p className="text-sm text-muted-foreground">Wähle oder erstelle einen Haushalt</p>
         </div>
       )}
 
@@ -937,29 +913,6 @@ export default function Dashboard() {
           }
         }}
         currentUserEmail={session?.email}
-      />
-
-
-      <EfficiencySettingsDialog
-        isOpen={showEfficiencySettings}
-        onClose={() => setShowEfficiencySettings(false)}
-        household={selectedHousehold!}
-        meters={widgets.filter(w => w.widgetType === 'METER')}
-        onUpdateHousehold={async (data) => {
-          await updateHouseholdDetails(selectedHouseholdId!, data);
-          await refreshHouseholds();
-          await refreshWidgets(selectedHouseholdId!);
-        }}
-        onUpdateMeter={async (id, type, unit, target, yearly, price, payment) => {
-          await updateMeter(id, type, unit, target, yearly, price, payment);
-        }}
-        isPending={isPending}
-      />
-
-      <EfficiencyDetailsDialog
-        isOpen={showEfficiencyDetails}
-        onClose={() => setShowEfficiencyDetails(false)}
-        meters={widgets.filter(w => w.widgetType === 'METER')}
       />
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />

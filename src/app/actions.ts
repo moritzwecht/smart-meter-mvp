@@ -533,13 +533,6 @@ export async function addNote(householdId: number, title: string, content?: stri
     revalidatePath("/");
 }
 
-export async function updateHouseholdDetails(id: number, data: { sqm?: number; persons?: number; heatingType?: string; waterHeatingType?: string; showEfficiency?: string }) {
-    await ensureHouseholdAccess(id);
-    await db.update(households)
-        .set(data)
-        .where(eq(households.id, id));
-    revalidatePath("/");
-}
 
 export async function getHouseholdWithDetails(id: number) {
     await ensureHouseholdAccess(id);
@@ -636,11 +629,7 @@ export async function deleteTodoItem(id: number) {
 export async function updateMeter(
     id: number,
     type: string,
-    unit: string,
-    expectedDailyAverage?: string,
-    yearlyTarget?: string,
-    pricePerUnit?: string,
-    monthlyPayment?: string
+    unit: string
 ) {
     const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
     if (!meter) throw new Error("Zähler nicht gefunden");
@@ -652,11 +641,7 @@ export async function updateMeter(
         .set({
             name,
             type,
-            unit,
-            expectedDailyAverage,
-            yearlyTarget,
-            pricePerUnit,
-            monthlyPayment
+            unit
         })
         .where(eq(meters.id, id));
     revalidatePath("/");

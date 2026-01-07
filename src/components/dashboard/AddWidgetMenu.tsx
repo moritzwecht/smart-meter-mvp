@@ -7,13 +7,12 @@ import { cn } from "@/lib/utils";
 interface AddWidgetMenuProps {
     isOpen: boolean;
     isPending?: boolean;
-    onAddWidget: (type: "METER" | "LIST" | "NOTE" | "EFFICIENCY") => void;
+    onAddWidget: (type: "METER" | "LIST" | "NOTE") => void;
 }
 
 export function AddWidgetMenu({ isOpen, isPending, onAddWidget }: AddWidgetMenuProps) {
     const options = [
         { type: "METER", icon: <Zap className="w-5 h-5" />, label: "Zähler", desc: "Strom, Gas, Wasser" },
-        { type: "EFFICIENCY", icon: <BarChart3 className="w-5 h-5" />, label: "Effizienz", desc: "Barometer & Trends" },
         { type: "LIST", icon: <ListTodo className="w-5 h-5" />, label: "Liste (Beta)", desc: "Aufgaben & Pläne" },
         { type: "NOTE", icon: <FileText className="w-5 h-5" />, label: "Notiz (Beta)", desc: "Schnelle Gedanken" },
     ] as const;
