@@ -11,6 +11,7 @@ interface MeterSettingsDialogProps {
     meter: any;
     onUpdateMeter: (id: number, type: string, unit: string) => void;
     onDeleteReading: (id: number) => void;
+    onDeleteMeter: (id: number) => void;
     isPending?: boolean;
 }
 
@@ -20,6 +21,7 @@ export function MeterSettingsDialog({
     meter,
     onUpdateMeter,
     onDeleteReading,
+    onDeleteMeter,
     isPending,
 }: MeterSettingsDialogProps) {
     if (!meter) return null;
@@ -61,7 +63,9 @@ export function MeterSettingsDialog({
                         className="w-full max-w-2xl bg-card border border-border shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[90vh]"
                     >
                         <div className="flex justify-between items-center p-3 border-b border-border">
-                            <h2 className="text-xl font-black tracking-tight">Zähler bearbeiten</h2>
+                            <h2 className="text-xl font-black tracking-tight">
+                                {types.find(t => t.type === meter.type)?.label || "Zähler"}zähler
+                            </h2>
                             <button
                                 onClick={onClose}
                                 className="p-2 hover:bg-accent rounded-full transition-colors"
@@ -72,52 +76,6 @@ export function MeterSettingsDialog({
                         </div>
 
                         <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Typ</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {types.map((t) => (
-                                        <button
-                                            key={t.type}
-                                            disabled={isPending}
-                                            onClick={() => onUpdateMeter(meter.id, t.type, meter.unit)}
-                                            className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${meter.type === t.type
-                                                ? "border-primary bg-primary/5"
-                                                : "border-transparent bg-accent/30 hover:bg-accent/50"
-                                                } ${isPending ? "opacity-50 cursor-not-allowed" : ""}`}
-                                        >
-                                            <t.icon className={`w-6 h-6 ${t.color}`} />
-                                            <span className="text-[10px] font-bold uppercase">{t.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Einheit</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {units.map((u) => (
-                                        <button
-                                            key={u}
-                                            disabled={isPending}
-                                            onClick={() => onUpdateMeter(meter.id, meter.type, u)}
-                                            className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${meter.unit === u
-                                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
-                                                : "bg-accent/50 hover:bg-accent text-muted-foreground"
-                                                } ${isPending ? "opacity-50 cursor-not-allowed" : ""}`}
-                                        >
-                                            {u}
-                                        </button>
-                                    ))}
-                                    <input
-                                        type="text"
-                                        disabled={isPending}
-                                        placeholder="Andere..."
-                                        value={units.includes(meter.unit) ? "" : meter.unit}
-                                        onChange={(e) => onUpdateMeter(meter.id, meter.type, e.target.value)}
-                                        className="flex-1 min-w-[120px] input-field font-bold"
-                                    />
-                                </div>
-                            </div>
 
                             <div className="space-y-4">
                                 <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Statistik</label>
@@ -184,8 +142,16 @@ export function MeterSettingsDialog({
                             </div>
                         </div>
 
-                        <div className="p-3 border-t border-border bg-accent/10">
-                            <button onClick={onClose} className="w-full btn btn-primary py-3">
+                        <div className="p-3 border-t border-border bg-accent/10 flex gap-2">
+                            <button
+                                disabled={isPending}
+                                onClick={() => onDeleteMeter(meter.id)}
+                                className="flex-1 btn btn-danger py-3 flex items-center justify-center gap-2"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Zähler löschen
+                            </button>
+                            <button onClick={onClose} className="flex-1 btn btn-secondary py-3">
                                 Schließen
                             </button>
                         </div>

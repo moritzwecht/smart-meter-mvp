@@ -50,7 +50,7 @@ import { EfficiencySettingsDialog } from "@/components/dashboard/EfficiencySetti
 import { EfficiencyDetailsDialog } from "@/components/dashboard/EfficiencyDetailsDialog";
 
 // Dialog Components
-import { ProfileDialog } from "@/components/dashboard/profile/ProfileDialog";
+// Dialog Components
 import { HouseholdSettingsDialog } from "@/components/dashboard/household/HouseholdSettingsDialog";
 import { AddMeterDialog } from "@/components/dashboard/meter/AddMeterDialog";
 import { MeterReadingDialog } from "@/components/dashboard/meter/MeterReadingDialog";
@@ -158,7 +158,6 @@ export default function Dashboard() {
   const [editingHousehold, setEditingHousehold] = useState<Household | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [newItemValue, setNewItemValue] = useState("");
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [userProfile, setUserProfile] = useState<{ email: string; name: string } | null>(null);
   const [profileData, setProfileData] = useState<ProfileData>({ name: "", currentPassword: "", newPassword: "" });
   const [profileError, setProfileError] = useState("");
@@ -169,6 +168,14 @@ export default function Dashboard() {
     const data = await getHouseholdsAction();
     setHouseholds(data);
     if (data.length > 0 && !selectedHouseholdId) {
+      const lastId = localStorage.getItem('lastHouseholdId');
+      if (lastId) {
+        const id = parseInt(lastId);
+        if (data.find(h => h.id === id)) {
+          setSelectedHouseholdId(id);
+          return;
+        }
+      }
       setSelectedHouseholdId(data[0].id);
     }
   };
@@ -213,6 +220,12 @@ export default function Dashboard() {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (selectedHouseholdId) {
+      localStorage.setItem('lastHouseholdId', selectedHouseholdId.toString());
+    }
+  }, [selectedHouseholdId]);
 
   const refreshProfile = async () => {
     const data = await getUserProfile();
@@ -380,7 +393,7 @@ export default function Dashboard() {
         theme={theme}
         onToggleTheme={() => setTheme(theme === "light" ? "dark" : "light")}
         userName={userProfile?.name}
-        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenProfile={() => setActiveTab("profile")}
       >
         <HouseholdMenu
           isOpen={isHouseholdMenuOpen}
@@ -623,51 +636,108 @@ export default function Dashboard() {
               )}
 
               {activeTab === "profile" && (
-                <div className="space-y-8 pb-24">
-                  <div className="px-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30">
-                      Profil & Einstellungen
-                    </h3>
-                  </div>
-
-                  <div className="bg-card/50 border border-border rounded-3xl p-6 space-y-6">
+                <div className="space-y-8 pb-24 max-w-lg mx-auto">
+                  <div className="bg-card border border-border rounded-3xl p-6 space-y-8">
                     <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
                         <User className="w-8 h-8 text-primary" />
                       </div>
-                      <div>
-                        <h4 className="text-xl font-bold">{userProfile?.name}</h4>
-                        <p className="text-sm text-muted-foreground">{userProfile?.email}</p>
+                      <div className="min-w-0">
+                        <h4 className="text-xl font-bold truncate">{userProfile?.name}</h4>
+                        <p className="text-sm text-muted-foreground truncate">{userProfile?.email}</p>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <button
-                        onClick={() => setIsProfileOpen(true)}
-                        className="btn btn-secondary w-full justify-start text-sm"
-                      >
-                        Benutzerprofil bearbeiten
-                      </button>
-                      <button
-                        onClick={() => setEditingHousehold(selectedHousehold!)}
-                        className="btn btn-secondary w-full justify-start text-sm"
-                      >
-                        Haushalt-Einstellungen
-                      </button>
-                    </div>
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">
+                          Anzeigename
+                        </label>
+                        <input
+                          type="text"
+                          value={profileData.name}
+                          onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                          className="w-full input-field"
+                        />
+                      </div>
 
-                    <div className="pt-6 border-t border-border">
-                      <button
-                        onClick={() => {
-                          startTransition(async () => {
-                            await logoutAction();
-                            setSession(null);
-                          });
-                        }}
-                        className="btn btn-danger w-full text-sm"
-                      >
-                        Abmelden
-                      </button>
+                      <div className="pt-6 border-t border-border/50 space-y-4">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">
+                          Passwort ändern
+                        </label>
+                        <div className="space-y-3">
+                          <input
+                            type="password"
+                            placeholder="Aktuelles Passwort"
+                            value={profileData.currentPassword}
+                            onChange={(e) =>
+                              setProfileData({ ...profileData, currentPassword: e.target.value })
+                            }
+                            className="w-full input-field"
+                          />
+                          <input
+                            type="password"
+                            placeholder="Neues Passwort"
+                            value={profileData.newPassword}
+                            onChange={(e) =>
+                              setProfileData({ ...profileData, newPassword: e.target.value })
+                            }
+                            className="w-full input-field"
+                          />
+                        </div>
+                      </div>
+
+                      {profileError && (
+                        <p className="text-[10px] font-bold text-red-600 uppercase tracking-tight italic">
+                          {profileError}
+                        </p>
+                      )}
+                      {profileSuccess && (
+                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-tight">
+                          Erfolgreich gespeichert!
+                        </p>
+                      )}
+
+                      <div className="flex flex-col gap-3">
+                        <button
+                          onClick={() => {
+                            setProfileError("");
+                            setProfileSuccess(false);
+                            startTransition(async () => {
+                              try {
+                                await updateProfile(profileData);
+                                setProfileSuccess(true);
+                                setProfileData((prev: ProfileData) => ({
+                                  ...prev,
+                                  currentPassword: "",
+                                  newPassword: "",
+                                }));
+                                refreshProfile();
+                              } catch (err: any) {
+                                setProfileError(err.message);
+                              }
+                            });
+                          }}
+                          disabled={isPending}
+                          className="btn btn-primary w-full py-4 text-sm font-black uppercase tracking-widest disabled:opacity-70"
+                        >
+                          Speichern
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (window.confirm("Abmelden?")) {
+                              startTransition(async () => {
+                                await logoutAction();
+                                setSession(null);
+                              });
+                            }
+                          }}
+                          className="btn btn-danger w-full py-4 text-sm font-black uppercase tracking-widest"
+                        >
+                          Abmelden
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -800,6 +870,15 @@ export default function Dashboard() {
             });
           }
         }}
+        onDeleteMeter={(id) => {
+          if (window.confirm("Möchtest du diesen Zähler wirklich löschen? Alle zugehörigen Ablesungen werden ebenfalls gelöscht.")) {
+            startTransition(async () => {
+              await deleteMeter(id);
+              setEditingMeter(null);
+              refreshWidgets(selectedHouseholdId!);
+            });
+          }
+        }}
       />
 
       <HouseholdSettingsDialog
@@ -860,45 +939,6 @@ export default function Dashboard() {
         currentUserEmail={session?.email}
       />
 
-      <ProfileDialog
-        isOpen={isProfileOpen}
-        onClose={() => {
-          setIsProfileOpen(false);
-          setProfileError("");
-          setProfileSuccess(false);
-        }}
-        userProfile={userProfile}
-        profileData={profileData}
-        setProfileData={setProfileData}
-        profileError={profileError}
-        profileSuccess={profileSuccess}
-        isPending={isPending}
-        onSave={() => {
-          setProfileError("");
-          setProfileSuccess(false);
-          startTransition(async () => {
-            try {
-              await updateProfile(profileData);
-              setProfileSuccess(true);
-              setProfileData((prev: ProfileData) => ({
-                ...prev,
-                currentPassword: "",
-                newPassword: "",
-              }));
-              refreshProfile();
-            } catch (err: any) {
-              setProfileError(err.message);
-            }
-          });
-        }}
-        onLogout={() => {
-          startTransition(async () => {
-            await logoutAction();
-            setSession(null);
-            setIsProfileOpen(false);
-          });
-        }}
-      />
 
       <EfficiencySettingsDialog
         isOpen={showEfficiencySettings}

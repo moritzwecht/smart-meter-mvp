@@ -95,7 +95,6 @@ export function HouseholdSettingsDialog({
                                 </label>
                                 <form onSubmit={onInvite} className="flex gap-2">
                                     <div className="relative flex-1">
-                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                         <input
                                             type="email"
                                             placeholder="email@beispiel.de"
