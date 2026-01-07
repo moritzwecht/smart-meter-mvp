@@ -798,30 +798,22 @@ export default function Dashboard() {
         setList={setEditingList}
         onClose={() => setEditingList(null)}
         isPending={isPending}
-        onUpdateList={(id, name) => {
-          startTransition(async () => {
-            await updateTodoList(id, name);
-            refreshWidgets(selectedHouseholdId!);
-          });
+        onUpdateList={async (id, name) => {
+          await updateTodoList(id, name);
+          refreshWidgets(selectedHouseholdId!);
         }}
-        onAddItem={(content) => {
+        onAddItem={async (content) => {
           if (!editingList) return;
-          startTransition(async () => {
-            await addTodoItem(editingList.id, content);
-            refreshWidgets(selectedHouseholdId!);
-          });
+          await addTodoItem(editingList.id, content);
+          refreshWidgets(selectedHouseholdId!);
         }}
-        onToggleItem={(id, status) => {
-          startTransition(async () => {
-            await toggleTodoItem(id, status);
-            refreshWidgets(selectedHouseholdId!);
-          });
+        onToggleItem={async (id, status) => {
+          await toggleTodoItem(id, status);
+          refreshWidgets(selectedHouseholdId!);
         }}
-        onDeleteItem={(id) => {
-          startTransition(async () => {
-            await deleteTodoItem(id);
-            refreshWidgets(selectedHouseholdId!);
-          });
+        onDeleteItem={async (id) => {
+          await deleteTodoItem(id);
+          refreshWidgets(selectedHouseholdId!);
         }}
         newItemValue={newItemValue}
         setNewItemValue={setNewItemValue}

@@ -96,9 +96,6 @@ export function ListEditDialog({
 
                         <div className="p-3 space-y-8 overflow-y-auto flex-1 custom-scrollbar">
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">
-                                    Name der Liste
-                                </label>
                                 <input
                                     type="text"
                                     value={list.name}
@@ -109,10 +106,6 @@ export function ListEditDialog({
                             </div>
 
                             <div className="space-y-4">
-                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">
-                                    Listenpunkte
-                                </label>
-
                                 <div className="space-y-2">
                                     <AnimatePresence mode="popLayout">
                                         {optimisticList.items?.map((item: any) => (
@@ -163,10 +156,12 @@ export function ListEditDialog({
                                     <form
                                         onSubmit={(e) => {
                                             e.preventDefault();
-                                            if (!newItemValue.trim()) return;
+                                            const content = newItemValue.trim();
+                                            if (!content) return;
+                                            setNewItemValue(""); // Instant clear
                                             startTransition(async () => {
-                                                addOptimisticAction({ type: "add", payload: { content: newItemValue } });
-                                                await onAddItem(newItemValue);
+                                                addOptimisticAction({ type: "add", payload: { content } });
+                                                await onAddItem(content);
                                             });
                                         }}
                                         className="flex gap-2 mt-4"
@@ -178,8 +173,8 @@ export function ListEditDialog({
                                             onChange={(e) => setNewItemValue(e.target.value)}
                                             className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
                                         />
-                                        <button type="submit" disabled={isPending} className="btn btn-primary px-6 disabled:opacity-70">
-                                            {isPending ? <Spinner className="text-primary-foreground" /> : <Plus className="w-5 h-5" />}
+                                        <button type="submit" disabled={!newItemValue.trim()} className="btn btn-primary px-6 disabled:opacity-50">
+                                            <Plus className="w-5 h-5" />
                                         </button>
                                     </form>
                                 </div>
