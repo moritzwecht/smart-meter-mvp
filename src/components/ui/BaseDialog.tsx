@@ -26,9 +26,11 @@ export function BaseDialog({
 }: BaseDialogProps) {
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        setIsMounted(true);
         const checkMobile = () => {
             setIsMobile(window.innerWidth < 640);
         };
@@ -69,7 +71,7 @@ export function BaseDialog({
 
     return (
         <AnimatePresence>
-            {isOpen && (
+            {(isMounted && isOpen) && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4">
                     {/* Backdrop */}
                     <motion.div
