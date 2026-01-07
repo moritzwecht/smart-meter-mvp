@@ -13,6 +13,7 @@ interface BaseDialogProps {
     className?: string;
     showCloseButton?: boolean;
     footer?: React.ReactNode;
+    headerAction?: React.ReactNode;
 }
 
 export function BaseDialog({
@@ -23,6 +24,7 @@ export function BaseDialog({
     className,
     showCloseButton = true,
     footer,
+    headerAction,
 }: BaseDialogProps) {
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
@@ -108,18 +110,21 @@ export function BaseDialog({
                             <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full" />
                         </div>
 
-                        {(title || showCloseButton) && (
+                        {(title || showCloseButton || headerAction) && (
                             <div className="flex justify-between items-center p-4 border-b border-border">
                                 {title && <h2 className="text-xl font-black tracking-tight">{title}</h2>}
-                                {showCloseButton && (
-                                    <button
-                                        onClick={onClose}
-                                        className="p-2 hover:bg-accent rounded-full transition-colors ml-auto"
-                                        aria-label="Schließen"
-                                    >
-                                        <X className="w-5 h-5" />
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2 ml-auto">
+                                    {headerAction}
+                                    {showCloseButton && (
+                                        <button
+                                            onClick={onClose}
+                                            className="p-2 hover:bg-accent rounded-full transition-colors"
+                                            aria-label="Schließen"
+                                        >
+                                            <X className="w-5 h-5" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         )}
 

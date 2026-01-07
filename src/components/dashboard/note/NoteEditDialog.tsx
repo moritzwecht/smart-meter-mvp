@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { Trash2 } from "lucide-react";
 import { Spinner } from "@/components/ui/Spinner";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 
@@ -8,14 +9,37 @@ interface NoteEditDialogProps {
     setNote: (note: any) => void;
     onClose: () => void;
     onSave: () => void;
+    onDelete: (id: number) => void;
     isPending?: boolean;
 }
 
-export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPending }: NoteEditDialogProps) {
+export function NoteEditDialog({
+    isOpen,
+    note,
+    setNote,
+    onClose,
+    onSave,
+    onDelete,
+    isPending
+}: NoteEditDialogProps) {
     const [lastNote, setLastNote] = useState(note);
+    const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
-        if (note) setLastNote(note);
-    }, [note]);
+        if (note) {
+            setLastNote(note);
+
+            // Auto-save logic
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = setTimeout(() => {
+                onSave();
+            }, 1000);
+        }
+
+        return () => {
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        };
+    }, [note?.title, note?.content, onSave]);
 
     const activeNote = note || lastNote;
 
@@ -27,20 +51,31 @@ export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPendi
             onClose={onClose}
             title="Notiz bearbeiten"
             className="sm:max-w-2xl"
+            headerAction={
+                <button
+                    onClick={() => {
+                        if (window.confirm("Notiz wirklich löschen?")) {
+                            onDelete(activeNote.id);
+                            onClose();
+                        }
+                    }}
+                    className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
+                >
+                    <Trash2 className="w-5 h-5" />
+                </button>
+            }
             footer={
-                <div className="flex gap-3">
-                    <button onClick={onSave} disabled={isPending} className="flex-1 btn btn-primary py-3 disabled:opacity-70">
-                        {isPending ? <Spinner className="text-primary-foreground" size={20} /> : "Speichern"}
-                    </button>
-                    <button onClick={onClose} disabled={isPending} className="flex-1 btn btn-ghost py-3">
-                        Abbrechen
-                    </button>
-                </div>
+                <button onClick={onClose} className="w-full btn btn-primary py-3">
+                    Fertig
+                </button>
             }
         >
             <div className="space-y-6">
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Titel</label>
+                    <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Titel</label>
+                        {isPending && <span className="text-[10px] font-bold text-primary animate-pulse uppercase tracking-widest">Speichert...</span>}
+                    </div>
                     <input
                         type="text"
                         value={activeNote.title || ""}
@@ -51,7 +86,7 @@ export function NoteEditDialog({ isOpen, note, setNote, onClose, onSave, isPendi
                 </div>
 
                 <div className="space-y-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Inhalt</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 px-1">Inhalt</label>
                     <textarea
                         rows={8}
                         value={activeNote.content || ""}

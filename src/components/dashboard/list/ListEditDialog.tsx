@@ -15,6 +15,7 @@ interface ListEditDialogProps {
     onAddItem: (content: string) => void;
     onToggleItem: (id: number, status: "true" | "false") => void;
     onDeleteItem: (id: number) => void;
+    onDeleteList: (id: number) => void;
     newItemValue: string;
     setNewItemValue: (val: string) => void;
     isPending?: boolean;
@@ -29,6 +30,7 @@ export function ListEditDialog({
     onAddItem,
     onToggleItem,
     onDeleteItem,
+    onDeleteList,
     newItemValue,
     setNewItemValue,
     isPending: parentIsPending,
@@ -90,6 +92,19 @@ export function ListEditDialog({
             onClose={onClose}
             title="Liste bearbeiten"
             className="sm:max-w-2xl"
+            headerAction={
+                <button
+                    onClick={() => {
+                        if (window.confirm("Liste wirklich löschen?")) {
+                            onDeleteList(activeList.id);
+                            onClose();
+                        }
+                    }}
+                    className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
+                >
+                    <Trash2 className="w-5 h-5" />
+                </button>
+            }
             footer={
                 <button onClick={onClose} className="w-full btn btn-primary py-3">
                     Fertig

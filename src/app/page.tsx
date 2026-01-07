@@ -436,14 +436,6 @@ export default function Dashboard() {
                               <NoteWidget
                                 note={w}
                                 onEdit={() => setEditingNote(w)}
-                                onDelete={() => {
-                                  if (window.confirm("Wirklich löschen?")) {
-                                    startTransition(async () => {
-                                      await deleteNote(w.id);
-                                      refreshWidgets(selectedHouseholdId!);
-                                    });
-                                  }
-                                }}
                                 onPin={() => {
                                   startTransition(async () => {
                                     await toggleNotePin(w.id, "false");
@@ -456,20 +448,6 @@ export default function Dashboard() {
                               <ListWidget
                                 list={w}
                                 onEdit={() => setEditingList(w)}
-                                onDelete={() => {
-                                  if (window.confirm("Wirklich löschen?")) {
-                                    startTransition(async () => {
-                                      await deleteTodoList(w.id);
-                                      refreshWidgets(selectedHouseholdId!);
-                                    });
-                                  }
-                                }}
-                                onToggleItem={(id, status) => {
-                                  startTransition(async () => {
-                                    await toggleTodoItem(id, status);
-                                    refreshWidgets(selectedHouseholdId!);
-                                  });
-                                }}
                                 onPin={() => {
                                   startTransition(async () => {
                                     await toggleTodoListPin(w.id, "false");
@@ -499,20 +477,6 @@ export default function Dashboard() {
                           key={w.id}
                           list={w as TodoList}
                           onEdit={() => setEditingList(w as TodoList)}
-                          onDelete={() => {
-                            if (window.confirm("Wirklich löschen?")) {
-                              startTransition(async () => {
-                                await deleteTodoList(w.id);
-                                refreshWidgets(selectedHouseholdId!);
-                              });
-                            }
-                          }}
-                          onToggleItem={(id, status) => {
-                            startTransition(async () => {
-                              await toggleTodoItem(id, status);
-                              refreshWidgets(selectedHouseholdId!);
-                            });
-                          }}
                           onPin={() => {
                             startTransition(async () => {
                               await toggleTodoListPin(w.id, (w as TodoList).isPinned === "true" ? "false" : "true");
@@ -546,14 +510,6 @@ export default function Dashboard() {
                           key={w.id}
                           note={w as Note}
                           onEdit={() => setEditingNote(w as Note)}
-                          onDelete={() => {
-                            if (window.confirm("Wirklich löschen?")) {
-                              startTransition(async () => {
-                                await deleteNote(w.id);
-                                refreshWidgets(selectedHouseholdId!);
-                              });
-                            }
-                          }}
                           onPin={() => {
                             startTransition(async () => {
                               await toggleNotePin(w.id, (w as Note).isPinned === "true" ? "false" : "true");
@@ -786,7 +742,12 @@ export default function Dashboard() {
               editingNote.title,
               editingNote.content || undefined
             );
-            setEditingNote(null);
+            refreshWidgets(selectedHouseholdId!);
+          });
+        }}
+        onDelete={(id) => {
+          startTransition(async () => {
+            await deleteNote(id);
             refreshWidgets(selectedHouseholdId!);
           });
         }}
@@ -814,6 +775,12 @@ export default function Dashboard() {
         onDeleteItem={async (id) => {
           await deleteTodoItem(id);
           refreshWidgets(selectedHouseholdId!);
+        }}
+        onDeleteList={(id) => {
+          startTransition(async () => {
+            await deleteTodoList(id);
+            refreshWidgets(selectedHouseholdId!);
+          });
         }}
         newItemValue={newItemValue}
         setNewItemValue={setNewItemValue}
