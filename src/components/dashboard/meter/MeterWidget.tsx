@@ -79,8 +79,8 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
                             onPin();
                         }}
                         className={`p-2 rounded-xl transition-all duration-300 ${meter.isPinned === "true"
-                                ? "text-primary bg-primary/10"
-                                : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
+                            ? "text-primary bg-primary/10"
+                            : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
                             }`}
                     >
                         <Pin className={`w-4 h-4 ${meter.isPinned === "true" ? "fill-current" : ""}`} />

@@ -598,7 +598,7 @@ export default function Dashboard() {
 
               {activeTab === "meters" && (
                 <div className="space-y-4 pb-24">
-                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     <AnimatePresence mode="popLayout">
                       {optimisticWidgets
                         .filter((w) => w.widgetType === "METER")
@@ -619,7 +619,7 @@ export default function Dashboard() {
                       <motion.button
                         layout
                         onClick={handleAddMeter}
-                        className="flex flex-col items-center justify-center gap-3 p-6 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-all group min-h-[160px]"
+                        className="flex flex-col items-center justify-center gap-3 p-3 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
                       >
                         <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
                           <Plus className="w-6 h-6 text-primary" />
