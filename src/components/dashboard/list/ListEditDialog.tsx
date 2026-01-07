@@ -54,9 +54,10 @@ export function ListEditDialog({
                         items: [
                             ...(state.items || []),
                             {
-                                id: Math.random(), // Temporary ID
+                                id: `temp-${Math.random()}`,
                                 content: action.payload.content,
                                 completed: "false",
+                                isOptimistic: true,
                             },
                         ],
                     };
@@ -107,50 +108,64 @@ export function ListEditDialog({
 
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <AnimatePresence mode="popLayout">
-                                        {optimisticList.items?.map((item: any) => (
-                                            <motion.div
-                                                key={item.id}
-                                                layout
-                                                initial={{ opacity: 0, x: -10 }}
-                                                animate={{ opacity: 1, x: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95 }}
-                                                className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
-                                            >
-                                                <button
-                                                    onClick={() => {
-                                                        const newStatus = item.completed === "true" ? "false" : "true";
-                                                        startTransition(async () => {
-                                                            addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
-                                                            await onToggleItem(item.id, newStatus);
-                                                        });
+                                    <AnimatePresence mode="popLayout" initial={false}>
+                                        {[...(optimisticList.items || [])]
+                                            .filter((item, index, self) => {
+                                                if (!item.isOptimistic) return true;
+                                                // Only show optimistic item if no real item with same content exists yet
+                                                return !self.some(other => !other.isOptimistic && other.content === item.content);
+                                            })
+                                            .sort((a, b) => {
+                                                if (a.completed === b.completed) return 0;
+                                                return a.completed === "true" ? 1 : -1;
+                                            })
+                                            .map((item: any) => (
+                                                <motion.div
+                                                    key={item.id}
+                                                    layout
+                                                    initial={{ opacity: 0, scale: 0.9 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    exit={{ opacity: 0, scale: 0.9 }}
+                                                    transition={{
+                                                        layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
+                                                        opacity: { duration: 0.2 }
                                                     }}
-                                                    className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
-                                                        ? "bg-primary border-primary text-primary-foreground transform scale-105"
-                                                        : "hover:border-primary"
-                                                        } `}
+                                                    className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
                                                 >
-                                                    {item.completed === "true" && <Check className="w-4 h-4" />}
-                                                </button>
-                                                <span
-                                                    className={`flex-1 text-sm font-medium ${item.completed === "true" ? "line-through opacity-40" : "text-foreground"
-                                                        } `}
-                                                >
-                                                    {item.content}
-                                                </span>
-                                                <button
-                                                    onClick={() => {
-                                                        startTransition(async () => {
-                                                            addOptimisticAction({ type: "delete", payload: { id: item.id } });
-                                                            await onDeleteItem(item.id);
-                                                        });
-                                                    }}
-                                                    className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </motion.div>
-                                        ))}
+                                                    <button
+                                                        onClick={() => {
+                                                            const newStatus = item.completed === "true" ? "false" : "true";
+                                                            startTransition(async () => {
+                                                                addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
+                                                                await onToggleItem(item.id, newStatus);
+                                                            });
+                                                        }}
+                                                        className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
+                                                            ? "bg-primary border-primary text-primary-foreground transform scale-105"
+                                                            : "hover:border-primary"
+                                                            } `}
+                                                    >
+                                                        {item.completed === "true" && <Check className="w-4 h-4" />}
+                                                    </button>
+                                                    <span
+                                                        className={`flex-1 text-sm font-medium ${item.completed === "true" ? "line-through opacity-40" : "text-foreground"
+                                                            } `}
+                                                    >
+                                                        {item.content}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => {
+                                                            startTransition(async () => {
+                                                                addOptimisticAction({ type: "delete", payload: { id: item.id } });
+                                                                await onDeleteItem(item.id);
+                                                            });
+                                                        }}
+                                                        className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </motion.div>
+                                            ))}
                                     </AnimatePresence>
 
                                     <form

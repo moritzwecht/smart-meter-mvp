@@ -1,7 +1,7 @@
 "use client";
 
 import { useOptimistic, useTransition } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ListTodo, Check, Edit2, Trash2, Pin } from "lucide-react";
 
 interface ListWidgetProps {
@@ -14,14 +14,21 @@ interface ListWidgetProps {
 
 export function ListWidget({ list, onEdit, onDelete, onToggleItem, onPin }: ListWidgetProps) {
     const [isPending, startTransition] = useTransition();
-    const [optimisticList, addOptimisticToggle] = useOptimistic(
+    const [optimisticList, addOptimisticAction] = useOptimistic(
         list,
-        (state, { itemId, completed }) => ({
-            ...state,
-            items: state.items?.map((item: any) =>
-                item.id === itemId ? { ...item, completed } : item
-            ),
-        })
+        (state, action: { type: "toggle" | "add"; payload: any }) => {
+            switch (action.type) {
+                case "toggle":
+                    return {
+                        ...state,
+                        items: state.items?.map((item: any) =>
+                            item.id === action.payload.itemId ? { ...item, completed: action.payload.completed } : item
+                        ),
+                    };
+                default:
+                    return state;
+            }
+        }
     );
 
     return (
@@ -59,34 +66,56 @@ export function ListWidget({ list, onEdit, onDelete, onToggleItem, onPin }: List
                     {list.name}
                 </h3>
                 <div className="mt-3 space-y-2">
-                    {optimisticList.items?.slice(0, 3).map((item: any) => (
-                        <button
-                            key={item.id}
-                            disabled={isPending}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                const newStatus = item.completed === "true" ? "false" : "true";
-                                startTransition(async () => {
-                                    addOptimisticToggle({ itemId: item.id, completed: newStatus });
-                                    await onToggleItem(item.id, newStatus);
-                                });
-                            }}
-                            className="text-xs flex items-center gap-3 w-full text-left group/item hover:bg-accent/30 p-1 -m-1 rounded-md transition-colors"
-                        >
-                            <div
-                                className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 transition-colors ${item.completed === "true" ? "bg-primary text-primary-foreground border-primary" : "group-hover/item:border-primary/50"
-                                    } `}
-                            >
-                                {item.completed === "true" && <Check className="w-2.5 h-2.5" />}
-                            </div>
-                            <span
-                                className={`line-clamp-1 transition-all ${item.completed === "true" ? "line-through opacity-40 text-muted-foreground" : "text-foreground/80"
-                                    } `}
-                            >
-                                {item.content}
-                            </span>
-                        </button>
-                    ))}
+                    <AnimatePresence mode="popLayout" initial={false}>
+                        {[...(optimisticList.items || [])]
+                            .sort((a, b) => {
+                                if (a.completed === b.completed) return 0;
+                                return a.completed === "true" ? 1 : -1;
+                            })
+                            .slice(0, 3)
+                            .map((item: any) => (
+                                <motion.div
+                                    key={item.id}
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    transition={{
+                                        layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
+                                        opacity: { duration: 0.2 }
+                                    }}
+                                >
+                                    <button
+                                        disabled={isPending}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const newStatus = item.completed === "true" ? "false" : "true";
+                                            startTransition(async () => {
+                                                addOptimisticAction({
+                                                    type: "toggle",
+                                                    payload: { itemId: item.id, completed: newStatus }
+                                                });
+                                                await onToggleItem(item.id, newStatus);
+                                            });
+                                        }}
+                                        className="text-xs flex items-center gap-3 w-full text-left group/item hover:bg-accent/30 p-1 -m-1 rounded-md transition-colors"
+                                    >
+                                        <div
+                                            className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 transition-colors ${item.completed === "true" ? "bg-primary text-primary-foreground border-primary" : "group-hover/item:border-primary/50"
+                                                } `}
+                                        >
+                                            {item.completed === "true" && <Check className="w-2.5 h-2.5" />}
+                                        </div>
+                                        <span
+                                            className={`line-clamp-1 transition-all ${item.completed === "true" ? "line-through opacity-40 text-muted-foreground" : "text-foreground/80"
+                                                } `}
+                                        >
+                                            {item.content}
+                                        </span>
+                                    </button>
+                                </motion.div>
+                            ))}
+                    </AnimatePresence>
                     {list.items?.length > 3 && (
                         <div className="text-[10px] text-muted-foreground mt-2 font-medium">
                             +{list.items.length - 3} weitere Punkte
