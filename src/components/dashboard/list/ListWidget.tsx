@@ -25,15 +25,8 @@ export function ListWidget({ list, onEdit, onDelete, onToggleItem, onPin }: List
     );
 
     return (
-        <motion.div
-            layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            whileHover={{ y: -4, transition: { duration: 0.2 } }}
-            whileTap={{ scale: 0.98 }}
-            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-foreground/5"
+        <div
+            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 shadow-sm"
         >
             <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2">
@@ -47,9 +40,9 @@ export function ListWidget({ list, onEdit, onDelete, onToggleItem, onPin }: List
                                 e.stopPropagation();
                                 onPin();
                             }}
-                            className={`p-1.5 rounded-lg transition-all duration-300 ${list.isPinned === "true"
-                                    ? "text-primary bg-primary/10"
-                                    : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
+                            className={`p-1.5 rounded-lg ${list.isPinned === "true"
+                                ? "text-primary bg-primary/10"
+                                : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
                                 }`}
                         >
                             <Pin className={`w-3 h-3 ${list.isPinned === "true" ? "fill-current" : ""}`} />
@@ -120,6 +113,6 @@ export function ListWidget({ list, onEdit, onDelete, onToggleItem, onPin }: List
                     <Trash2 className="w-4 h-4" />
                 </button>
             </div>
-        </motion.div>
+        </div>
     );
 }

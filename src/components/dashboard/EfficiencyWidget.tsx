@@ -61,11 +61,8 @@ export function EfficiencyWidget({
     const rating = ratio !== null ? getEfficiencyRating(ratio) : null;
 
     return (
-        <motion.div
-            layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
+        <div
+            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 shadow-sm"
         >
             <div className="flex items-center gap-3">
                 <div className={cn(
@@ -112,6 +109,6 @@ export function EfficiencyWidget({
                     <Settings className="w-4 h-4" />
                 </button>
             </div>
-        </motion.div>
+        </div>
     );
 }

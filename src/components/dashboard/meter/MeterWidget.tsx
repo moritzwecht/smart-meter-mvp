@@ -41,15 +41,8 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
     const avg = calculateDailyAverage();
 
     return (
-        <motion.div
-            layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
-            whileHover={{ y: -4, transition: { duration: 0.2 } }}
-            whileTap={{ scale: 0.98 }}
-            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 transition-all duration-300 shadow-sm hover:shadow-lg hover:shadow-foreground/5"
+        <div
+            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 shadow-sm"
         >
             <div className="flex items-center gap-3 relative">
                 <div className={`w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
@@ -77,7 +70,7 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
                             e.stopPropagation();
                             onPin();
                         }}
-                        className={`p-2 rounded-xl transition-all duration-300 ${meter.isPinned === "true"
+                        className={`p-2 rounded-xl ${meter.isPinned === "true"
                             ? "text-primary bg-primary/10"
                             : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
                             }`}
@@ -90,7 +83,7 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
             <div className="flex gap-2">
                 <button
                     onClick={() => onAddReading(meter)}
-                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
                 >
                     <Plus className="w-3 h-3" />
                     Eintragen
@@ -100,11 +93,11 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
                         e.stopPropagation();
                         onEditMeter(meter);
                     }}
-                    className="p-2 hover:bg-accent rounded-xl transition-colors text-muted-foreground hover:text-primary"
+                    className="p-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-primary"
                 >
                     <Settings className="w-4 h-4" />
                 </button>
             </div>
-        </motion.div>
+        </div>
     );
 }
