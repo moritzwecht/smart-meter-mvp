@@ -16,7 +16,7 @@ import { HouseholdMenu } from "@/components/dashboard/household/HouseholdMenu";
 import { MeterWidget } from "@/components/dashboard/meter/MeterWidget";
 import { NoteWidget } from "@/components/dashboard/note/NoteWidget";
 import { ListWidget } from "@/components/dashboard/list/ListWidget";
-import { OfflineIndicator } from "@/components/dashboard/offline/OfflineIndicator";
+
 
 // Dialog Components
 import { HouseholdSettingsDialog } from "@/components/dashboard/household/HouseholdSettingsDialog";
@@ -368,7 +368,7 @@ export default function Dashboard() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="w-full max-sm space-y-8"
+          className="w-full max-w-sm space-y-8"
         >
           <div className="text-center space-y-2">
             <h1 className="text-4xl font-black tracking-tighter text-foreground">
@@ -728,7 +728,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              <OfflineIndicator />
+
             </>
           )}
         </div>
