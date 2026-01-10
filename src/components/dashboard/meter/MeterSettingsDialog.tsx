@@ -39,6 +39,11 @@ export function MeterSettingsDialog({
     useEffect(() => {
         if (meter) {
             setLastMeter(meter);
+        }
+    }, [meter]);
+
+    useEffect(() => {
+        if (isOpen && meter) {
             setMonthlyPayment(meter.monthlyPayment || "");
             setBasicFee(meter.basicFee || "");
             setPricePerUnit(meter.pricePerUnit || "");
@@ -46,7 +51,7 @@ export function MeterSettingsDialog({
             setZNumber(meter.zNumber || "");
             setCalorificValue(meter.calorificValue || "");
         }
-    }, [meter]);
+    }, [isOpen, meter?.id]);
 
     const activeMeter = meter || lastMeter;
 
