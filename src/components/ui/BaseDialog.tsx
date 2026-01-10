@@ -100,7 +100,7 @@ export function BaseDialog({
                         }}
                         className={cn(
                             "w-full bg-card border-border shadow-2xl flex flex-col overflow-hidden",
-                            "sm:max-w-lg sm:rounded-2xl sm:border",
+                            "sm:max-w-lg sm:rounded-2xl sm:border sm:max-h-[85vh]",
                             "max-sm:rounded-t-3xl max-sm:border-t max-sm:max-h-[85vh]",
                             className
                         )}

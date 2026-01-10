@@ -14,6 +14,9 @@ export interface OfflineMeter {
     type: string;
     householdId: number;
     unit: string;
+    monthlyPayment?: string | null;
+    basicFee?: string | null;
+    pricePerUnit?: string | null;
     isPinned: string;
     createdAt: Date;
 }

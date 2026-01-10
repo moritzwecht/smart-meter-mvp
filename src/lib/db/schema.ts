@@ -31,6 +31,9 @@ export const meters = pgTable("meters", {
     householdId: integer("household_id").references(() => households.id).notNull(),
     unit: text("unit").notNull(),
     isPinned: text("is_pinned").default("false").notNull(),
+    monthlyPayment: text("monthly_payment"),
+    basicFee: text("basic_fee"),
+    pricePerUnit: text("price_per_unit"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

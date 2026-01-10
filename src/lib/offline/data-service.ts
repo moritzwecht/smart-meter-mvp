@@ -234,28 +234,47 @@ export const DataService = {
         });
     },
 
-    async addMeter(householdId: number, type: string, unit: string) {
+    async addMeter(householdId: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string) {
         const tempId = Math.floor(Math.random() * -1000000);
         const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
-        const meter = { id: tempId, householdId, name, type, unit, isPinned: 'false', createdAt: new Date(), readings: [] };
+        const meter = {
+            id: tempId,
+            householdId,
+            name,
+            type,
+            unit,
+            monthlyPayment: monthlyPayment || null,
+            basicFee: basicFee || null,
+            pricePerUnit: pricePerUnit || null,
+            isPinned: 'false',
+            createdAt: new Date(),
+            readings: []
+        };
 
         await db.meters.add(meter);
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'METER',
-            data: { householdId, type, unit, tempId }
+            data: { householdId, type, unit, monthlyPayment, basicFee, pricePerUnit, tempId }
         });
 
         return meter;
     },
 
-    async updateMeter(id: number, type: string, unit: string) {
+    async updateMeter(id: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string) {
         const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
-        await db.meters.update(id, { name, type, unit });
+        await db.meters.update(id, {
+            name,
+            type,
+            unit,
+            monthlyPayment,
+            basicFee,
+            pricePerUnit
+        });
         await SyncManager.enqueue({
             type: 'UPDATE',
             entity: 'METER',
-            data: { id, type, unit }
+            data: { id, type, unit, monthlyPayment, basicFee, pricePerUnit }
         });
     },
 

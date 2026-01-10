@@ -485,7 +485,14 @@ export async function getMeters(householdId: number) {
     });
 }
 
-export async function addMeter(householdId: number, type: string, unit: string) {
+export async function addMeter(
+    householdId: number,
+    type: string,
+    unit: string,
+    monthlyPayment?: string,
+    basicFee?: string,
+    pricePerUnit?: string
+) {
     await ensureHouseholdAccess(householdId);
     const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
     const [row] = await db.insert(meters).values({
@@ -493,6 +500,9 @@ export async function addMeter(householdId: number, type: string, unit: string) 
         type,
         unit,
         householdId,
+        monthlyPayment: monthlyPayment || null,
+        basicFee: basicFee || null,
+        pricePerUnit: pricePerUnit || null
     }).returning();
     revalidatePath("/");
     return row;
@@ -633,7 +643,10 @@ export async function deleteTodoItem(id: number) {
 export async function updateMeter(
     id: number,
     type: string,
-    unit: string
+    unit: string,
+    monthlyPayment?: string,
+    basicFee?: string,
+    pricePerUnit?: string
 ) {
     const meter = await db.query.meters.findFirst({ where: eq(meters.id, id) });
     if (!meter) throw new Error("Zähler nicht gefunden");
@@ -645,7 +658,10 @@ export async function updateMeter(
         .set({
             name,
             type,
-            unit
+            unit,
+            monthlyPayment: monthlyPayment || null,
+            basicFee: basicFee || null,
+            pricePerUnit: pricePerUnit || null
         })
         .where(eq(meters.id, id));
     revalidatePath("/");

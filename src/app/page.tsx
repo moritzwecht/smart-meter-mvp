@@ -752,6 +752,12 @@ export default function Dashboard() {
               selectedHouseholdId!,
               newMeterData.type,
               newMeterData.unit,
+              // @ts-ignore
+              newMeterData.monthlyPayment,
+              // @ts-ignore
+              newMeterData.basicFee,
+              // @ts-ignore
+              newMeterData.pricePerUnit
             );
             setShowAddMeterDialog(false);
           });
@@ -845,8 +851,8 @@ export default function Dashboard() {
         onClose={() => setEditingMeterId(null)}
         meter={editingMeter!}
         isPending={isPending}
-        onUpdateMeter={(id, type, unit) => {
-          DataService.updateMeter(id, type, unit);
+        onUpdateMeter={(id, type, unit, monthlyPayment, basicFee, pricePerUnit) => {
+          DataService.updateMeter(id, type, unit, monthlyPayment, basicFee, pricePerUnit);
         }}
         onDeleteReading={(id) => {
           if (window.confirm("Ablesung löschen?")) {

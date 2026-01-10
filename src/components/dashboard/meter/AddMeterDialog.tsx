@@ -95,6 +95,58 @@ export function AddMeterDialog({
                             </div>
                         </div>
                     </div>
+
+                    {(newMeterData.type === "ELECTRICITY" || newMeterData.type === "GAS") && (
+                        <div className="pt-4 border-t border-border/50 space-y-4 animate-in slide-in-from-top-2 fade-in duration-200">
+                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">
+                                Kosten & Einstellungen
+                            </label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Abschlag (Monat)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={newMeterData.monthlyPayment || ""}
+                                            onChange={(e) => setNewMeterData({ ...newMeterData, monthlyPayment: e.target.value })}
+                                            placeholder="0.00"
+                                            className="input-field w-full pr-8"
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Verbrauchspreis</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={newMeterData.pricePerUnit || ""}
+                                            onChange={(e) => setNewMeterData({ ...newMeterData, pricePerUnit: e.target.value })}
+                                            placeholder="0.000"
+                                            className="input-field w-full pr-12"
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€/{newMeterData.unit}</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Grundgebühr (in Abschlag)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={newMeterData.basicFee || ""}
+                                            onChange={(e) => setNewMeterData({ ...newMeterData, basicFee: e.target.value })}
+                                            placeholder="0.00"
+                                            className="input-field w-full pr-8"
+                                        />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </BaseDialog>

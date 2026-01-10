@@ -147,12 +147,12 @@ export class SyncManager {
                 if (type === 'DELETE') return await actions.deleteTodoItem(data.id);
                 break;
             case 'METER':
-                if (type === 'CREATE') return await actions.addMeter(data.householdId, data.type, data.unit);
+                if (type === 'CREATE') return await actions.addMeter(data.householdId, data.type, data.unit, data.monthlyPayment, data.basicFee, data.pricePerUnit);
                 if (type === 'UPDATE') {
                     if (data.type === 'TOGGLE_PIN') {
                         return await actions.toggleMeterPin(data.id, data.isPinned);
                     } else {
-                        return await actions.updateMeter(data.id, data.type, data.unit);
+                        return await actions.updateMeter(data.id, data.type, data.unit, data.monthlyPayment, data.basicFee, data.pricePerUnit);
                     }
                 }
                 if (type === 'DELETE') return await actions.deleteMeter(data.id);

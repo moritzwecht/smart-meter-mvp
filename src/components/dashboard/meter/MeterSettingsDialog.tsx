@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Zap, Droplets, Flame, History, Trash2 } from "lucide-react";
+import { Zap, Droplets, Flame, History, Trash2, ChevronDown, ChevronRight, Save } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
 import { Spinner } from "@/components/ui/Spinner";
 import { BaseDialog } from "@/components/ui/BaseDialog";
@@ -8,7 +8,7 @@ interface MeterSettingsDialogProps {
     isOpen: boolean;
     onClose: () => void;
     meter: any;
-    onUpdateMeter: (id: number, type: string, unit: string) => void;
+    onUpdateMeter: (id: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string) => void;
     onDeleteReading: (id: number) => void;
     onDeleteMeter: (id: number) => void;
     isPending?: boolean;
@@ -24,8 +24,20 @@ export function MeterSettingsDialog({
     isPending,
 }: MeterSettingsDialogProps) {
     const [lastMeter, setLastMeter] = useState(meter);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    // Settings state
+    const [monthlyPayment, setMonthlyPayment] = useState("");
+    const [basicFee, setBasicFee] = useState("");
+    const [pricePerUnit, setPricePerUnit] = useState("");
+
     useEffect(() => {
-        if (meter) setLastMeter(meter);
+        if (meter) {
+            setLastMeter(meter);
+            setMonthlyPayment(meter.monthlyPayment || "");
+            setBasicFee(meter.basicFee || "");
+            setPricePerUnit(meter.pricePerUnit || "");
+        }
     }, [meter]);
 
     const activeMeter = meter || lastMeter;
@@ -37,6 +49,8 @@ export function MeterSettingsDialog({
         { type: "WATER", icon: Droplets, color: "text-blue-500", bg: "bg-blue-500/10", label: "Wasser" },
         { type: "GAS", icon: Flame, color: "text-orange-500", bg: "bg-orange-500/10", label: "Gas" },
     ] as const;
+
+    const showSettings = activeMeter.type === "ELECTRICITY" || activeMeter.type === "GAS";
 
     const calculateStats = () => {
         const readings = activeMeter.readings || [];
@@ -55,6 +69,17 @@ export function MeterSettingsDialog({
     };
 
     const stats = calculateStats();
+
+    const handleSaveSettings = () => {
+        onUpdateMeter(
+            activeMeter.id,
+            activeMeter.type,
+            activeMeter.unit,
+            monthlyPayment,
+            basicFee,
+            pricePerUnit
+        );
+    };
 
     return (
         <BaseDialog
@@ -79,6 +104,79 @@ export function MeterSettingsDialog({
             }
         >
             <div className="space-y-8">
+                {showSettings && (
+                    <div className="space-y-4">
+                        <button
+                            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                            className="flex items-center gap-2 w-full text-left"
+                        >
+                            {isSettingsOpen ? <ChevronDown className="w-4 h-4 opacity-50" /> : <ChevronRight className="w-4 h-4 opacity-50" />}
+                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-40 cursor-pointer">
+                                Einstellungen & Kosten
+                            </label>
+                        </button>
+
+                        {isSettingsOpen && (
+                            <div className="bg-card border border-border rounded-2xl p-4 space-y-4 animate-in slide-in-from-top-2 fade-in duration-200">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Abschlag (Monat)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={monthlyPayment}
+                                                onChange={(e) => setMonthlyPayment(e.target.value)}
+                                                placeholder="0.00"
+                                                className="input-field w-full pr-8"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Verbrauchspreis</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={pricePerUnit}
+                                                onChange={(e) => setPricePerUnit(e.target.value)}
+                                                placeholder="0.000"
+                                                className="input-field w-full pr-12"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€/{activeMeter.unit}</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Grundgebühr (in Abschlag)</label>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={basicFee}
+                                                onChange={(e) => setBasicFee(e.target.value)}
+                                                placeholder="0.00"
+                                                className="input-field w-full pr-8"
+                                            />
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end pt-2">
+                                    <button
+                                        onClick={handleSaveSettings}
+                                        disabled={isPending}
+                                        className="btn btn-primary py-2 px-4 text-xs font-black uppercase tracking-widest flex items-center gap-2"
+                                    >
+                                        <Save className="w-3 h-3" />
+                                        Speichern
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 <div className="space-y-4">
                     <label className="text-[10px] font-bold uppercase tracking-widest opacity-40">Statistik</label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
