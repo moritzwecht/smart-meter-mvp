@@ -117,7 +117,25 @@ export function AddMeterDialog({
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Verbrauchspreis</label>
+                                    <div className="flex justify-between">
+                                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Verbrauchspreis</label>
+                                        {newMeterData.type === "GAS" && (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setNewMeterData({ ...newMeterData, priceUnit: newMeterData.unit })}
+                                                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${(!newMeterData.priceUnit || newMeterData.priceUnit === newMeterData.unit) ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground"}`}
+                                                >
+                                                    €/{newMeterData.unit}
+                                                </button>
+                                                <button
+                                                    onClick={() => setNewMeterData({ ...newMeterData, priceUnit: "kwh" })}
+                                                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${newMeterData.priceUnit === "kwh" ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground"}`}
+                                                >
+                                                    €/kWh
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div className="relative">
                                         <input
                                             type="text"
@@ -125,9 +143,11 @@ export function AddMeterDialog({
                                             value={newMeterData.pricePerUnit || ""}
                                             onChange={(e) => setNewMeterData({ ...newMeterData, pricePerUnit: e.target.value })}
                                             placeholder="0.000"
-                                            className="input-field w-full pr-12"
+                                            className="input-field w-full pr-16"
                                         />
-                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€/{newMeterData.unit}</span>
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">
+                                            €/{newMeterData.priceUnit === "kwh" ? "kWh" : newMeterData.unit}
+                                        </span>
                                     </div>
                                 </div>
                                 <div className="space-y-2">
@@ -144,6 +164,39 @@ export function AddMeterDialog({
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
                                     </div>
                                 </div>
+
+                                {newMeterData.type === "GAS" && newMeterData.unit === "m³" && newMeterData.priceUnit === "kwh" && (
+                                    <>
+                                        <div className="col-span-full pt-2">
+                                            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-500">
+                                                <p className="font-bold mb-1">Hinweis zur Umrechnung</p>
+                                                Da dein Zähler in {newMeterData.unit} misst, der Preis aber in kWh ist, benötigen wir zur Umrechnung folgende Werte (stehen auf der Rechnung).
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Zustandszahl</label>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={newMeterData.zNumber || ""}
+                                                onChange={(e) => setNewMeterData({ ...newMeterData, zNumber: e.target.value })}
+                                                placeholder="z.B. 0.95"
+                                                className="input-field w-full"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Brennwert</label>
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                value={newMeterData.calorificValue || ""}
+                                                onChange={(e) => setNewMeterData({ ...newMeterData, calorificValue: e.target.value })}
+                                                placeholder="z.B. 11.2"
+                                                className="input-field w-full"
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     )}

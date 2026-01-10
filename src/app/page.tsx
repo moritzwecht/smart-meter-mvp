@@ -757,7 +757,13 @@ export default function Dashboard() {
               // @ts-ignore
               newMeterData.basicFee,
               // @ts-ignore
-              newMeterData.pricePerUnit
+              newMeterData.pricePerUnit,
+              // @ts-ignore
+              newMeterData.zNumber,
+              // @ts-ignore
+              newMeterData.calorificValue,
+              // @ts-ignore
+              newMeterData.priceUnit
             );
             setShowAddMeterDialog(false);
           });
@@ -851,8 +857,8 @@ export default function Dashboard() {
         onClose={() => setEditingMeterId(null)}
         meter={editingMeter!}
         isPending={isPending}
-        onUpdateMeter={(id, type, unit, monthlyPayment, basicFee, pricePerUnit) => {
-          DataService.updateMeter(id, type, unit, monthlyPayment, basicFee, pricePerUnit);
+        onUpdateMeter={(id, type, unit, monthlyPayment, basicFee, pricePerUnit, zNumber, calorificValue, priceUnit) => {
+          DataService.updateMeter(id, type, unit, monthlyPayment, basicFee, pricePerUnit, zNumber, calorificValue, priceUnit);
         }}
         onDeleteReading={(id) => {
           if (window.confirm("Ablesung löschen?")) {

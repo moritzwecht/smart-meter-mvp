@@ -8,7 +8,7 @@ interface MeterSettingsDialogProps {
     isOpen: boolean;
     onClose: () => void;
     meter: any;
-    onUpdateMeter: (id: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string) => void;
+    onUpdateMeter: (id: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string, zNumber?: string, calorificValue?: string, priceUnit?: string) => void;
     onDeleteReading: (id: number) => void;
     onDeleteMeter: (id: number) => void;
     isPending?: boolean;
@@ -31,12 +31,20 @@ export function MeterSettingsDialog({
     const [basicFee, setBasicFee] = useState("");
     const [pricePerUnit, setPricePerUnit] = useState("");
 
+    // Gas conversion state
+    const [priceUnit, setPriceUnit] = useState("");
+    const [zNumber, setZNumber] = useState("");
+    const [calorificValue, setCalorificValue] = useState("");
+
     useEffect(() => {
         if (meter) {
             setLastMeter(meter);
             setMonthlyPayment(meter.monthlyPayment || "");
             setBasicFee(meter.basicFee || "");
             setPricePerUnit(meter.pricePerUnit || "");
+            setPriceUnit(meter.priceUnit || (meter.unit === "m³" ? "kwh" : meter.unit)); // Default to kWh if meter is m3
+            setZNumber(meter.zNumber || "");
+            setCalorificValue(meter.calorificValue || "");
         }
     }, [meter]);
 
@@ -51,6 +59,9 @@ export function MeterSettingsDialog({
     ] as const;
 
     const showSettings = activeMeter.type === "ELECTRICITY" || activeMeter.type === "GAS";
+
+    // Check if conversion is needed (e.g. meter uses m³ but price is in kWh)
+    const showConversion = activeMeter.type === "GAS" && activeMeter.unit === "m³" && priceUnit === "kwh";
 
     const calculateStats = () => {
         const readings = activeMeter.readings || [];
@@ -77,7 +88,10 @@ export function MeterSettingsDialog({
             activeMeter.unit,
             monthlyPayment,
             basicFee,
-            pricePerUnit
+            pricePerUnit,
+            zNumber,
+            calorificValue,
+            priceUnit
         );
     };
 
@@ -133,8 +147,27 @@ export function MeterSettingsDialog({
                                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
                                         </div>
                                     </div>
+
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Verbrauchspreis</label>
+                                        <div className="flex justify-between">
+                                            <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Verbrauchspreis</label>
+                                            {activeMeter.type === "GAS" && (
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => setPriceUnit(activeMeter.unit)}
+                                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${priceUnit === activeMeter.unit ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground"}`}
+                                                    >
+                                                        €/{activeMeter.unit}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setPriceUnit("kwh")}
+                                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${priceUnit === "kwh" ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground"}`}
+                                                    >
+                                                        €/kWh
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                         <div className="relative">
                                             <input
                                                 type="text"
@@ -142,11 +175,14 @@ export function MeterSettingsDialog({
                                                 value={pricePerUnit}
                                                 onChange={(e) => setPricePerUnit(e.target.value)}
                                                 placeholder="0.000"
-                                                className="input-field w-full pr-12"
+                                                className="input-field w-full pr-16"
                                             />
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€/{activeMeter.unit}</span>
+                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">
+                                                €/{priceUnit === "kwh" ? "kWh" : activeMeter.unit}
+                                            </span>
                                         </div>
                                     </div>
+
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Grundgebühr (in Abschlag)</label>
                                         <div className="relative">
@@ -161,6 +197,39 @@ export function MeterSettingsDialog({
                                             <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold">€</span>
                                         </div>
                                     </div>
+
+                                    {showConversion && (
+                                        <>
+                                            <div className="col-span-full pt-2">
+                                                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-500">
+                                                    <p className="font-bold mb-1">Hinweis zur Umrechnung</p>
+                                                    Da dein Zähler in {activeMeter.unit} misst, der Preis aber in kWh ist, benötigen wir zur Umrechnung folgende Werte (stehen auf der Rechnung).
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Zustandszahl</label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={zNumber}
+                                                    onChange={(e) => setZNumber(e.target.value)}
+                                                    placeholder="z.B. 0.95"
+                                                    className="input-field w-full"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Brennwert</label>
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    value={calorificValue}
+                                                    onChange={(e) => setCalorificValue(e.target.value)}
+                                                    placeholder="z.B. 11.2"
+                                                    className="input-field w-full"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="flex justify-end pt-2">
                                     <button

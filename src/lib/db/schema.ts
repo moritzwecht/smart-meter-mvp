@@ -34,6 +34,9 @@ export const meters = pgTable("meters", {
     monthlyPayment: text("monthly_payment"),
     basicFee: text("basic_fee"),
     pricePerUnit: text("price_per_unit"),
+    zNumber: text("z_number"),
+    calorificValue: text("calorific_value"),
+    priceUnit: text("price_unit"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

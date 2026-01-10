@@ -17,6 +17,9 @@ export interface OfflineMeter {
     monthlyPayment?: string | null;
     basicFee?: string | null;
     pricePerUnit?: string | null;
+    zNumber?: string | null;
+    calorificValue?: string | null;
+    priceUnit?: string | null;
     isPinned: string;
     createdAt: Date;
 }

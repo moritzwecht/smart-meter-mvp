@@ -234,7 +234,7 @@ export const DataService = {
         });
     },
 
-    async addMeter(householdId: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string) {
+    async addMeter(householdId: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string, zNumber?: string, calorificValue?: string, priceUnit?: string) {
         const tempId = Math.floor(Math.random() * -1000000);
         const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
         const meter = {
@@ -246,6 +246,9 @@ export const DataService = {
             monthlyPayment: monthlyPayment || null,
             basicFee: basicFee || null,
             pricePerUnit: pricePerUnit || null,
+            zNumber: zNumber || null,
+            calorificValue: calorificValue || null,
+            priceUnit: priceUnit || null,
             isPinned: 'false',
             createdAt: new Date(),
             readings: []
@@ -255,13 +258,13 @@ export const DataService = {
         await SyncManager.enqueue({
             type: 'CREATE',
             entity: 'METER',
-            data: { householdId, type, unit, monthlyPayment, basicFee, pricePerUnit, tempId }
+            data: { householdId, type, unit, monthlyPayment, basicFee, pricePerUnit, zNumber, calorificValue, priceUnit, tempId }
         });
 
         return meter;
     },
 
-    async updateMeter(id: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string) {
+    async updateMeter(id: number, type: string, unit: string, monthlyPayment?: string, basicFee?: string, pricePerUnit?: string, zNumber?: string, calorificValue?: string, priceUnit?: string) {
         const name = type === "ELECTRICITY" ? "Strom" : type === "WATER" ? "Wasser" : type === "GAS" ? "Gas" : "Zähler";
         await db.meters.update(id, {
             name,
@@ -269,12 +272,15 @@ export const DataService = {
             unit,
             monthlyPayment,
             basicFee,
-            pricePerUnit
+            pricePerUnit,
+            zNumber,
+            calorificValue,
+            priceUnit
         });
         await SyncManager.enqueue({
             type: 'UPDATE',
             entity: 'METER',
-            data: { id, type, unit, monthlyPayment, basicFee, pricePerUnit }
+            data: { id, type, unit, monthlyPayment, basicFee, pricePerUnit, zNumber, calorificValue, priceUnit }
         });
     },
 
