@@ -43,7 +43,7 @@ export function DashboardHeader({
     }, []);
 
     return (
-        <header className="fixed bg-background top-0 left-0 right-0 z-50 flex justify-between items-center px-4 py-2 border-b border-border">
+        <header className="fixed bg-background top-0 left-0 right-0 z-50 flex justify-between items-center px-4 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] border-b border-border">
             <div className="relative">
                 <button
                     onClick={() => setIsHouseholdMenuOpen(!isHouseholdMenuOpen)}
