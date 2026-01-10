@@ -389,7 +389,7 @@ export default function Dashboard() {
   );
 
   return (
-    <main className="min-h-[100dvh] p-4 md:p-8 pt-[calc(6rem+env(safe-area-inset-top))] md:pt-24 max-w-7xl mx-auto space-y-8 bg-background text-foreground">
+    <main className="min-h-[100dvh] p-4 md:p-8 pt-[calc(5rem+env(safe-area-inset-top))] md:pt-24 max-w-7xl mx-auto space-y-8 bg-background text-foreground">
       <DashboardHeader
         selectedHouseholdName={
           selectedHousehold ? selectedHousehold.name : "Wähle Haushalt"
