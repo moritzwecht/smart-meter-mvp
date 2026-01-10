@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ChevronDown, Moon, Sun, User, CloudOff, CloudSync } from "lucide-react";
+import { ChevronDown, Moon, Sun, User, CloudOff, CloudSync, RefreshCcw } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/offline/db";
@@ -68,7 +68,7 @@ export function DashboardHeader({
 
                     {isOnline && pendingCount > 0 && (
                         <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
-                            <CloudSync className="w-3 h-3 animate-spin" />
+                            <RefreshCcw className="w-3 h-3 animate-spin" />
                             <span>Synchronisiere... ({pendingCount})</span>
                         </div>
                     )}
