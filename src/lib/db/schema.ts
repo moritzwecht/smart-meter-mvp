@@ -28,7 +28,7 @@ export const meters = pgTable("meters", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
     type: text("type").notNull(), // 'ELECTRICITY', 'GAS', 'WATER'
-    householdId: integer("household_id").references(() => households.id).notNull(),
+    householdId: integer("household_id").references(() => households.id, { onDelete: 'cascade' }).notNull(),
     unit: text("unit").notNull(),
     isPinned: text("is_pinned").default("false").notNull(),
     monthlyPayment: text("monthly_payment"),
@@ -44,7 +44,7 @@ export const meters = pgTable("meters", {
 
 export const readings = pgTable("readings", {
     id: serial("id").primaryKey(),
-    meterId: integer("meter_id").references(() => meters.id).notNull(),
+    meterId: integer("meter_id").references(() => meters.id, { onDelete: 'cascade' }).notNull(),
     value: text("value").notNull(),
     date: timestamp("date").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -56,7 +56,7 @@ export const readings = pgTable("readings", {
 export const todoLists = pgTable("todo_lists", {
     id: serial("id").primaryKey(),
     name: text("name").notNull(),
-    householdId: integer("household_id").references(() => households.id).notNull(),
+    householdId: integer("household_id").references(() => households.id, { onDelete: 'cascade' }).notNull(),
     isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -65,7 +65,7 @@ export const todoLists = pgTable("todo_lists", {
 
 export const todoItems = pgTable("todo_items", {
     id: serial("id").primaryKey(),
-    listId: integer("list_id").references(() => todoLists.id).notNull(),
+    listId: integer("list_id").references(() => todoLists.id, { onDelete: 'cascade' }).notNull(),
     content: text("content").notNull(),
     completed: text("completed").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -77,7 +77,7 @@ export const notes = pgTable("notes", {
     id: serial("id").primaryKey(),
     title: text("title").notNull(),
     content: text("content"),
-    householdId: integer("household_id").references(() => households.id).notNull(),
+    householdId: integer("household_id").references(() => households.id, { onDelete: 'cascade' }).notNull(),
     isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -86,8 +86,8 @@ export const notes = pgTable("notes", {
 
 export const householdUsers = pgTable("household_users", {
     id: serial("id").primaryKey(),
-    householdId: integer("household_id").references(() => households.id).notNull(),
-    userId: integer("user_id").references(() => users.id).notNull(),
+    householdId: integer("household_id").references(() => households.id, { onDelete: 'cascade' }).notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }).notNull(),
     role: text("role").notNull().default("MEMBER"), // 'OWNER', 'MEMBER'
     createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({

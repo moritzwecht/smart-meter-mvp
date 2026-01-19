@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { users, verificationTokens, households, meters, readings, todoLists, todoItems, notes, householdUsers } from "@/lib/db/schema";
-import { eq, and, gt, inArray } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { login as setAuthSession, logout as clearAuthSession, getSession } from "@/lib/auth";
@@ -128,40 +128,11 @@ export async function deleteHousehold(id: number) {
 
     if (!membership) throw new Error("Nur der Besitzer kann den Haushalt löschen.");
 
-    // Delete all related data with bulk operations (fixes N+1 query pattern)
-    // 1. Get all meter IDs for this household
-    const householdMeterIds = (await db.select({ id: meters.id })
-        .from(meters)
-        .where(eq(meters.householdId, id))).map(m => m.id);
-
-    // 2. Delete all readings for these meters in one query
-    if (householdMeterIds.length > 0) {
-        await db.delete(readings).where(inArray(readings.meterId, householdMeterIds));
-    }
-
-    // 3. Delete all meters
-    await db.delete(meters).where(eq(meters.householdId, id));
-
-    // 4. Get all list IDs for this household
-    const householdListIds = (await db.select({ id: todoLists.id })
-        .from(todoLists)
-        .where(eq(todoLists.householdId, id))).map(l => l.id);
-
-    // 5. Delete all items for these lists in one query
-    if (householdListIds.length > 0) {
-        await db.delete(todoItems).where(inArray(todoItems.listId, householdListIds));
-    }
-
-    // 6. Delete all todo lists
-    await db.delete(todoLists).where(eq(todoLists.householdId, id));
-
-    // 7. Delete all notes
-    await db.delete(notes).where(eq(notes.householdId, id));
-
-    // 8. Delete household users
-    await db.delete(householdUsers).where(eq(householdUsers.householdId, id));
-
-    // 9. Delete household
+    // Delete household - database CASCADE will automatically delete:
+    // - meters (and their readings via CASCADE)
+    // - todoLists (and their items via CASCADE)
+    // - notes
+    // - householdUsers
     await db.delete(households).where(eq(households.id, id));
 
     revalidatePath("/");
