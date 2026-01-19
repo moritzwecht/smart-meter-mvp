@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 export const users = pgTable("users", {
@@ -38,7 +38,9 @@ export const meters = pgTable("meters", {
     calorificValue: text("calorific_value"),
     priceUnit: text("price_unit"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    householdIdIdx: index("meters_household_id_idx").on(table.householdId),
+}));
 
 export const readings = pgTable("readings", {
     id: serial("id").primaryKey(),
@@ -46,7 +48,10 @@ export const readings = pgTable("readings", {
     value: text("value").notNull(),
     date: timestamp("date").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    meterIdIdx: index("readings_meter_id_idx").on(table.meterId),
+    dateIdx: index("readings_date_idx").on(table.date),
+}));
 
 export const todoLists = pgTable("todo_lists", {
     id: serial("id").primaryKey(),
@@ -54,7 +59,9 @@ export const todoLists = pgTable("todo_lists", {
     householdId: integer("household_id").references(() => households.id).notNull(),
     isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    householdIdIdx: index("todo_lists_household_id_idx").on(table.householdId),
+}));
 
 export const todoItems = pgTable("todo_items", {
     id: serial("id").primaryKey(),
@@ -62,7 +69,9 @@ export const todoItems = pgTable("todo_items", {
     content: text("content").notNull(),
     completed: text("completed").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    listIdIdx: index("todo_items_list_id_idx").on(table.listId),
+}));
 
 export const notes = pgTable("notes", {
     id: serial("id").primaryKey(),
@@ -71,7 +80,9 @@ export const notes = pgTable("notes", {
     householdId: integer("household_id").references(() => households.id).notNull(),
     isPinned: text("is_pinned").default("false").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    householdIdIdx: index("notes_household_id_idx").on(table.householdId),
+}));
 
 export const householdUsers = pgTable("household_users", {
     id: serial("id").primaryKey(),
@@ -79,7 +90,12 @@ export const householdUsers = pgTable("household_users", {
     userId: integer("user_id").references(() => users.id).notNull(),
     role: text("role").notNull().default("MEMBER"), // 'OWNER', 'MEMBER'
     createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+    householdIdIdx: index("household_users_household_id_idx").on(table.householdId),
+    userIdIdx: index("household_users_user_id_idx").on(table.userId),
+    // Composite index for common join queries (user looking up their households)
+    userHouseholdIdx: index("household_users_user_household_idx").on(table.userId, table.householdId),
+}));
 
 // Relations
 export const userRelations = relations(users, ({ many }) => ({
