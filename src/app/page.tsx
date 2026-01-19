@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition, useOptimistic } from "react";
+import { useEffect, useState, useTransition, useOptimistic, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, User } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
@@ -224,7 +224,7 @@ export default function Dashboard() {
   const editingMeter = optimisticWidgets.find(w => w.id === editingMeterId && w.widgetType === "METER") as Meter | undefined;
   const addingReadingForMeter = optimisticWidgets.find(w => w.id === addingReadingForMeterId && w.widgetType === "METER") as Meter | undefined;
 
-  const refreshHouseholds = async () => {
+  const refreshHouseholds = useCallback(async () => {
     const data = await DataService.getHouseholds();
     setHouseholds(data);
     if (data.length > 0 && !selectedHouseholdId) {
@@ -238,18 +238,18 @@ export default function Dashboard() {
       }
       setSelectedHouseholdId(data[0].id);
     }
-  };
+  }, [selectedHouseholdId]);
 
-  const refreshMembers = async (hId: number) => {
+  const refreshMembers = useCallback(async (hId: number) => {
     try {
       const data = await actions.getHouseholdMembers(hId);
       setMembers(data);
     } catch (err) {
       console.error("Failed to fetch members:", err);
     }
-  };
+  }, []);
 
-  const handleRenameHousehold = () => {
+  const handleRenameHousehold = useCallback(() => {
     if (!editingHousehold || !editingHousehold.name.trim()) return;
     startTransition(async () => {
       try {
@@ -262,7 +262,7 @@ export default function Dashboard() {
         alert(err.message);
       }
     });
-  };
+  }, [editingHousehold, refreshHouseholds]);
 
   useEffect(() => {
     // Load theme from localStorage
@@ -290,13 +290,13 @@ export default function Dashboard() {
     }
   }, [selectedHouseholdId]);
 
-  const refreshProfile = async () => {
+  const refreshProfile = useCallback(async () => {
     const data = await actions.getUserProfile();
     if (data) {
       setUserProfile(data);
       setProfileData((prev: ProfileData) => ({ ...prev, name: data.name }));
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (session) {
@@ -304,7 +304,7 @@ export default function Dashboard() {
     }
   }, [session]);
 
-  const refreshWidgets = async (householdId: number) => {
+  const refreshWidgets = useCallback(async (householdId: number) => {
     // Only show loading if we don't have local widgets yet
     const hasLocal = (await db.meters.where('householdId').equals(householdId).count()) > 0;
     if (!hasLocal) setIsWidgetsLoading(true);
@@ -318,7 +318,7 @@ export default function Dashboard() {
     } finally {
       setIsWidgetsLoading(false);
     }
-  };
+  }, [editingNoteId, editingListId, editingMeterId]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -349,7 +349,7 @@ export default function Dashboard() {
       setLoading(false);
     }
   }, [selectedHouseholdId, session, households.length, editingNoteId, editingListId, editingMeterId]);
-  const handleCreateHousehold = (e: React.FormEvent) => {
+  const handleCreateHousehold = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!newHouseholdName.trim()) return;
     startTransition(async () => {
@@ -358,9 +358,9 @@ export default function Dashboard() {
       setIsHouseholdMenuOpen(false);
       refreshHouseholds();
     });
-  };
+  }, [newHouseholdName, refreshHouseholds]);
 
-  const handleAddNote = () => {
+  const handleAddNote = useCallback(() => {
     startTransition(async () => {
       addOptimisticWidget({
         id: Math.random(),
@@ -373,18 +373,18 @@ export default function Dashboard() {
       });
       await DataService.addNote(selectedHouseholdId!, "Neue Notiz");
     });
-  };
+  }, [selectedHouseholdId, addOptimisticWidget]);
 
-  const handleAddMeter = () => {
+  const handleAddMeter = useCallback(() => {
     setNewMeterData({
       name: "Neuer Zähler",
       type: "ELECTRICITY",
       unit: "kWh",
     });
     setShowAddMeterDialog(true);
-  };
+  }, []);
 
-  const handleAddList = () => {
+  const handleAddList = useCallback(() => {
     startTransition(async () => {
       addOptimisticWidget({
         id: Math.random(),
@@ -397,7 +397,7 @@ export default function Dashboard() {
       });
       await DataService.addTodoList(selectedHouseholdId!, "Neue Liste");
     });
-  };
+  }, [selectedHouseholdId, addOptimisticWidget]);
 
   if (loading) return <DashboardSkeleton />;
 
