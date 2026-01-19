@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition, memo } from "react";
+import { useOptimistic, useTransition, memo, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ListTodo, Check, Edit2, Trash2, Pin } from "lucide-react";
 
@@ -27,6 +27,17 @@ export const ListWidget = memo(function ListWidget({ list, onEdit, onPin }: List
             }
         }
     );
+
+    // Memoize sorted and sliced items to avoid re-sorting on every render
+    const displayItems = useMemo(() => {
+        const items = optimisticList.items || [];
+        return [...items]
+            .sort((a, b) => {
+                if (a.completed === b.completed) return 0;
+                return a.completed === "true" ? 1 : -1;
+            })
+            .slice(0, 3);
+    }, [optimisticList.items]);
 
     return (
         <div
@@ -61,13 +72,7 @@ export const ListWidget = memo(function ListWidget({ list, onEdit, onPin }: List
             </div>
             <div className="mt-3 space-y-2">
                 <AnimatePresence mode="popLayout" initial={false}>
-                    {[...(optimisticList.items || [])]
-                        .sort((a, b) => {
-                            if (a.completed === b.completed) return 0;
-                            return a.completed === "true" ? 1 : -1;
-                        })
-                        .slice(0, 3)
-                        .map((item: any) => (
+                    {displayItems.map((item: any) => (
                             <motion.div
                                 key={item.id}
                                 layout

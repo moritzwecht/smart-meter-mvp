@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Zap, Droplets, Flame, Plus, Settings, Pin } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
@@ -24,22 +24,22 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
         bg: "bg-amber-500/10",
     };
 
-    const calculateDailyAverage = () => {
-        const sorted = [...(meter.readings || [])].sort(
+    const avg = useMemo(() => {
+        const readings = meter.readings || [];
+        if (readings.length < 2) return null;
+
+        // Readings are already sorted from the query
+        const sorted = [...readings].sort(
             (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );
-        if (sorted.length >= 2) {
-            const first = sorted[0];
-            const last = sorted[sorted.length - 1];
-            const diff = parseSafe(last.value) - parseSafe(first.value);
-            const ms = new Date(last.date).getTime() - new Date(first.date).getTime();
-            const days = ms / (1000 * 60 * 60 * 24);
-            return days > 0 ? formatNumber(diff / days, 2) : null;
-        }
-        return null;
-    };
 
-    const avg = calculateDailyAverage();
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const diff = parseSafe(last.value) - parseSafe(first.value);
+        const ms = new Date(last.date).getTime() - new Date(first.date).getTime();
+        const days = ms / (1000 * 60 * 60 * 24);
+        return days > 0 ? formatNumber(diff / days, 2) : null;
+    }, [meter.readings]);
 
     return (
         <div
