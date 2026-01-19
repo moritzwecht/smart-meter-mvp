@@ -112,30 +112,69 @@ export default function Dashboard() {
 
   const localWidgets = useLiveQuery(async () => {
     if (!selectedHouseholdId) return [];
-    const m = await db.meters
-      .where("householdId")
-      .equals(selectedHouseholdId)
-      .toArray();
-    const l = await db.todoLists
-      .where("householdId")
-      .equals(selectedHouseholdId)
-      .toArray();
-    const n = await db.notes
-      .where("householdId")
-      .equals(selectedHouseholdId)
-      .toArray();
 
-    // Join readings and items
-    const [metersWithReadings, listsWithItems] = await Promise.all([
-      Promise.all(m.map(async meter => ({
-        ...meter,
-        readings: await db.readings.where('meterId').equals(meter.id).sortBy('date')
-      }))),
-      Promise.all(l.map(async list => ({
-        ...list,
-        items: await db.todoItems.where('listId').equals(list.id).sortBy('createdAt')
-      })))
+    // Fetch all entities for household
+    const [m, l, n] = await Promise.all([
+      db.meters.where("householdId").equals(selectedHouseholdId).toArray(),
+      db.todoLists.where("householdId").equals(selectedHouseholdId).toArray(),
+      db.notes.where("householdId").equals(selectedHouseholdId).toArray(),
     ]);
+
+    // Batch fetch readings and items - Fix N+1 query problem
+    const meterIds = m.map(meter => meter.id);
+    const listIds = l.map(list => list.id);
+
+    const [allReadings, allItems] = await Promise.all([
+      meterIds.length > 0
+        ? db.readings.where('meterId').anyOf(meterIds).toArray()
+        : Promise.resolve([]),
+      listIds.length > 0
+        ? db.todoItems.where('listId').anyOf(listIds).toArray()
+        : Promise.resolve([]),
+    ]);
+
+    // Group readings by meterId in memory
+    const readingsByMeter: Record<number, typeof allReadings> = {};
+    for (const reading of allReadings) {
+      if (!readingsByMeter[reading.meterId]) {
+        readingsByMeter[reading.meterId] = [];
+      }
+      readingsByMeter[reading.meterId].push(reading);
+    }
+
+    // Sort readings by date for each meter
+    for (const meterId in readingsByMeter) {
+      readingsByMeter[meterId].sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      );
+    }
+
+    // Group items by listId in memory
+    const itemsByList: Record<number, typeof allItems> = {};
+    for (const item of allItems) {
+      if (!itemsByList[item.listId]) {
+        itemsByList[item.listId] = [];
+      }
+      itemsByList[item.listId].push(item);
+    }
+
+    // Sort items by createdAt for each list
+    for (const listId in itemsByList) {
+      itemsByList[listId].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    }
+
+    // Attach readings and items to their parent entities
+    const metersWithReadings = m.map(meter => ({
+      ...meter,
+      readings: readingsByMeter[meter.id] || []
+    }));
+
+    const listsWithItems = l.map(list => ({
+      ...list,
+      items: itemsByList[list.id] || []
+    }));
 
     return [
       ...metersWithReadings.map((i) => ({ ...i, widgetType: "METER" as const })),
