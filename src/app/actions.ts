@@ -128,36 +128,11 @@ export async function deleteHousehold(id: number) {
 
     if (!membership) throw new Error("Nur der Besitzer kann den Haushalt löschen.");
 
-    // Delete all related data manually since no CASCADE is defined in schema
-    // 1. Delete readings for all meters in this household
-    const householdMeters = await db.query.meters.findMany({
-        where: eq(meters.householdId, id)
-    });
-    for (const m of householdMeters) {
-        await db.delete(readings).where(eq(readings.meterId, m.id));
-    }
-
-    // 2. Delete meters
-    await db.delete(meters).where(eq(meters.householdId, id));
-
-    // 3. Delete todo items for all lists in this household
-    const householdLists = await db.query.todoLists.findMany({
-        where: eq(todoLists.householdId, id)
-    });
-    for (const l of householdLists) {
-        await db.delete(todoItems).where(eq(todoItems.listId, l.id));
-    }
-
-    // 4. Delete todo lists
-    await db.delete(todoLists).where(eq(todoLists.householdId, id));
-
-    // 5. Delete notes
-    await db.delete(notes).where(eq(notes.householdId, id));
-
-    // 6. Delete household users
-    await db.delete(householdUsers).where(eq(householdUsers.householdId, id));
-
-    // 7. Delete household
+    // Delete household - database CASCADE will automatically delete:
+    // - meters (and their readings via CASCADE)
+    // - todoLists (and their items via CASCADE)
+    // - notes
+    // - householdUsers
     await db.delete(households).where(eq(households.id, id));
 
     revalidatePath("/");
