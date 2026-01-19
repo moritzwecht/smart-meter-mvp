@@ -1,9 +1,43 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   DESIGN TOKENS & CSS VARIABLES
+   ============================================================================
+
+   Diese Datei definiert das gesamte Design-System der App mit Tailwind CSS.
+   Alle Farben, Schriftarten, Abstände und Komponenten werden hier zentral
+   verwaltet, um Konsistenz und einfache Wartbarkeit zu gewährleisten.
+
+   Struktur:
+   1. Theme Variables (@theme) - Tailwind CSS 4.0 Theme-Definition
+   2. Light Mode Variablen (:root)
+   3. Dark Mode Variablen (:root.dark)
+   4. Base Styles (body, html)
+   5. Component Styles (buttons, inputs, cards)
+   6. Utility Classes (scrollbar, animations)
+============================================================================ */
+
+
+/* ============================================================================
+   1. THEME VARIABLES (@theme)
+   ============================================================================
+   Tailwind 4.0 Theme-Definition für die globale Konfiguration.
+   Diese Variablen werden von Tailwind automatisch erkannt und können
+   in allen Utility-Klassen verwendet werden.
+============================================================================ */
+
 @theme {
+  /* Schriftarten
+     ========================================================================
+     Definiert die Haupt-Schriftarten für Text und Code.
+     Fallback-Fonts sind für maximale Kompatibilität inkludiert. */
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 
+  /* Farbzuordnungen
+     ========================================================================
+     Mappt die Tailwind-Farben auf unsere CSS-Variablen.
+     Dadurch können wir bg-primary, text-foreground etc. verwenden. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -16,106 +50,297 @@
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
 
-  --radius-lg: 1rem;
-  --radius-md: 0.75rem;
-  --radius-sm: 0.5rem;
+  /* Border Radius Presets
+     ========================================================================
+     Vordefinierte Radius-Werte für konsistente Rundungen.
+     Verwendung: rounded-lg, rounded-md, rounded-sm */
+  --radius-lg: 1rem;      /* 16px - Große Cards, Dialoge */
+  --radius-md: 0.75rem;   /* 12px - Buttons, Inputs */
+  --radius-sm: 0.5rem;    /* 8px - Tags, Badges */
 }
+
+
+/* ============================================================================
+   2. LIGHT MODE VARIABLEN (:root)
+   ============================================================================
+   Farbpalette für den hellen Modus (Standard).
+   Basiert auf Tailwind Slate-Farben für ein professionelles Aussehen.
+============================================================================ */
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* Haupt-Hintergrund & Text
+     ========================================================================
+     background: Haupt-Hintergrundfarbe der App
+     foreground: Haupt-Textfarbe für optimale Lesbarkeit */
+  --background: #f8fafc;    /* slate-50 - Sehr helles Grau für cleanen Look */
+  --foreground: #0f172a;    /* slate-900 - Dunkles Grau für starken Kontrast */
 
-  --card: #ffffff;
+  /* Card/Widget Farben
+     ========================================================================
+     card: Hintergrund für Cards, Widgets, erhöhte Elemente
+     card-foreground: Textfarbe auf Cards */
+  --card: #ffffff;          /* Reines Weiß für maximalen Kontrast */
   --card-foreground: #0f172a;
 
-  --border: #e2e8f0;
+  /* Border & Input
+     ========================================================================
+     border: Standard-Rahmenfarbe für Trenner und Umrandungen
+     input: Hintergrund für Input-Felder (gleich wie border) */
+  --border: #e2e8f0;        /* slate-200 - Subtile Grenzen */
   --input: #e2e8f0;
 
-  --primary: #0f172a;
+  /* Primary (Haupt-Akzent)
+     ========================================================================
+     primary: Haupt-Aktionsfarbe (Buttons, Links, wichtige Elemente)
+     primary-foreground: Text auf primary-Hintergrund */
+  --primary: #0f172a;       /* slate-900 - Dunkles, professionelles Blau-Grau */
   --primary-foreground: #ffffff;
 
-  --secondary: #f1f5f9;
+  /* Secondary (Sekundärer Akzent)
+     ========================================================================
+     secondary: Alternative Akzentfarbe für weniger wichtige Aktionen */
+  --secondary: #f1f5f9;     /* slate-100 */
   --secondary-foreground: #0f172a;
 
-  --accent: #f1f5f9;
+  /* Accent (Hervorhebungen)
+     ========================================================================
+     accent: Für Hover-States, Highlights, subtile Hervorhebungen */
+  --accent: #f1f5f9;        /* slate-100 */
   --accent-foreground: #0f172a;
 
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  /* Muted (Abgeschwächte Elemente)
+     ========================================================================
+     muted: Hintergrund für inaktive/sekundäre Bereiche
+     muted-foreground: Farbe für Platzhalter, Labels, Hilfstexte */
+  --muted: #f1f5f9;         /* slate-100 */
+  --muted-foreground: #64748b; /* slate-500 - Mittleres Grau */
 }
 
+
+/* ============================================================================
+   3. DARK MODE VARIABLEN (:root.dark)
+   ============================================================================
+   Farbpalette für den dunklen Modus.
+   Wird automatisch aktiviert wenn .dark-Klasse auf :root gesetzt ist.
+   Verwendet invertierte Slate-Farben für optimalen Kontrast.
+============================================================================ */
 
 :root.dark {
-  --background: #020617;
-  --foreground: #f8fafc;
+  /* Haupt-Hintergrund & Text */
+  --background: #020617;    /* slate-950 - Sehr dunkles Blau-Schwarz */
+  --foreground: #f8fafc;    /* slate-50 - Fast Weiß */
 
-  --card: #0f172a;
+  /* Card/Widget Farben */
+  --card: #0f172a;          /* slate-900 - Leicht heller als Hintergrund */
   --card-foreground: #f8fafc;
 
-  --border: #1e293b;
+  /* Border & Input */
+  --border: #1e293b;        /* slate-800 - Subtile dunkle Grenzen */
   --input: #1e293b;
 
-  --primary: #f8fafc;
+  /* Primary (invertiert im Dark Mode) */
+  --primary: #f8fafc;       /* slate-50 - Hell im Dark Mode */
   --primary-foreground: #020617;
 
-  --secondary: #1e293b;
+  /* Secondary */
+  --secondary: #1e293b;     /* slate-800 */
   --secondary-foreground: #f8fafc;
 
-  --accent: #1e293b;
+  /* Accent */
+  --accent: #1e293b;        /* slate-800 */
   --accent-foreground: #f8fafc;
 
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
+  /* Muted */
+  --muted: #1e293b;         /* slate-800 */
+  --muted-foreground: #94a3b8; /* slate-400 - Aufgehelltes Grau */
 }
 
+
+/* ============================================================================
+   4. BASE STYLES
+   ============================================================================
+   Grundlegende Styles für HTML-Elemente.
+============================================================================ */
+
 body {
+  /* Verwendet die definierten CSS-Variablen für Farben */
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+
+  /* Font-Rendering Optimierungen
+     antialiased: Glattere Schriftdarstellung auf verschiedenen Displays */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Entfernt den blauen Highlight-Effekt beim Tippen auf Touch-Geräten */
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Base interactive styles */
+
+/* ============================================================================
+   5. BUTTON COMPONENTS
+   ============================================================================
+   Wiederverwendbare Button-Styles mit verschiedenen Varianten.
+
+   Verwendung:
+   - .btn                 → Basis-Button (immer erforderlich)
+   - .btn-primary         → Primäre Aktion (wichtigster Button)
+   - .btn-ghost           → Subtiler Button ohne Hintergrund
+   - .btn-danger          → Destruktive Aktionen (Löschen, Abmelden)
+
+   Beispiel: <button class="btn btn-primary">Speichern</button>
+============================================================================ */
+
 .btn {
-  @apply px-4 py-2 rounded-xl font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2;
+  /* Layout & Spacing */
+  @apply px-4 py-2 rounded-xl font-bold;
+
+  /* Flex für Icon + Text Alignment */
+  @apply flex items-center justify-center gap-2;
+
+  /* Interaktions-States
+     transition-all: Smooth Animationen für alle Properties
+     active:scale-[0.98]: Leichtes "Drücken" beim Klick
+     disabled:opacity-50: Visuelles Feedback für deaktivierte Buttons
+     disabled:pointer-events-none: Verhindert Interaktion wenn disabled */
+  @apply transition-all active:scale-[0.98];
+  @apply disabled:opacity-50 disabled:pointer-events-none;
 }
 
 .btn-primary {
-  @apply bg-primary text-primary-foreground hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 active:translate-y-0;
+  /* Verwendet primary-Farben aus dem Theme */
+  @apply bg-primary text-primary-foreground;
+
+  /* Hover-Effekte
+     shadow-lg: Starker Schatten
+     shadow-primary/20: Farbiger Schatten mit 20% Opacity
+     -translate-y-0.5: Leichtes "Schweben" beim Hover */
+  @apply hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5;
+
+  /* Active-State: Entfernt das Schweben */
+  @apply active:translate-y-0;
 }
 
 .btn-ghost {
+  /* Subtiler Button ohne sichtbaren Hintergrund
+     Nur beim Hover wird accent-Farbe angezeigt */
   @apply hover:bg-accent hover:text-accent-foreground;
 }
 
 .btn-danger {
-  @apply bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-2 border-red-200 dark:border-red-900/50 hover:bg-red-100 dark:hover:bg-red-950/40;
+  /* Destruktive Aktionen (Rot im Light & Dark Mode)
+     bg-red-50: Sehr helles Rot im Light Mode
+     dark:bg-red-950/20: Sehr dunkles transparentes Rot im Dark Mode */
+  @apply bg-red-50 dark:bg-red-950/20;
+  @apply text-red-600 dark:text-red-400;
+  @apply border-2 border-red-200 dark:border-red-900/50;
+  @apply hover:bg-red-100 dark:hover:bg-red-950/40;
 }
+
+
+/* ============================================================================
+   6. CARD COMPONENT
+   ============================================================================
+   Container für gruppierte Inhalte (Widgets, Dialoge, etc.)
+
+   Verwendung: <div class="card">...</div>
+============================================================================ */
 
 .card {
-  @apply bg-card text-card-foreground rounded-2xl border border-border;
+  /* Verwendet card-Farben aus dem Theme */
+  @apply bg-card text-card-foreground;
+
+  /* Abgerundete Ecken mit größerem Radius für modernen Look */
+  @apply rounded-2xl;
+
+  /* Subtiler Border für Definition */
+  @apply border border-border;
 }
+
+
+/* ============================================================================
+   7. INPUT COMPONENT
+   ============================================================================
+   Standard-Eingabefeld für Formulare.
+
+   Verwendung: <input class="input-field" ... />
+============================================================================ */
 
 .input-field {
-  @apply px-4 py-3 bg-accent/20 border-2 border-border/50 rounded-xl focus:border-primary/50 focus:bg-accent/40 outline-none transition-all text-sm;
+  /* Layout & Spacing */
+  @apply px-4 py-3 rounded-xl text-sm;
+
+  /* Hintergrund & Border
+     accent/20: 20% Opacity der accent-Farbe für subtilen Hintergrund
+     border-2: Dickerer Border für bessere Sichtbarkeit */
+  @apply bg-accent/20 border-2 border-border/50;
+
+  /* Focus-State
+     focus:border-primary/50: Primary-Farbe beim Fokus
+     focus:bg-accent/40: Leicht dunklerer Hintergrund beim Fokus
+     outline-none: Entfernt den Standard-Browser-Outline */
+  @apply focus:border-primary/50 focus:bg-accent/40 outline-none;
+
+  /* Smooth Transitions für alle Property-Änderungen */
+  @apply transition-all;
 }
 
-/* Glassmorphism utility */
+
+/* ============================================================================
+   8. GLASSMORPHISM UTILITY
+   ============================================================================
+   Erstellt einen modernen "Glas"-Effekt mit Blur und Transparenz.
+
+   Verwendung: <div class="glass">...</div>
+
+   Tipp: Funktioniert am besten über farbigen Hintergründen oder Bildern.
+============================================================================ */
+
 .glass {
-  @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  /* Transparenter weißer Hintergrund */
+  @apply bg-white/5;
+
+  /* Backdrop Blur für Glas-Effekt
+     backdrop-blur-xl: Starker Blur-Effekt auf Hintergrund */
+  @apply backdrop-blur-xl;
+
+  /* Subtiler Border für Definition */
+  @apply border border-white/10;
 }
 
-/* Custom Scrollbar */
+
+/* ============================================================================
+   9. CUSTOM SCROLLBAR
+   ============================================================================
+   Styled die Scrollbars für ein moderneres Aussehen.
+
+   Verwendung: <div class="custom-scrollbar overflow-auto">...</div>
+
+   Hinweis: Funktioniert nur in Webkit-Browsern (Chrome, Safari, Edge)
+============================================================================ */
+
+/* Scrollbar-Breite */
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
 
+/* Scrollbar-Hintergrund (Track) */
 .custom-scrollbar::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 
+/* Scrollbar-Griff (Thumb) */
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/20 rounded-full hover:bg-muted-foreground/40 transition-colors;
+  /* muted-foreground/20: Subtiles Grau mit 20% Opacity */
+  @apply bg-muted-foreground/20;
+
+  /* Abgerundete Ecken für modernen Look */
+  @apply rounded-full;
+
+  /* Hover-Effekt: Dunkler beim Überfahren */
+  @apply hover:bg-muted-foreground/40;
+
+  /* Smooth Transition */
+  @apply transition-colors;
 }

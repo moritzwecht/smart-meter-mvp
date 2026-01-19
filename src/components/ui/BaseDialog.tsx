@@ -1,3 +1,46 @@
+/* ============================================================================
+   BASE DIALOG COMPONENT
+   ============================================================================
+
+   Wiederverwendbarer Dialog/Modal mit Mobile-optimiertem Verhalten.
+
+   Features:
+   - Mobile: Slide-up von unten mit Native-App-Feel
+   - Desktop: Fade-in in der Mitte mit Blur-Backdrop
+   - Keyboard-Unterstützung (ESC zum Schließen)
+   - Auto-Anpassung an Mobile-Keyboard (iOS/Android)
+   - Optionaler Header, Footer und Close-Button
+   - Framer Motion Animationen für smooth UX
+
+   Props:
+   - isOpen: boolean - Steuert Sichtbarkeit des Dialogs
+   - onClose: () => void - Callback beim Schließen
+   - title: string - Optionaler Dialog-Titel
+   - children: ReactNode - Dialog-Inhalt
+   - className: string - Zusätzliche CSS-Klassen
+   - showCloseButton: boolean - Zeigt X-Button (default: true)
+   - footer: ReactNode - Optionaler Footer-Bereich (z.B. Action-Buttons)
+   - headerAction: ReactNode - Custom Actions im Header (z.B. Delete-Button)
+
+   Verwendung:
+   ```tsx
+   <BaseDialog
+     isOpen={isOpen}
+     onClose={() => setIsOpen(false)}
+     title="Notiz bearbeiten"
+     footer={
+       <Button onClick={handleSave}>Speichern</Button>
+     }
+   >
+     <textarea value={note} onChange={...} />
+   </BaseDialog>
+   ```
+
+   Responsive Behavior:
+   - Mobile (<640px): Full-width, slides from bottom, rounded top corners
+   - Desktop (≥640px): Centered, max-width, rounded all corners
+============================================================================ */
+
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -5,16 +48,39 @@ import { useEffect, useState, useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/* ============================================================================
+   TYPE DEFINITIONS
+============================================================================ */
+
 interface BaseDialogProps {
+    /** Kontrolliert Sichtbarkeit des Dialogs */
     isOpen: boolean;
+
+    /** Callback beim Schließen (ESC, Backdrop-Click, Close-Button) */
     onClose: () => void;
+
+    /** Optionaler Titel im Dialog-Header */
     title?: string;
+
+    /** Dialog-Inhalt */
     children: React.ReactNode;
+
+    /** Zusätzliche CSS-Klassen für den Dialog-Container */
     className?: string;
+
+    /** Zeigt X-Button zum Schließen (default: true) */
     showCloseButton?: boolean;
+
+    /** Optionaler Footer-Bereich (z.B. Action-Buttons) */
     footer?: React.ReactNode;
+
+    /** Custom Actions im Header (z.B. Delete-Button neben Close) */
     headerAction?: React.ReactNode;
 }
+
+/* ============================================================================
+   COMPONENT
+============================================================================ */
 
 export function BaseDialog({
     isOpen,
@@ -26,13 +92,25 @@ export function BaseDialog({
     footer,
     headerAction,
 }: BaseDialogProps) {
+    /* ========================================================================
+       STATE MANAGEMENT
+       ========================================================================
+       - keyboardHeight: Höhe des mobilen Keyboards (iOS/Android)
+       - isMobile: Ist Device mobile? (< 640px)
+       - isMounted: Verhindert SSR-Probleme mit window-API */
     const [keyboardHeight, setKeyboardHeight] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
 
+    /* ========================================================================
+       MOBILE & KEYBOARD DETECTION
+       ========================================================================
+       Erkennt Device-Größe und Mobile-Keyboard für optimale Darstellung */
     useEffect(() => {
         setIsMounted(true);
+
+        // Check ob Mobile basierend auf Screen-Width
         const checkMobile = () => {
             setIsMobile(window.innerWidth < 640);
         };
@@ -40,10 +118,13 @@ export function BaseDialog({
         checkMobile();
         window.addEventListener("resize", checkMobile);
 
+        // Keyboard-Height Detection für iOS/Android
+        // Wichtig: Dialog muss sich nach oben schieben wenn Keyboard öffnet
         const handleVisualViewportChange = () => {
             if (window.visualViewport) {
                 const heightDiff = window.innerHeight - window.visualViewport.height;
-                // Only consider it a keyboard if the height difference is significant
+                // Nur als Keyboard betrachten wenn Unterschied > 100px
+                // (kleine Viewport-Changes ignorieren)
                 setKeyboardHeight(heightDiff > 100 ? heightDiff : 0);
             }
         };
@@ -53,6 +134,7 @@ export function BaseDialog({
             window.visualViewport.addEventListener("scroll", handleVisualViewportChange);
         }
 
+        // Cleanup
         return () => {
             window.removeEventListener("resize", checkMobile);
             if (window.visualViewport) {
@@ -62,7 +144,10 @@ export function BaseDialog({
         };
     }, []);
 
-    // Close on ESC
+    /* ========================================================================
+       KEYBOARD NAVIGATION
+       ========================================================================
+       ESC-Taste schließt Dialog (Standard UX Pattern) */
     useEffect(() => {
         const handleEsc = (e: KeyboardEvent) => {
             if (e.key === "Escape") onClose();

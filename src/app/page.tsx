@@ -2,11 +2,16 @@
 
 import { useEffect, useState, useTransition, useOptimistic, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, User, Lock, Mail, Moon, Sun, LogOut, Shield, Eye, EyeOff } from "lucide-react";
+import { Plus, User, Lock, Mail, Moon, Sun, LogOut, Shield } from "lucide-react";
 import { LoginForm } from "@/components/LoginForm";
 import * as actions from "./actions";
 import { DataService } from "@/lib/offline/data-service";
 import { useLiveQuery } from "dexie-react-hooks";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Section } from "@/components/ui/Section";
+import { Alert } from "@/components/ui/Alert";
+import { Toggle } from "@/components/ui/Toggle";
 import { db } from "@/lib/offline/db";
 
 // Dashboard Components
@@ -217,8 +222,6 @@ export default function Dashboard() {
   });
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState(false);
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
 
   const editingNote = optimisticWidgets.find(w => w.id === editingNoteId && w.widgetType === "NOTE") as Note | undefined;
@@ -677,11 +680,18 @@ export default function Dashboard() {
 
               {activeTab === "profile" && (
                 <div className="space-y-6 pb-24 max-w-2xl mx-auto px-4">
-                  {/* Profile Header */}
+                  {/* ================================================================
+                      PROFILE HEADER
+                      ================================================================
+                      Zeigt Avatar, Name und E-Mail des Benutzers.
+                      Prominent am Anfang für klare Identifikation. */}
                   <div className="flex items-center gap-4 py-6">
+                    {/* Avatar-Kreis mit User-Icon */}
                     <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                       <User className="w-10 h-10 text-primary" />
                     </div>
+
+                    {/* Name & E-Mail */}
                     <div className="min-w-0">
                       <h2 className="text-2xl font-black truncate">
                         {userProfile?.name}
@@ -693,157 +703,114 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Account Section */}
-                  <section className="space-y-4">
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
-                      <User className="w-3.5 h-3.5" />
-                      Account
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          Anzeigename
-                        </label>
-                        <input
-                          type="text"
-                          value={profileData.name}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              name: e.target.value,
-                            })
-                          }
-                          className="w-full input-field"
-                          placeholder="Dein Name"
-                        />
-                      </div>
-                    </div>
-                  </section>
+                  {/* ================================================================
+                      ACCOUNT SECTION
+                      ================================================================
+                      Grundlegende Account-Einstellungen wie Name. */}
+                  <Section
+                    title="Account"
+                    icon={<User className="w-3.5 h-3.5" />}
+                  >
+                    <Input
+                      label="Anzeigename"
+                      type="text"
+                      value={profileData.name}
+                      onChange={(e) =>
+                        setProfileData({
+                          ...profileData,
+                          name: e.target.value,
+                        })
+                      }
+                      placeholder="Dein Name"
+                    />
+                  </Section>
 
-                  {/* Security Section */}
-                  <section className="space-y-4 pt-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
-                      <Shield className="w-3.5 h-3.5" />
-                      Sicherheit
-                    </h3>
-                    <div className="space-y-3">
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          Aktuelles Passwort
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showCurrentPassword ? "text" : "password"}
-                            placeholder="••••••••"
-                            value={profileData.currentPassword}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                currentPassword: e.target.value,
-                              })
-                            }
-                            className="w-full input-field pr-12"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {showCurrentPassword ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">
-                          Neues Passwort
-                        </label>
-                        <div className="relative">
-                          <input
-                            type={showNewPassword ? "text" : "password"}
-                            placeholder="••••••••"
-                            value={profileData.newPassword}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                newPassword: e.target.value,
-                              })
-                            }
-                            className="w-full input-field pr-12"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowNewPassword(!showNewPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {showNewPassword ? (
-                              <EyeOff className="w-4 h-4" />
-                            ) : (
-                              <Eye className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
+                  {/* ================================================================
+                      SECURITY SECTION
+                      ================================================================
+                      Sicherheits-relevante Einstellungen wie Passwort-Änderung.
+                      Password-Toggle ist in der Input-Komponente integriert. */}
+                  <Section
+                    title="Sicherheit"
+                    icon={<Shield className="w-3.5 h-3.5" />}
+                  >
+                    <Input
+                      label="Aktuelles Passwort"
+                      type="password"
+                      showPasswordToggle
+                      value={profileData.currentPassword}
+                      onChange={(e) =>
+                        setProfileData({
+                          ...profileData,
+                          currentPassword: e.target.value,
+                        })
+                      }
+                      placeholder="••••••••"
+                    />
 
-                  {/* Appearance Section */}
-                  <section className="space-y-4 pt-2">
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 flex items-center gap-2">
-                      {theme === "dark" ? (
+                    <Input
+                      label="Neues Passwort"
+                      type="password"
+                      showPasswordToggle
+                      value={profileData.newPassword}
+                      onChange={(e) =>
+                        setProfileData({
+                          ...profileData,
+                          newPassword: e.target.value,
+                        })
+                      }
+                      placeholder="••••••••"
+                    />
+                  </Section>
+
+                  {/* ================================================================
+                      APPEARANCE SECTION
+                      ================================================================
+                      Visuelle Einstellungen wie Dark/Light Mode Toggle. */}
+                  <Section
+                    title="Erscheinungsbild"
+                    icon={
+                      theme === "dark" ? (
                         <Moon className="w-3.5 h-3.5" />
                       ) : (
                         <Sun className="w-3.5 h-3.5" />
-                      )}
-                      Erscheinungsbild
-                    </h3>
-                    <div className="flex items-center justify-between py-3 px-4 bg-accent/20 border-2 border-border/50 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        {theme === "dark" ? (
-                          <Moon className="w-4 h-4 text-muted-foreground" />
-                        ) : (
-                          <Sun className="w-4 h-4 text-muted-foreground" />
-                        )}
-                        <span className="text-sm font-medium">
-                          {theme === "dark" ? "Dunkler Modus" : "Heller Modus"}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-                        className={`relative w-14 h-8 rounded-full transition-colors ${
-                          theme === "dark" ? "bg-primary" : "bg-border"
-                        }`}
-                      >
-                        <div
-                          className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-transform ${
-                            theme === "dark" ? "translate-x-7" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
+                      )
+                    }
+                  >
+                    <div className="py-3 px-4 bg-accent/20 border-2 border-border/50 rounded-xl">
+                      <Toggle
+                        checked={theme === "dark"}
+                        onChange={(checked) => setTheme(checked ? "dark" : "light")}
+                        label={theme === "dark" ? "Dunkler Modus" : "Heller Modus"}
+                        icon={
+                          theme === "dark" ? (
+                            <Moon className="w-4 h-4" />
+                          ) : (
+                            <Sun className="w-4 h-4" />
+                          )
+                        }
+                      />
                     </div>
-                  </section>
+                  </Section>
 
-                  {/* Error/Success Messages */}
+                  {/* ================================================================
+                      ERROR/SUCCESS MESSAGES
+                      ================================================================
+                      Feedback für den Nutzer nach Aktionen.
+                      Verwendet die Alert-Komponente für konsistentes Styling. */}
                   {profileError && (
-                    <div className="bg-red-50 dark:bg-red-950/20 border-2 border-red-200 dark:border-red-900/50 rounded-xl p-4">
-                      <p className="text-sm font-medium text-red-600 dark:text-red-400">
-                        {profileError}
-                      </p>
-                    </div>
+                    <Alert variant="error">{profileError}</Alert>
                   )}
                   {profileSuccess && (
-                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-200 dark:border-emerald-900/50 rounded-xl p-4">
-                      <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                        Erfolgreich gespeichert!
-                      </p>
-                    </div>
+                    <Alert variant="success">Erfolgreich gespeichert!</Alert>
                   )}
 
-                  {/* Save Button */}
-                  <button
+                  {/* ================================================================
+                      SAVE BUTTON
+                      ================================================================
+                      Primäre Aktion zum Speichern aller Änderungen. */}
+                  <Button
+                    variant="primary"
                     onClick={() => {
                       setProfileError("");
                       setProfileSuccess(false);
@@ -856,8 +823,6 @@ export default function Dashboard() {
                             currentPassword: "",
                             newPassword: "",
                           }));
-                          setShowCurrentPassword(false);
-                          setShowNewPassword(false);
                           refreshProfile();
                         } catch (err: any) {
                           setProfileError(err.message);
@@ -865,18 +830,23 @@ export default function Dashboard() {
                       });
                     }}
                     disabled={isPending}
-                    className="btn btn-primary w-full py-4 text-sm font-black uppercase tracking-widest disabled:opacity-70"
+                    className="w-full py-4 text-sm font-black uppercase tracking-widest"
                   >
                     Änderungen speichern
-                  </button>
+                  </Button>
 
-                  {/* Danger Zone */}
-                  <section className="space-y-4 pt-8 border-t-2 border-border/50">
-                    <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-40 flex items-center gap-2 text-red-600 dark:text-red-400">
-                      <LogOut className="w-3.5 h-3.5" />
-                      Gefahrenzone
-                    </h3>
-                    <button
+                  {/* ================================================================
+                      DANGER ZONE
+                      ================================================================
+                      Bereich für destruktive Aktionen wie Abmelden.
+                      Visuell abgesetzt durch variant="danger". */}
+                  <Section
+                    title="Gefahrenzone"
+                    icon={<LogOut className="w-3.5 h-3.5" />}
+                    variant="danger"
+                  >
+                    <Button
+                      variant="danger"
                       onClick={() => {
                         if (window.confirm("Möchtest du dich wirklich abmelden?")) {
                           startTransition(async () => {
@@ -885,12 +855,12 @@ export default function Dashboard() {
                           });
                         }
                       }}
-                      className="btn btn-danger w-full py-4 text-sm font-black uppercase tracking-widest"
+                      className="w-full py-4 text-sm font-black uppercase tracking-widest"
                     >
                       <LogOut className="w-4 h-4" />
                       Abmelden
-                    </button>
-                  </section>
+                    </Button>
+                  </Section>
                 </div>
               )}
 
