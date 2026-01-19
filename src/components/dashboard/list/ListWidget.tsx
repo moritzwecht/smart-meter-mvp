@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition } from "react";
+import { useOptimistic, useTransition, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ListTodo, Check, Edit2, Trash2, Pin } from "lucide-react";
 
@@ -10,7 +10,7 @@ interface ListWidgetProps {
     onPin?: () => void;
 }
 
-export function ListWidget({ list, onEdit, onPin }: ListWidgetProps) {
+export const ListWidget = memo(function ListWidget({ list, onEdit, onPin }: ListWidgetProps) {
     const [optimisticList] = useOptimistic(
         list,
         (state, action: { type: "toggle" | "add"; payload: any }) => {
@@ -109,4 +109,17 @@ export function ListWidget({ list, onEdit, onPin }: ListWidgetProps) {
             </div>
         </div>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison to prevent unnecessary re-renders
+    // Return true if props are equal (should NOT re-render)
+    return (
+        prevProps.list.id === nextProps.list.id &&
+        prevProps.list.name === nextProps.list.name &&
+        prevProps.list.isPinned === nextProps.list.isPinned &&
+        prevProps.list.items?.length === nextProps.list.items?.length &&
+        // Check if any item's completed status changed
+        prevProps.list.items?.every((item: any, idx: number) =>
+            item.completed === nextProps.list.items?.[idx]?.completed
+        )
+    );
+});

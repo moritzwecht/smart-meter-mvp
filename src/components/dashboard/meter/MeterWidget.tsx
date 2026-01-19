@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Zap, Droplets, Flame, Plus, Settings, Pin } from "lucide-react";
 import { parseSafe, formatNumber } from "@/lib/utils";
@@ -11,7 +12,7 @@ interface MeterWidgetProps {
     onPin?: () => void;
 }
 
-export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWidgetProps) {
+export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWidgetProps) {
     const type = meter.type || "ELECTRICITY";
     const config = {
         ELECTRICITY: { icon: Zap, color: "text-amber-500", bg: "bg-amber-500/10" },
@@ -162,4 +163,15 @@ export function MeterWidget({ meter, onAddReading, onEditMeter, onPin }: MeterWi
             </div>
         </div>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison to prevent unnecessary re-renders
+    // Return true if props are equal (should NOT re-render)
+    return (
+        prevProps.meter.id === nextProps.meter.id &&
+        prevProps.meter.isPinned === nextProps.meter.isPinned &&
+        prevProps.meter.type === nextProps.meter.type &&
+        prevProps.meter.monthlyPayment === nextProps.meter.monthlyPayment &&
+        prevProps.meter.pricePerUnit === nextProps.meter.pricePerUnit &&
+        prevProps.meter.readings?.length === nextProps.meter.readings?.length
+    );
+});

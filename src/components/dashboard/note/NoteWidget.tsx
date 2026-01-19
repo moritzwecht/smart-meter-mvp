@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { FileText, Edit2, Trash2, Pin } from "lucide-react";
 
@@ -9,7 +10,7 @@ interface NoteWidgetProps {
     onPin?: () => void;
 }
 
-export function NoteWidget({ note, onEdit, onPin }: NoteWidgetProps) {
+export const NoteWidget = memo(function NoteWidget({ note, onEdit, onPin }: NoteWidgetProps) {
     return (
         <div
             onClick={() => onEdit(note)}
@@ -46,4 +47,13 @@ export function NoteWidget({ note, onEdit, onPin }: NoteWidgetProps) {
             </div>
         </div>
     );
-}
+}, (prevProps, nextProps) => {
+    // Custom comparison to prevent unnecessary re-renders
+    // Return true if props are equal (should NOT re-render)
+    return (
+        prevProps.note.id === nextProps.note.id &&
+        prevProps.note.title === nextProps.note.title &&
+        prevProps.note.content === nextProps.note.content &&
+        prevProps.note.isPinned === nextProps.note.isPinned
+    );
+});
