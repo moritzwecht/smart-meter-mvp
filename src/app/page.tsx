@@ -134,7 +134,7 @@ export default function Dashboard() {
     ]);
 
     // Group readings by meterId in memory
-    const readingsByMeter: Record<number, typeof allReadings> = {};
+    const readingsByMeter: Record<number, Array<(typeof allReadings)[number]>> = {};
     for (const reading of allReadings) {
       if (!readingsByMeter[reading.meterId]) {
         readingsByMeter[reading.meterId] = [];
@@ -150,7 +150,7 @@ export default function Dashboard() {
     }
 
     // Group items by listId in memory
-    const itemsByList: Record<number, typeof allItems> = {};
+    const itemsByList: Record<number, Array<(typeof allItems)[number]>> = {};
     for (const item of allItems) {
       if (!itemsByList[item.listId]) {
         itemsByList[item.listId] = [];
