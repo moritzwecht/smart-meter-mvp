@@ -340,11 +340,39 @@ export default function Dashboard() {
         if (loading) setLoading(false);
       });
 
-      const interval = setInterval(() => {
-        refreshWidgets(selectedHouseholdId);
-      }, 5000);
+      let interval: NodeJS.Timeout;
 
-      return () => clearInterval(interval);
+      const startPolling = () => {
+        interval = setInterval(() => {
+          refreshWidgets(selectedHouseholdId);
+        }, 30000); // Increased from 5s to 30s (83% reduction in requests)
+      };
+
+      const stopPolling = () => {
+        if (interval) clearInterval(interval);
+      };
+
+      const handleVisibilityChange = () => {
+        if (document.hidden) {
+          // Tab is hidden - stop polling to save resources
+          stopPolling();
+        } else {
+          // Tab is visible again - refresh immediately and resume polling
+          refreshWidgets(selectedHouseholdId);
+          startPolling();
+        }
+      };
+
+      // Start polling
+      startPolling();
+
+      // Add visibility change listener
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      return () => {
+        stopPolling();
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     } else if (session && households.length === 0) {
       setLoading(false);
     }
