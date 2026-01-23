@@ -24,7 +24,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
         bg: "bg-amber-500/10",
     };
 
-    const avg = useMemo(() => {
+    const avgNumeric = useMemo(() => {
         const readings = meter.readings || [];
         if (readings.length < 2) return null;
 
@@ -38,8 +38,10 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
         const diff = parseSafe(last.value) - parseSafe(first.value);
         const ms = new Date(last.date).getTime() - new Date(first.date).getTime();
         const days = ms / (1000 * 60 * 60 * 24);
-        return days > 0 ? formatNumber(diff / days, 2) : null;
+        return days > 0 ? diff / days : null;
     }, [meter.readings]);
+
+    const avg = avgNumeric !== null ? formatNumber(avgNumeric, 2) : null;
 
     return (
         <div
@@ -60,16 +62,16 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                                 </span>
                             </div>
 
-                            {type === "WATER" && meter.unit === "m³" && (
+                            {type === "WATER" && meter.unit === "m³" && avgNumeric !== null && (
                                 <div className="flex items-baseline gap-1 pt-1 opacity-70">
-                                    <span className="text-sm font-black tabular-nums">{Math.round(parseSafe(avg) * 1000)}</span>
+                                    <span className="text-sm font-black tabular-nums">{formatNumber(avgNumeric * 1000, 2)}</span>
                                     <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
                                         Liter
                                     </span>
                                 </div>
                             )}
 
-                            {(type === "ELECTRICITY" || type === "GAS") && meter.monthlyPayment && meter.pricePerUnit && (
+                            {(type === "ELECTRICITY" || type === "GAS") && meter.monthlyPayment && meter.pricePerUnit && avgNumeric !== null && (
                                 (() => {
                                     const monthlyPayment = parseSafe(meter.monthlyPayment);
                                     const basicFee = parseSafe(meter.basicFee || "0");
@@ -91,7 +93,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                                     // Target in Meter Units (e.g. m³)
                                     const monthlyTargetMeterUnits = monthlyTargetBillingUnits / factor;
 
-                                    const monthlyActualUnits = parseSafe(avg) * 30.44; // Avg days per month
+                                    const monthlyActualUnits = avgNumeric * 30.44; // Avg days per month
                                     const percentage = (monthlyActualUnits / monthlyTargetMeterUnits) * 100;
 
                                     // Scale: 0% to 200%. 100% (Budget) is exactly in the middle.
