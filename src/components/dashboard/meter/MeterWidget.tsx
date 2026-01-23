@@ -24,7 +24,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
         bg: "bg-amber-500/10",
     };
 
-    const avg = useMemo(() => {
+    const avgNumeric = useMemo(() => {
         const readings = meter.readings || [];
         if (readings.length < 2) return null;
 
@@ -38,21 +38,23 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
         const diff = parseSafe(last.value) - parseSafe(first.value);
         const ms = new Date(last.date).getTime() - new Date(first.date).getTime();
         const days = ms / (1000 * 60 * 60 * 24);
-        return days > 0 ? formatNumber(diff / days, 2) : null;
+        return days > 0 ? diff / days : null;
     }, [meter.readings]);
+
+    const avg = avgNumeric !== null ? formatNumber(avgNumeric, 2) : null;
 
     return (
         <div
             className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 shadow-sm"
         >
-            <div className="flex items-center gap-3 relative">
+            <div className="flex gap-3 relative">
                 <div className={`w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
                     <config.icon className={`w-5 h-5 ${config.color}`} />
                 </div>
 
                 <div className="flex-1 min-w-0">
                     {avg ? (
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                             <div className="flex items-baseline gap-1">
                                 <span className="text-xl font-black tabular-nums">{avg}</span>
                                 <span className="text-[10px] font-bold text-muted-foreground">
@@ -60,16 +62,16 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                                 </span>
                             </div>
 
-                            {type === "WATER" && meter.unit === "m³" && (
-                                <div className="flex items-baseline gap-1 pt-1 opacity-70">
-                                    <span className="text-sm font-black tabular-nums">{Math.round(parseSafe(avg) * 1000)}</span>
-                                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                                        Liter
+                            {type === "WATER" && meter.unit === "m³" && avgNumeric !== null && (
+                                <div className="flex items-baseline gap-1 opacity-70">
+                                    <span className="text-sm font-black tabular-nums">{formatNumber(avgNumeric * 1000, 2)}</span>
+                                    <span className="text-[9px] font-bold text-muted-foreground tracking-wider">
+                                        Liter/Tag
                                     </span>
                                 </div>
                             )}
 
-                            {(type === "ELECTRICITY" || type === "GAS") && meter.monthlyPayment && meter.pricePerUnit && (
+                            {(type === "ELECTRICITY" || type === "GAS") && meter.monthlyPayment && meter.pricePerUnit && avgNumeric !== null && (
                                 (() => {
                                     const monthlyPayment = parseSafe(meter.monthlyPayment);
                                     const basicFee = parseSafe(meter.basicFee || "0");
@@ -91,7 +93,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                                     // Target in Meter Units (e.g. m³)
                                     const monthlyTargetMeterUnits = monthlyTargetBillingUnits / factor;
 
-                                    const monthlyActualUnits = parseSafe(avg) * 30.44; // Avg days per month
+                                    const monthlyActualUnits = avgNumeric * 30.44; // Avg days per month
                                     const percentage = (monthlyActualUnits / monthlyTargetMeterUnits) * 100;
 
                                     // Scale: 0% to 200%. 100% (Budget) is exactly in the middle.
@@ -133,7 +135,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                             e.stopPropagation();
                             onPin();
                         }}
-                        className={`p-2 rounded-xl ${meter.isPinned === "true"
+                        className={`p-2 w-8 h-8 flex items-center justify-center rounded-xl ${meter.isPinned === "true"
                             ? "text-primary bg-primary/10"
                             : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
                             }`}
