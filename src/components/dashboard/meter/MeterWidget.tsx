@@ -47,14 +47,14 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
         <div
             className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 shadow-sm"
         >
-            <div className="flex items-center gap-3 relative">
+            <div className="flex gap-3 relative">
                 <div className={`w-10 h-10 rounded-xl ${config.bg} flex items-center justify-center`}>
                     <config.icon className={`w-5 h-5 ${config.color}`} />
                 </div>
 
                 <div className="flex-1 min-w-0">
                     {avg ? (
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                             <div className="flex items-baseline gap-1">
                                 <span className="text-xl font-black tabular-nums">{avg}</span>
                                 <span className="text-[10px] font-bold text-muted-foreground">
@@ -63,10 +63,10 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                             </div>
 
                             {type === "WATER" && meter.unit === "m³" && avgNumeric !== null && (
-                                <div className="flex items-baseline gap-1 pt-1 opacity-70">
+                                <div className="flex items-baseline gap-1 opacity-70">
                                     <span className="text-sm font-black tabular-nums">{formatNumber(avgNumeric * 1000, 2)}</span>
-                                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
-                                        Liter
+                                    <span className="text-[9px] font-bold text-muted-foreground tracking-wider">
+                                        Liter/Tag
                                     </span>
                                 </div>
                             )}
@@ -135,7 +135,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onEd
                             e.stopPropagation();
                             onPin();
                         }}
-                        className={`p-2 rounded-xl ${meter.isPinned === "true"
+                        className={`p-2 w-8 h-8 flex items-center justify-center rounded-xl ${meter.isPinned === "true"
                             ? "text-primary bg-primary/10"
                             : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
                             }`}
