@@ -24,7 +24,7 @@ vi.mock("@/lib/server/session", async (importOriginal) => {
     return {
         ...original,
         getCurrentUser: async () =>
-            activeUserId === null ? null : { id: activeUserId, email: "", name: "", hasPassword: true, sessionVersion: 0 },
+            activeUserId === null ? null : { id: activeUserId, email: "", name: "", sessionVersion: 0 },
     };
 });
 

@@ -1,14 +1,16 @@
 import "server-only";
-import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
+import { createHmac, randomInt } from "node:crypto";
+import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { authTokens, households, users } from "@/lib/db/schema";
 import { getDb } from "./db";
-import { hashToken, randomToken } from "./crypto";
+import { hashToken, randomToken, safeEqual } from "./crypto";
+import { authSecret } from "./env";
+import { takeAttempt } from "./rate-limit";
 
-export type TokenPurpose = "INVITE" | "RESET";
+export type TokenPurpose = "INVITE";
 
 const LIFETIME_MINUTES: Record<TokenPurpose, number> = {
     INVITE: 7 * 24 * 60,
-    RESET: 60,
 };
 
 export async function createAuthToken(options: {
@@ -53,12 +55,59 @@ export async function consumeToken(id: number): Promise<boolean> {
     return rows.length > 0;
 }
 
-/** Macht offene Reset-Links einer Adresse ungültig (nach Reset oder Passwortänderung). */
-export async function invalidateResetTokens(email: string) {
-    await getDb()
+// Anmeldecodes ------------------------------------------------------------------------
+//
+// Sechsstelliger Code per E-Mail, 10 Minuten gültig, nur einmal verwendbar. Pro Adresse
+// gilt immer nur der zuletzt angeforderte Code; nach 5 falschen Eingaben ist er verbraucht.
+// Gespeichert wird nur ein HMAC (mit AUTH_SECRET und Salz) – sechs Ziffern ließen sich
+// aus einem einfachen Hash sonst in Sekunden zurückrechnen.
+
+const LOGIN_CODE_MINUTES = 10;
+const LOGIN_CODE_MAX_TRIES = 5;
+
+function codeHmac(salt: string, email: string, code: string): string {
+    return createHmac("sha256", authSecret()).update(`${salt}:${email}:${code}`).digest("hex");
+}
+
+export async function createLoginCode(email: string): Promise<string> {
+    const db = getDb();
+    await db
         .update(authTokens)
         .set({ usedAt: new Date() })
-        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "RESET"), isNull(authTokens.usedAt)));
+        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "LOGIN"), isNull(authTokens.usedAt)));
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const salt = randomToken(12);
+    await db.insert(authTokens).values({
+        purpose: "LOGIN",
+        tokenHash: `${salt}.${codeHmac(salt, email, code)}`,
+        email,
+        expiresAt: new Date(Date.now() + LOGIN_CODE_MINUTES * 60_000),
+    });
+    return code;
+}
+
+export type LoginCodeResult = "ok" | "wrong" | "expired" | "exhausted";
+
+/** Prüft und verbraucht den aktuellen Code einer Adresse. */
+export async function consumeLoginCode(email: string, code: string): Promise<LoginCodeResult> {
+    const db = getDb();
+    const [row] = await db
+        .select()
+        .from(authTokens)
+        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "LOGIN"), isNull(authTokens.usedAt), gt(authTokens.expiresAt, new Date())))
+        .orderBy(desc(authTokens.id))
+        .limit(1);
+    if (!row) return "expired";
+    const [salt, expected] = row.tokenHash.split(".");
+    if (!/^\d{6}$/.test(code) || !safeEqual(codeHmac(salt, email, code), expected ?? "")) {
+        const tries = await takeAttempt([`login-code:${row.id}`], LOGIN_CODE_MAX_TRIES - 1, LOGIN_CODE_MINUTES);
+        if (tries.limited) {
+            await db.update(authTokens).set({ usedAt: new Date() }).where(eq(authTokens.id, row.id));
+            return "exhausted";
+        }
+        return "wrong";
+    }
+    return (await consumeToken(row.id)) ? "ok" : "expired";
 }
 
 export async function getInviteInfo(token: string) {
@@ -73,15 +122,12 @@ export async function getInviteInfo(token: string) {
     const inviter = invite.createdBy
         ? await db.query.users.findFirst({ where: eq(users.id, invite.createdBy), columns: { name: true, email: true } })
         : undefined;
-    const existingUser = await db.query.users.findFirst({ where: eq(users.email, invite.email), columns: { id: true } });
     return {
         id: invite.id,
         email: invite.email,
         householdId: household.id,
         householdName: household.name,
         inviterName: inviter ? inviter.name || inviter.email : null,
-        /** Konto existiert bereits → anmelden (ohne Passwort: erst „Passwort vergessen“). */
-        accountExists: !!existingUser,
     };
 }
 

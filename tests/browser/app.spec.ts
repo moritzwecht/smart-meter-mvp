@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { devices, expect, test, type Page } from "@playwright/test";
 import { closeDb, count, q } from "./db";
+import { waitForCode } from "./mail-server";
 
 /*
  * Der komplette Weg einer neuen Nutzerin – inklusive Offline-Phase, Neustart ohne Netz
@@ -42,15 +43,18 @@ const isoDaysAgo = (days: number) => {
 test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ page, context, browser }) => {
     const errors = trackErrors(page);
 
-    await test.step("Registrieren und ersten Haushalt anlegen", async () => {
+    await test.step("Mit Code per E-Mail anmelden und ersten Haushalt anlegen", async () => {
         await page.goto("/");
         await expectAccessible(page, "Anmeldung");
-        await page.getByRole("button", { name: "Neu hier? Registrieren" }).click();
         await page.getByLabel("E-Mail-Adresse").fill("moritz@example.com");
-        const passwords = page.locator('input[autocomplete="new-password"]');
-        await passwords.nth(0).fill("sicheres-passwort");
-        await passwords.nth(1).fill("sicheres-passwort");
-        await page.getByRole("button", { name: "Konto erstellen" }).click();
+        await page.getByRole("button", { name: "Code senden" }).click();
+        await expect(page.getByText("Wir haben dir einen Code")).toBeVisible();
+        await expectAccessible(page, "Code-Eingabe");
+        // Ein falscher Code wird abgelehnt, der richtige meldet direkt an (ohne extra Klick)
+        const { code } = await waitForCode("moritz@example.com");
+        await page.getByLabel("6-stelliger Code").fill(code === "000000" ? "111111" : "000000");
+        await expect(page.getByText("Der Code stimmt nicht")).toBeVisible();
+        await page.getByLabel("6-stelliger Code").fill(code);
         await expect(page.getByText("Lege deinen ersten Haushalt an")).toBeVisible();
         await page.getByRole("button", { name: "Anlegen" }).click();
         await expect(page.getByText("Willkommen!")).toBeVisible();
@@ -198,13 +202,13 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
     const partner = await partnerContext.newPage();
     const partnerErrors = trackErrors(partner);
 
-    await test.step("Zweites Gerät: Konto über die Einladung anlegen", async () => {
+    await test.step("Zweites Gerät: über die Einladung mit Code anmelden", async () => {
         await partner.goto(inviteLink);
         await expect(partner.getByText("eingeladen")).toBeVisible();
-        const passwords = partner.locator('input[autocomplete="new-password"]');
-        await passwords.nth(0).fill("partnerin-passwort");
-        await passwords.nth(1).fill("partnerin-passwort");
-        await partner.getByRole("button", { name: "Konto erstellen" }).click();
+        await expect(partner.getByLabel("E-Mail-Adresse")).toHaveValue("partnerin@example.com");
+        await partner.getByRole("button", { name: "Code senden" }).click();
+        const { code } = await waitForCode("partnerin@example.com");
+        await partner.getByLabel("6-stelliger Code").fill(code);
         await expect(partner.locator("header")).toContainText("Zuhause");
         await nav(partner, "Listen");
         await expect(partner.getByRole("heading", { name: "Einkauf" })).toBeVisible();

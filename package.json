@@ -25,7 +25,6 @@
     "@capacitor/ios": "6.2.2",
     "@neondatabase/serverless": "^1.2.0",
     "@serwist/next": "^9.5.13",
-    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "dexie": "^4.4.7",
     "dexie-react-hooks": "^4.4.0",

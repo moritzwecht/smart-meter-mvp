@@ -1,8 +1,9 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { startMailServer } from "./mail-server";
 
-/** Migrationen anwenden und alle Tabellen leeren – jeder Lauf startet bei null. */
+/** Migrationen anwenden, alle Tabellen leeren (jeder Lauf startet bei null) und das E-Mail-Postfach starten. */
 export default async function globalSetup() {
     const url = process.env.E2E_DATABASE_URL ?? "postgres://postgres:postgres@127.0.0.1:5432/myhome_e2e";
     if (/neon\.tech|vercel-storage|amazonaws/.test(url)) throw new Error("E2E_DATABASE_URL sieht nach einer echten Datenbank aus – Abbruch.");
@@ -15,4 +16,6 @@ export default async function globalSetup() {
     } finally {
         await pool.end();
     }
+    const mailServer = await startMailServer();
+    return () => new Promise<void>((resolve) => mailServer.close(() => resolve()));
 }

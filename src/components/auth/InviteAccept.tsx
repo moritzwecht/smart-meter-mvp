@@ -17,7 +17,7 @@ import { AuthShell } from "./AuthScreen";
 
 interface InviteAcceptProps {
     token: string;
-    invite: { email: string; householdName: string; inviterName: string | null; accountExists: boolean } | null;
+    invite: { email: string; householdName: string; inviterName: string | null } | null;
     user: SessionUser | null;
 }
 
@@ -112,17 +112,11 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        <p className="text-xs text-muted-foreground">
-                            {invite.accountExists
-                                ? "Melde dich an, um beizutreten. Noch kein Passwort (Konto aus der alten App-Version)? Dann über „Passwort vergessen“ eins festlegen und den Link danach erneut öffnen."
-                                : "Erstelle ein Konto (oder melde dich an), um beizutreten."}
-                        </p>
                         {error && <Alert variant="error">{error}</Alert>}
                         <AuthForm
-                            initialMode={invite.accountExists ? "login" : "register"}
                             initialEmail={invite.email}
                             inviteToken={token}
-                            // Nach der Registrierung ist man schon Mitglied – acceptInvite bestätigt das nur
+                            // Mit dem Code ist man schon beigetreten – acceptInvite bestätigt das nur
                             onSuccess={() => void join()}
                         />
                     </div>

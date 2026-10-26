@@ -5,8 +5,8 @@ import { authAttempts } from "@/lib/db/schema";
 import { getDb } from "./db";
 
 /*
- * Einfaches, datenbankbasiertes Rate-Limit für Login, Registrierung,
- * Passwort-Reset und Einladungen. Reicht für eine private App völlig aus und
+ * Einfaches, datenbankbasiertes Rate-Limit für die Anmeldung per Code
+ * und für Einladungen. Reicht für eine private App völlig aus und
  * braucht keine zusätzliche Infrastruktur (Redis o. Ä.).
  *
  * Der Versuch wird *zuerst* gespeichert und dann gezählt – so können parallele

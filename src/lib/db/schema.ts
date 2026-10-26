@@ -35,7 +35,6 @@ const timestamps = {
 export const users = pgTable("users", {
     id: serial("id").primaryKey(),
     email: text("email").notNull().unique(),
-    password: text("password"),
     name: text("name"),
     /** Wird erhöht, um alle bestehenden Sessions ungültig zu machen. */
     sessionVersion: integer("session_version").default(0).notNull(),
@@ -176,12 +175,12 @@ export const notes = pgTable(
     ],
 );
 
-/** Einmal-Tokens für Einladungen und Passwort-Reset. Gespeichert wird nur der SHA-256-Hash. */
+/** Einladungen und Anmeldecodes. Gespeichert wird nur ein Hash, nie der Klartext. */
 export const authTokens = pgTable(
     "auth_tokens",
     {
         id: serial("id").primaryKey(),
-        purpose: text("purpose").notNull(), // 'INVITE' | 'RESET'
+        purpose: text("purpose").notNull(), // 'INVITE' | 'LOGIN' (früher auch 'RESET')
         tokenHash: text("token_hash").notNull().unique(),
         email: text("email").notNull(),
         householdId: integer("household_id").references(() => households.id, { onDelete: "cascade" }),

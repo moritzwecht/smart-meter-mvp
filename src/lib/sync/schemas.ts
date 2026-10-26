@@ -81,7 +81,3 @@ export const emailSchema = z
     .toLowerCase()
     .pipe(z.email({ error: "Bitte gib eine gültige E-Mail-Adresse ein." }));
 
-export const passwordSchema = z
-    .string()
-    .min(8, { error: "Das Passwort muss mindestens 8 Zeichen lang sein." })
-    .max(200, { error: "Das Passwort ist zu lang." });

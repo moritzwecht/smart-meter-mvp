@@ -1,31 +1,34 @@
 "use server";
 
-import { compare, hash } from "bcryptjs";
 import { and, eq, sql } from "drizzle-orm";
-import { after } from "next/server";
 import { z } from "zod";
-import { apiTokens, authTokens, householdUsers, users } from "@/lib/db/schema";
-import { emailSchema, passwordSchema } from "@/lib/sync/schemas";
+import { authTokens, householdUsers, users } from "@/lib/db/schema";
+import { emailSchema } from "@/lib/sync/schemas";
 import { action, UserError } from "@/lib/server/action";
-import { consumeToken, createAuthToken, findValidToken, invalidateResetTokens } from "@/lib/server/auth-tokens";
+import { consumeLoginCode, consumeToken, createLoginCode, findValidToken } from "@/lib/server/auth-tokens";
 import { hashToken } from "@/lib/server/crypto";
 import { getDb } from "@/lib/server/db";
-import { sendMail } from "@/lib/server/email";
-import { appUrl } from "@/lib/server/env";
-import { logError } from "@/lib/server/log";
+import { isEmailConfigured, sendMail } from "@/lib/server/email";
+import { isProduction } from "@/lib/server/env";
 import { clearAttempts, clientIp, takeAttempt } from "@/lib/server/rate-limit";
 import { endSession, publicUser, requireUser, startSession, type AuthUser } from "@/lib/server/session";
 
-const BCRYPT_ROUNDS = 11;
-// Für gleich lange Antwortzeiten, wenn es den Nutzer nicht gibt (kein Nutzer-Enumerations-Timing).
-const DUMMY_HASH = "$2b$11$7EZQk68M98lbTWhQqwcdTu.vvqOB8ieLbnfUh8rO0dyhVwKBBJbdG";
+/*
+ * Anmeldung ohne Passwort
+ * =======================
+ * 1. E-Mail eingeben → 6-stelliger Code per Mail (10 Minuten gültig).
+ * 2. Code eingeben → angemeldet. Gibt es noch kein Konto, wird es dabei angelegt.
+ *
+ * Da jede Adresse einen Code bekommt, verrät die Antwort nie, ob es ein Konto gibt.
+ * Code statt Link, weil ein Link auf dem Handy oft im falschen Browser landet –
+ * nicht in der Home-Bildschirm-App oder der iOS/Android-App.
+ */
 
 function toAuthUser(row: typeof users.$inferSelect): AuthUser {
     return {
         id: row.id,
         email: row.email,
         name: row.name || row.email.split("@")[0],
-        hasPassword: !!row.password,
         sessionVersion: row.sessionVersion,
     };
 }
@@ -37,141 +40,93 @@ async function joinHousehold(userId: number, householdId: number) {
         .onConflictDoNothing({ target: [householdUsers.householdId, householdUsers.userId] });
 }
 
-// Login -----------------------------------------------------------------------
+// Code anfordern -----------------------------------------------------------------
 
-const loginSchema = z.object({ email: emailSchema, password: z.string().min(1, { error: "Bitte gib dein Passwort ein." }).max(200) });
+const requestCodeSchema = z.object({ email: emailSchema });
 
-const loginAction = action(loginSchema, async ({ email, password }) => {
-    const keys = [`login:${email}`, `login-ip:${await clientIp()}`];
-    const attempt = await takeAttempt(keys, 10, 15);
-    if (attempt.limited) {
-        throw new UserError("Zu viele Fehlversuche. Bitte warte 15 Minuten und versuche es dann erneut.");
-    }
-    const user = await getDb().query.users.findFirst({ where: eq(users.email, email) });
-    // Immer einen Hash prüfen (gleiche Antwortzeit) und immer dieselbe Meldung –
-    // verrät weder, ob es das Konto gibt, noch ob es schon ein Passwort hat.
-    const valid = await compare(password, user?.password ?? DUMMY_HASH);
-    if (!user?.password || !valid) {
-        throw new UserError("E-Mail oder Passwort ist falsch. Noch kein Passwort (Konto aus der alten App-Version)? Dann nutze „Passwort vergessen“.");
-    }
-    await attempt.release();
-    await clearAttempts(keys[0]);
-    await startSession(user);
-    return publicUser(toAuthUser(user));
-});
-
-export async function login(input: z.input<typeof loginSchema>) {
-    return loginAction(input);
-}
-
-// Registrierung ---------------------------------------------------------------
-
-const registerSchema = z.object({
-    email: emailSchema,
-    password: passwordSchema,
-    name: z.string().trim().max(80).optional(),
-    inviteToken: z.string().max(200).optional(),
-});
-
-const registerAction = action(registerSchema, async ({ email, password, name, inviteToken }) => {
-    const attempt = await takeAttempt([`register-ip:${await clientIp()}`], 10, 60);
-    if (attempt.limited) throw new UserError("Zu viele Registrierungen. Bitte versuche es später erneut.");
-
-    const db = getDb();
-    const invite = inviteToken ? await findValidToken(inviteToken, "INVITE") : undefined;
-    if (inviteToken && !invite) throw new UserError("Die Einladung ist ungültig oder abgelaufen.");
-
-    // Bestehende Konten werden hier nie verändert – auch nicht solche ohne Passwort
-    // (aus Version 1). Ein Passwort dafür gibt es nur über „Passwort vergessen“, also
-    // mit Nachweis des Postfachs. Ein Einladungslink ist dafür kein Nachweis: Den
-    // sieht auch, wer eingeladen hat.
-    const existing = await db.query.users.findFirst({ where: eq(users.email, email), columns: { id: true } });
-    if (existing) {
-        throw new UserError("Es gibt bereits ein Konto mit dieser E-Mail. Melde dich an oder nutze „Passwort vergessen“.");
+const requestCodeAction = action(requestCodeSchema, async ({ email }) => {
+    // Begrenzt pro Adresse und pro IP – Codes sollen nicht als Spam-Schleuder taugen
+    const perEmail = await takeAttempt([`code-request:${email}`], 5, 15);
+    const perIp = perEmail.limited ? perEmail : await takeAttempt([`code-request-ip:${await clientIp()}`], 20, 60);
+    if (perEmail.limited || perIp.limited) {
+        await perEmail.release();
+        throw new UserError("Zu viele Codes angefordert. Bitte warte ein paar Minuten.");
     }
 
-    const inserted = await db
-        .insert(users)
-        .values({ email, password: await hash(password, BCRYPT_ROUNDS), name: name || email.split("@")[0] })
-        .onConflictDoNothing({ target: users.email })
-        .returning();
-    if (!inserted.length) throw new UserError("Es gibt bereits ein Konto mit dieser E-Mail.");
-    const user = inserted[0];
-
-    if (invite?.householdId && (await consumeToken(invite.id))) {
-        await joinHousehold(user.id, invite.householdId);
-    }
-    await startSession(user);
-    return publicUser(toAuthUser(user));
-});
-
-export async function register(input: z.input<typeof registerSchema>) {
-    return registerAction(input);
-}
-
-// Passwort vergessen ------------------------------------------------------------
-
-const requestResetSchema = z.object({ email: emailSchema });
-
-/** Erst nach der Antwort ausführen (gleiche Antwortzeit, egal ob es das Konto gibt). */
-function afterResponse(task: () => Promise<void>): Promise<void> {
-    const safe = () => task().catch((error) => logError("reset", error));
-    try {
-        after(safe);
-        return Promise.resolve();
-    } catch {
-        return safe(); // außerhalb eines Requests (Tests)
-    }
-}
-
-const requestResetAction = action(requestResetSchema, async ({ email }) => {
-    const attempt = await takeAttempt([`reset:${email}`, `reset-ip:${await clientIp()}`], 5, 60);
-    if (attempt.limited) throw new UserError("Zu viele Anfragen. Bitte versuche es in einer Stunde erneut.");
-    await afterResponse(async () => {
-        const user = await getDb().query.users.findFirst({ where: eq(users.email, email), columns: { id: true } });
-        if (!user) return;
-        const token = await createAuthToken({ purpose: "RESET", email });
-        await sendMail({
-            to: email,
-            subject: "Passwort festlegen – My Home",
-            paragraphs: [
-                "Du hast einen Link zum Festlegen deines Passworts angefordert.",
-                "Der Link ist eine Stunde gültig. Falls du das nicht warst, kannst du diese E-Mail ignorieren.",
-            ],
-            action: { label: "Neues Passwort festlegen", url: `${appUrl()}/reset/${token}` },
-        });
+    const code = await createLoginCode(email);
+    const sent = await sendMail({
+        to: email,
+        subject: `${code} ist dein Anmeldecode für My Home`,
+        paragraphs: [
+            `Dein Anmeldecode: ${code.slice(0, 3)} ${code.slice(3)}`,
+            "Der Code ist 10 Minuten gültig. Falls du dich nicht anmelden wolltest, kannst du diese E-Mail ignorieren.",
+        ],
     });
-    // Immer dieselbe Antwort – verrät nicht, ob es ein Konto gibt.
+    // Ohne E-Mail-Versand (lokale Entwicklung) steht der Code in der Server-Konsole
+    if (!sent && (isProduction || isEmailConfigured())) {
+        throw new UserError("Die E-Mail konnte gerade nicht verschickt werden. Bitte versuche es gleich noch einmal.");
+    }
     return null;
 });
 
-export async function requestPasswordReset(input: z.input<typeof requestResetSchema>) {
-    return requestResetAction(input);
+/** Schickt einen Anmeldecode an die Adresse – immer, auch wenn es noch kein Konto gibt. */
+export async function requestLoginCode(input: z.input<typeof requestCodeSchema>) {
+    return requestCodeAction(input);
 }
 
-const resetSchema = z.object({ token: z.string().min(1).max(200), password: passwordSchema });
+// Code eingeben ------------------------------------------------------------------
 
-const resetAction = action(resetSchema, async ({ token, password }) => {
-    const record = await findValidToken(token, "RESET");
-    if (!record) throw new UserError("Der Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an.");
-    if (!(await consumeToken(record.id))) throw new UserError("Der Link wurde bereits verwendet.");
+const verifyCodeSchema = z.object({
+    email: emailSchema,
+    code: z
+        .string()
+        .transform((v) => v.replace(/\D/g, ""))
+        .pipe(z.string().length(6, { error: "Der Code hat 6 Ziffern." })),
+    inviteToken: z.string().max(200).optional(),
+});
+
+const verifyCodeAction = action(verifyCodeSchema, async ({ email, code, inviteToken }) => {
+    // Raten unmöglich machen: pro Code 5 Versuche (siehe consumeLoginCode), dazu
+    // insgesamt 20 Fehlversuche pro Adresse und Tag sowie 50 pro IP und Stunde.
+    const perEmail = await takeAttempt([`code-verify:${email}`], 20, 24 * 60);
+    const perIp = perEmail.limited ? perEmail : await takeAttempt([`code-verify-ip:${await clientIp()}`], 50, 60);
+    if (perEmail.limited || perIp.limited) {
+        await perEmail.release();
+        throw new UserError("Zu viele falsche Codes. Bitte versuche es später erneut.");
+    }
+
+    const result = await consumeLoginCode(email, code);
+    if (result === "wrong") throw new UserError("Der Code stimmt nicht. Bitte prüfe ihn noch einmal.");
+    if (result === "exhausted") throw new UserError("Zu viele falsche Versuche – bitte fordere einen neuen Code an.");
+    if (result === "expired") throw new UserError("Der Code ist abgelaufen oder wurde schon verwendet. Bitte fordere einen neuen an.");
+
+    await perEmail.release();
+    await perIp.release();
+    await clearAttempts(`code-verify:${email}`);
+
     const db = getDb();
-    const [user] = await db
-        .update(users)
-        .set({ password: await hash(password, BCRYPT_ROUNDS), sessionVersion: sql`${users.sessionVersion} + 1` })
-        .where(eq(users.email, record.email))
-        .returning();
-    if (!user) throw new UserError("Das Konto existiert nicht mehr.");
-    // Konto zurückgeholt: alle anderen Zugänge beenden – Sessions (sessionVersion),
-    // weitere Reset-Links und API-Tokens, die jemand anderes angelegt haben könnte.
-    await invalidateResetTokens(record.email);
-    await db.delete(apiTokens).where(eq(apiTokens.userId, user.id));
+    let user = await db.query.users.findFirst({ where: eq(users.email, email) });
+    if (!user) {
+        // Erstes Anmelden mit dieser Adresse → Konto anlegen (der Code beweist das Postfach)
+        await db
+            .insert(users)
+            .values({ email, name: email.split("@")[0] })
+            .onConflictDoNothing({ target: users.email });
+        user = await db.query.users.findFirst({ where: eq(users.email, email) });
+        if (!user) throw new UserError("Das Konto konnte nicht angelegt werden. Bitte versuche es erneut.");
+    }
+
+    if (inviteToken) {
+        const invite = await findValidToken(inviteToken, "INVITE");
+        if (invite?.householdId && (await consumeToken(invite.id))) await joinHousehold(user.id, invite.householdId);
+    }
     await startSession(user);
     return publicUser(toAuthUser(user));
 });
 
-export async function resetPassword(input: z.input<typeof resetSchema>) {
-    return resetAction(input);
+/** Meldet mit dem Code aus der E-Mail an (und legt beim ersten Mal das Konto an). */
+export async function verifyLoginCode(input: z.input<typeof verifyCodeSchema>) {
+    return verifyCodeAction(input);
 }
 
 // Einladung annehmen ------------------------------------------------------------

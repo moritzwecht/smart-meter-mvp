@@ -1,15 +1,17 @@
 /**
- * Auth-Flows gegen eine echte Datenbank (PGlite). Cookies/Header von Next.js
- * werden durch einen einfachen In-Memory-Store ersetzt.
+ * Anmeldung per Einmalcode, Sessions und Einladungen gegen eine echte Datenbank
+ * (PGlite). Cookies/Header von Next.js werden durch einen In-Memory-Store ersetzt,
+ * E-Mails abgefangen.
  */
-import { hash } from "bcryptjs";
+import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { authTokens, householdUsers, users } from "@/lib/db/schema";
+import { authTokens, householdUsers } from "@/lib/db/schema";
 import { setupServer, type TestServer } from "../support/server";
 
 const jar = new Map<string, string>();
-const sentMails: { to: string; url?: string }[] = [];
+const sentMails: { to: string; subject: string; url?: string }[] = [];
+let mailWorks = true;
 
 vi.mock("next/headers", () => ({
     cookies: async () => ({
@@ -24,8 +26,9 @@ vi.mock("next/headers", () => ({
 
 vi.mock("@/lib/server/email", () => ({
     isEmailConfigured: () => true,
-    sendMail: async (mail: { to: string; action?: { url: string } }) => {
-        sentMails.push({ to: mail.to, url: mail.action?.url });
+    sendMail: async (mail: { to: string; subject: string; action?: { url: string } }) => {
+        if (!mailWorks) return false;
+        sentMails.push({ to: mail.to, subject: mail.subject, url: mail.action?.url });
         return true;
     },
 }));
@@ -40,158 +43,201 @@ beforeEach(async () => {
     server = await setupServer();
     jar.clear();
     sentMails.length = 0;
-    // Passwort für Moritz setzen
-    await server.db.update(users).set({ password: await hash("richtig-gut-123", 4) }).where(eq(users.id, server.users.moritz.id));
+    mailWorks = true;
 });
 
 const tokenFrom = (url?: string) => url!.split("/").pop()!;
 
-describe("Login & Registrierung", () => {
-    it("meldet mit korrektem Passwort an und setzt eine Session", async () => {
-        const result = await auth.login({ email: " Moritz@Example.com ", password: "richtig-gut-123" });
-        expect(result).toMatchObject({ ok: true, data: { email: "moritz@example.com" } });
+/** Code aus der zuletzt an diese Adresse geschickten Mail */
+function lastCode(email: string): string {
+    const mail = sentMails.filter((m) => m.to === email).at(-1);
+    const code = mail?.subject.match(/^(\d{6}) /)?.[1];
+    if (!code) throw new Error(`Keine Code-Mail an ${email}`);
+    return code;
+}
+
+/** Eine falsche, aber gültig aussehende Eingabe */
+const wrong = (code: string) => `${(Number(code[0]) + 1) % 10}${code.slice(1)}`;
+
+async function loginAs(email: string, inviteToken?: string) {
+    expect((await auth.requestLoginCode({ email })).ok).toBe(true);
+    return auth.verifyLoginCode({ email, code: lastCode(email), inviteToken });
+}
+
+describe("Anmeldung per Code", () => {
+    it("schickt einen Code und meldet damit an – die E-Mail wird normalisiert", async () => {
+        expect(await auth.requestLoginCode({ email: " Moritz@Example.com " })).toEqual({ ok: true, data: null });
+        expect(sentMails).toHaveLength(1);
+        expect(sentMails[0].to).toBe("moritz@example.com");
+        const code = lastCode("moritz@example.com");
+        // Mit Leerzeichen eingetippt ("123 456") geht auch
+        const result = await auth.verifyLoginCode({ email: "MORITZ@example.com", code: `${code.slice(0, 3)} ${code.slice(3)}` });
+        expect(result).toMatchObject({ ok: true, data: { id: server.users.moritz.id, email: "moritz@example.com" } });
         expect((await getCurrentUser())?.id).toBe(server.users.moritz.id);
     });
 
-    it("gibt bei falschem Passwort eine verständliche Fehlermeldung zurück (kein throw)", async () => {
-        const result = await auth.login({ email: "moritz@example.com", password: "falsch" });
-        expect(result.ok).toBe(false);
-        expect(!result.ok && result.error).toMatch(/^E-Mail oder Passwort ist falsch/);
-    });
-
-    it("verrät nicht, ob ein Konto (noch) kein Passwort hat", async () => {
-        await server.db.insert(users).values({ email: "alt@example.com" });
-        const ohnePasswort = await auth.login({ email: "alt@example.com", password: "irgendwas" });
-        const gibtsNicht = await auth.login({ email: "niemand@example.com", password: "irgendwas" });
-        expect(ohnePasswort).toEqual(gibtsNicht);
-    });
-
-    it("SICHERHEIT: parallele Fehlversuche umgehen das Limit nicht", async () => {
-        const results = await Promise.all(Array.from({ length: 30 }, (_, i) => auth.login({ email: "moritz@example.com", password: `falsch${i}` })));
-        // Höchstens 10 Passwörter wurden wirklich geprüft – der Rest wurde abgewiesen
-        const checked = results.filter((r) => !r.ok && /^E-Mail oder Passwort/.test(r.error));
-        expect(checked.length).toBeLessThanOrEqual(10);
-        expect(results.length - checked.length).toBeGreaterThanOrEqual(20);
-    });
-
-    it("abgewiesene Versuche verlängern die Sperre nicht und landen nicht in der Datenbank", async () => {
-        for (let i = 0; i < 10; i++) await auth.login({ email: "moritz@example.com", password: `falsch${i}` });
-        const before = await server.count("auth_attempts");
-        for (let i = 0; i < 20; i++) await auth.login({ email: "moritz@example.com", password: "egal" });
-        expect(await server.count("auth_attempts")).toBe(before);
-    });
-
-    it("bremst Brute-Force nach 10 Fehlversuchen", async () => {
-        for (let i = 0; i < 10; i++) await auth.login({ email: "moritz@example.com", password: `falsch${i}` });
-        const result = await auth.login({ email: "moritz@example.com", password: "richtig-gut-123" });
-        expect(result.ok).toBe(false);
-        expect(!result.ok && result.error).toMatch(/Zu viele Fehlversuche/);
-    });
-
-    it("SICHERHEIT: Registrierung kann ein bestehendes Konto ohne Passwort NICHT übernehmen", async () => {
-        // z. B. ein Platzhalter aus einer alten Einladung
-        await server.db.insert(users).values({ email: "opfer@example.com" });
-        const result = await auth.register({ email: "opfer@example.com", password: "angreifer-123" });
-        expect(result.ok).toBe(false);
-        expect(jar.size).toBe(0);
-        const [opfer] = await server.db.select().from(users).where(eq(users.email, "opfer@example.com"));
-        expect(opfer.password).toBeNull();
-    });
-
-    it("registriert neue Konten (E-Mail wird normalisiert, Passwort ≥ 8 Zeichen)", async () => {
-        expect((await auth.register({ email: "neu@example.com", password: "kurz" })).ok).toBe(false);
-        const result = await auth.register({ email: "Neu@Example.COM", password: "lang-genug" });
+    it("legt beim ersten Anmelden ein Konto an", async () => {
+        const result = await loginAs("neu@example.com");
         expect(result).toMatchObject({ ok: true, data: { email: "neu@example.com", name: "neu" } });
-        expect((await auth.register({ email: "neu@example.com", password: "lang-genug" })).ok).toBe(false);
+        expect(await server.count("users", "email = 'neu@example.com'")).toBe(1);
+    });
+
+    it("verrät nicht, ob es ein Konto gibt – jede Adresse bekommt einen Code", async () => {
+        const vorhanden = await auth.requestLoginCode({ email: "moritz@example.com" });
+        const neu = await auth.requestLoginCode({ email: "gibtsnicht@example.com" });
+        expect(vorhanden).toEqual(neu);
+        expect(sentMails.map((m) => m.to)).toEqual(["moritz@example.com", "gibtsnicht@example.com"]);
+        expect(await server.count("users", "email = 'gibtsnicht@example.com'")).toBe(0); // erst nach dem Code
+    });
+
+    it("ein Code gilt nur einmal, und nur der zuletzt angeforderte", async () => {
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const first = lastCode("moritz@example.com");
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const second = lastCode("moritz@example.com");
+        if (first !== second) expect((await auth.verifyLoginCode({ email: "moritz@example.com", code: first })).ok).toBe(false);
+        expect((await auth.verifyLoginCode({ email: "moritz@example.com", code: second })).ok).toBe(true);
+        const again = await auth.verifyLoginCode({ email: "moritz@example.com", code: second });
+        expect(again).toEqual({ ok: false, error: "Der Code ist abgelaufen oder wurde schon verwendet. Bitte fordere einen neuen an." });
+    });
+
+    it("falscher Code: verständliche Meldung – nach 5 Fehlversuchen ist der Code verbraucht", async () => {
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const code = lastCode("moritz@example.com");
+        for (let i = 0; i < 4; i++) {
+            expect(await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) })).toEqual({
+                ok: false,
+                error: "Der Code stimmt nicht. Bitte prüfe ihn noch einmal.",
+            });
+        }
+        const fifth = await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) });
+        expect(!fifth.ok && fifth.error).toMatch(/Zu viele falsche Versuche/);
+        expect((await auth.verifyLoginCode({ email: "moritz@example.com", code })).ok).toBe(false);
+        expect(await getCurrentUser()).toBeNull();
+    });
+
+    it("abgelaufene Codes gelten nicht", async () => {
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        await server.db.update(authTokens).set({ expiresAt: new Date(Date.now() - 1000) });
+        const result = await auth.verifyLoginCode({ email: "moritz@example.com", code: lastCode("moritz@example.com") });
+        expect(!result.ok && result.error).toMatch(/abgelaufen/);
+    });
+
+    it("SICHERHEIT: der Code einer Adresse gilt nicht für eine andere", async () => {
+        await auth.requestLoginCode({ email: "anna@example.com" });
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const annasCode = lastCode("anna@example.com");
+        if (annasCode !== lastCode("moritz@example.com")) {
+            expect((await auth.verifyLoginCode({ email: "moritz@example.com", code: annasCode })).ok).toBe(false);
+        }
+    });
+
+    it("SICHERHEIT: Codes werden nicht im Klartext oder als einfacher Hash gespeichert", async () => {
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const code = lastCode("moritz@example.com");
+        const [row] = await server.db.select().from(authTokens);
+        expect(row.purpose).toBe("LOGIN");
+        expect(row.tokenHash).not.toContain(code);
+        expect(row.tokenHash).not.toContain(createHash("sha256").update(code).digest("hex"));
+    });
+
+    it("SICHERHEIT: Raten ist begrenzt – auch über mehrere Codes und parallele Anfragen", async () => {
+        // Parallel: pro Code höchstens 5 echte Prüfungen
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const code = lastCode("moritz@example.com");
+        const results = await Promise.all(Array.from({ length: 15 }, () => auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) })));
+        expect(results.filter((r) => !r.ok && r.error.startsWith("Der Code stimmt nicht")).length).toBeLessThanOrEqual(4);
+
+        // Insgesamt: nach 20 Fehlversuchen pro Tag ist Schluss – auch mit neuem Code
+        for (let round = 0; round < 3; round++) {
+            await auth.requestLoginCode({ email: "moritz@example.com" });
+            const c = lastCode("moritz@example.com");
+            for (let i = 0; i < 5; i++) await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(c) });
+        }
+        await auth.requestLoginCode({ email: "moritz@example.com" });
+        const blocked = await auth.verifyLoginCode({ email: "moritz@example.com", code: lastCode("moritz@example.com") });
+        expect(!blocked.ok && blocked.error).toMatch(/Zu viele falsche Codes/);
+    });
+
+    it("begrenzt, wie oft Codes angefordert werden können", async () => {
+        for (let i = 0; i < 5; i++) expect((await auth.requestLoginCode({ email: "moritz@example.com" })).ok).toBe(true);
+        const sixth = await auth.requestLoginCode({ email: "moritz@example.com" });
+        expect(!sixth.ok && sixth.error).toMatch(/Zu viele Codes/);
+        expect(sentMails).toHaveLength(5);
+    });
+
+    it("meldet es, wenn die E-Mail nicht verschickt werden konnte", async () => {
+        mailWorks = false;
+        const result = await auth.requestLoginCode({ email: "moritz@example.com" });
+        expect(!result.ok && result.error).toMatch(/nicht verschickt/);
     });
 });
 
-describe("Passwort vergessen", () => {
-    it("setzt per E-Mail-Link ein Passwort – auch für Konten ohne Passwort – und beendet alte Sessions", async () => {
-        await server.db.insert(users).values({ email: "platzhalter@example.com" });
-        expect(await auth.requestPasswordReset({ email: "platzhalter@example.com" })).toEqual({ ok: true, data: null });
-        expect(sentMails).toHaveLength(1);
-
-        const token = tokenFrom(sentMails[0].url);
-        const result = await auth.resetPassword({ token, password: "neues-passwort" });
-        expect(result).toMatchObject({ ok: true, data: { email: "platzhalter@example.com", hasPassword: true } });
-        // Link ist nur einmal gültig
-        expect((await auth.resetPassword({ token, password: "nochmal-1234" })).ok).toBe(false);
+describe("Sessions", () => {
+    it("„Überall abmelden“ beendet andere Sessions, dieses Gerät bleibt angemeldet", async () => {
+        await loginAs("moritz@example.com");
+        const otherDevice = new Map(jar);
+        expect((await auth.logoutEverywhere()).ok).toBe(true);
+        expect((await getCurrentUser())?.id).toBe(server.users.moritz.id);
+        jar.clear();
+        for (const [k, v] of otherDevice) jar.set(k, v);
+        expect(await getCurrentUser()).toBeNull();
     });
 
-    it("beendet beim Zurücksetzen auch andere Reset-Links und API-Tokens", async () => {
-        const { createApiToken } = await import("@/lib/server/api-tokens");
-        await createApiToken(server.users.moritz.id, "Home Assistant");
-        await auth.requestPasswordReset({ email: "moritz@example.com" });
-        await auth.requestPasswordReset({ email: "moritz@example.com" });
-        expect(sentMails).toHaveLength(2);
-        expect((await auth.resetPassword({ token: tokenFrom(sentMails[0].url), password: "ganz-neu-123" })).ok).toBe(true);
-        expect(await server.count("api_tokens")).toBe(0);
-        // Der zweite Link gilt nicht mehr
-        expect((await auth.resetPassword({ token: tokenFrom(sentMails[1].url), password: "noch-neuer-123" })).ok).toBe(false);
-    });
-
-    it("verrät nicht, ob es ein Konto gibt", async () => {
-        expect(await auth.requestPasswordReset({ email: "gibtsnicht@example.com" })).toEqual({ ok: true, data: null });
-        expect(sentMails).toHaveLength(0);
+    it("Abmelden löscht das Cookie", async () => {
+        await loginAs("moritz@example.com");
+        await auth.logout();
+        expect(await getCurrentUser()).toBeNull();
     });
 });
 
 describe("Einladungen", () => {
-    async function inviteAnna() {
-        await auth.login({ email: "moritz@example.com", password: "richtig-gut-123" });
-        const result = await householdActions.inviteMember({ householdId: server.households.zuhause.id, email: "neu@example.com" });
+    async function invite(email = "neu@example.com") {
+        await loginAs("moritz@example.com");
+        const result = await householdActions.inviteMember({ householdId: server.households.zuhause.id, email });
         expect(result.ok).toBe(true);
         jar.clear();
         return tokenFrom(result.ok ? result.data.link : undefined);
     }
 
     it("nur Inhaber dürfen einladen", async () => {
-        await server.db.update(users).set({ password: await hash("anna-passwort", 4) }).where(eq(users.id, server.users.anna.id));
-        await auth.login({ email: "anna@example.com", password: "anna-passwort" });
+        await loginAs("anna@example.com");
         const result = await householdActions.inviteMember({ householdId: server.households.zuhause.id, email: "x@example.com" });
         expect(result).toEqual({ ok: false, error: "Nur Inhaber können das." });
     });
 
-    it("Registrierung über den Einladungslink tritt direkt dem Haushalt bei", async () => {
-        const token = await inviteAnna();
-        const result = await auth.register({ email: "neu@example.com", password: "lang-genug", inviteToken: token });
-        expect(result.ok).toBe(true);
+    it("Anmelden mit Code über den Einladungslink tritt direkt dem Haushalt bei", async () => {
+        const token = await invite();
+        expect((await loginAs("neu@example.com", token)).ok).toBe(true);
         const user = await getCurrentUser();
         const membership = await server.db.query.householdUsers.findFirst({ where: eq(householdUsers.userId, user!.id) });
         expect(membership?.householdId).toBe(server.households.zuhause.id);
-        // Token verbraucht
-        const [t] = await server.db.select().from(authTokens);
-        expect(t.usedAt).not.toBeNull();
-    });
-
-    it("nach der Registrierung über die Einladung meldet acceptInvite keinen Fehler", async () => {
-        const token = await inviteAnna();
-        await auth.register({ email: "neu@example.com", password: "lang-genug", inviteToken: token });
+        // danach meldet acceptInvite keinen Fehler
         expect(await auth.acceptInvite({ token })).toEqual({ ok: true, data: { householdId: server.households.zuhause.id } });
     });
 
-    it("SICHERHEIT: ein Einladungslink taugt nicht zur Übernahme eines Kontos ohne Passwort", async () => {
-        // Angreifer lädt die Adresse eines alten Kontos (ohne Passwort) in seinen Haushalt ein …
-        await server.db.insert(users).values({ email: "opfer@example.com" });
-        await auth.login({ email: "moritz@example.com", password: "richtig-gut-123" });
-        const invite = await householdActions.inviteMember({ householdId: server.households.zuhause.id, email: "opfer@example.com" });
-        jar.clear();
-        const token = tokenFrom(invite.ok ? invite.data.link : undefined);
-        // … und versucht, damit ein Passwort für das Konto zu setzen
-        const result = await auth.register({ email: "opfer@example.com", password: "angreifer-123", inviteToken: token });
-        expect(result.ok).toBe(false);
-        expect(await getCurrentUser()).toBeNull();
-        const opfer = await server.db.query.users.findFirst({ where: eq(users.email, "opfer@example.com") });
-        expect(opfer?.password).toBeNull();
+    it("bestehende Konten treten über die Einladung ebenfalls bei", async () => {
+        const token = await invite("fremd@example.com");
+        await loginAs("fremd@example.com", token);
+        expect(await server.count("household_users", `user_id = ${server.users.fremd.id} and household_id = ${server.households.zuhause.id}`)).toBe(1);
     });
 
     it("ein Einladungslink kann nur einmal verwendet werden", async () => {
-        const token = await inviteAnna();
-        await auth.register({ email: "neu@example.com", password: "lang-genug", inviteToken: token });
+        const token = await invite();
+        await loginAs("neu@example.com", token);
         jar.clear();
-        await server.db.update(users).set({ password: await hash("fremd-passwort", 4) }).where(eq(users.id, server.users.fremd.id));
-        await auth.login({ email: "fremd@example.com", password: "fremd-passwort" });
+        await loginAs("fremd@example.com");
         expect((await auth.acceptInvite({ token })).ok).toBe(false);
+    });
+});
+
+describe("Passwörter gibt es nicht mehr", () => {
+    it("keine Passwort-Anmeldung und keine gespeicherten Passwort-Hashes", async () => {
+        expect("login" in auth).toBe(false);
+        const columns = await server.client.query<{ column_name: string }>(
+            "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'users'",
+        );
+        expect(columns.rows.map((c) => c.column_name)).not.toContain("password");
+        expect((await loginAs("moritz@example.com")).ok).toBe(true);
     });
 });
