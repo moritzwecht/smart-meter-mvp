@@ -13,6 +13,8 @@ import { addReading } from "@/lib/offline/repo";
 
 interface MeterReadingDialogProps {
     meter: MeterWithReadings | undefined;
+    /** Wechselt bei jedem Öffnen → Formular startet frisch */
+    instance?: number;
     onClose: () => void;
     onOpenDetails: (meterId: string) => void;
 }
@@ -32,6 +34,8 @@ function issueText(issue: PlausibilityIssue, unit: string): string {
             return `Der Stand ist niedriger als die vorherige Ablesung (${formatReading(issue.previous)} ${unit}). Tippfehler – oder wurde der Zähler getauscht?`;
         case "unusually-high":
             return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – sonst sind es ca. ${formatConsumption(issue.usualRate)}. Stimmt der Wert?`;
+        case "big-jump":
+            return `Der Wert ist mehr als dreimal so hoch wie der letzte Stand (${formatReading(issue.previous)} ${unit}). Stimmt der Wert?`;
     }
 }
 
@@ -151,10 +155,10 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
     );
 }
 
-export function MeterReadingDialog({ meter, onClose, onOpenDetails }: MeterReadingDialogProps) {
+export function MeterReadingDialog({ meter, instance, onClose, onOpenDetails }: MeterReadingDialogProps) {
     return (
         <BaseDialog isOpen={!!meter} onClose={onClose} title={meter ? `${METER_TYPE_LABELS[meter.type]} ablesen` : undefined} className="sm:max-w-sm">
-            {meter && <ReadingForm key={meter.id} meter={meter} onDone={onClose} onOpenDetails={() => onOpenDetails(meter.id)} />}
+            {meter && <ReadingForm key={`${meter.id}:${instance}`} meter={meter} onDone={onClose} onOpenDetails={() => onOpenDetails(meter.id)} />}
         </BaseDialog>
     );
 }

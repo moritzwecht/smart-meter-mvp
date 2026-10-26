@@ -218,6 +218,7 @@ export function projectBillingPeriod(
 export type PlausibilityIssue =
     | { kind: "lower-than-previous"; previous: number }
     | { kind: "unusually-high"; dailyRate: number; usualRate: number }
+    | { kind: "big-jump"; previous: number }
     | { kind: "future-date" };
 
 /** Prüft eine neue Ablesung gegen die bisherigen – für Warnungen vor dem Speichern. */
@@ -229,11 +230,17 @@ export function checkReading(readings: ReadingLike[], candidate: ReadingLike, no
     const previous = [...sorted].reverse().find((r) => Date.parse(r.date) <= t);
     if (!previous) return null;
     if (candidate.value < previous.value) return { kind: "lower-than-previous", previous: previous.value };
+    const increase = candidate.value - previous.value;
     const usual = dailyAverage(toSegments(sorted).segments);
-    const days = (t - Date.parse(previous.date)) / DAY_MS;
-    if (usual && usual > 0 && days > 0.5) {
-        const dailyRate = (candidate.value - previous.value) / days;
+    // Kurze Abstände (z. B. zweimal am selben Tag) wie einen ganzen Tag behandeln,
+    // sonst fällt eine Ziffer zu viel gerade dann nicht auf.
+    const days = Math.max((t - Date.parse(previous.date)) / DAY_MS, 1);
+    if (usual && usual > 0) {
+        const dailyRate = increase / days;
         if (dailyRate > usual * 5 && dailyRate - usual > 1) return { kind: "unusually-high", dailyRate, usualRate: usual };
+    } else if (previous.value > 0 && candidate.value > previous.value * 3 && increase > 100) {
+        // Noch kein Verbrauchsmuster: typischer Tippfehler (Ziffer zu viel)
+        return { kind: "big-jump", previous: previous.value };
     }
     return null;
 }

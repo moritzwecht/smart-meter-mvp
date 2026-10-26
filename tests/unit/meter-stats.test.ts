@@ -127,6 +127,17 @@ describe("Plausibilität", () => {
         expect(checkReading(history, r("2025-01-21", 11000))?.kind).toBe("unusually-high");
     });
 
+    it("warnt auch bei kurzem Abstand (zweimal am selben Tag)", () => {
+        const sameDay = [r("2025-01-01T08:00:00", 1000), r("2025-01-11T08:00:00", 1100), r("2025-01-21T08:00:00", 1200)];
+        expect(checkReading(sameDay, r("2025-01-21T08:05:00", 12000))?.kind).toBe("unusually-high");
+        expect(checkReading(sameDay, r("2025-01-21T18:00:00", 1205))).toBeNull();
+    });
+
+    it("warnt ohne Verbrauchsmuster bei einer Ziffer zu viel", () => {
+        expect(checkReading([r("2025-01-01", 2180)], r("2025-01-02", 21800))?.kind).toBe("big-jump");
+        expect(checkReading([r("2025-01-01", 2180)], r("2025-01-02", 2195))).toBeNull();
+    });
+
     it("lehnt Datum in der Zukunft ab", () => {
         expect(checkReading(history, r(new Date(Date.now() + 2 * DAY_MS).toISOString(), 1200))?.kind).toBe("future-date");
     });

@@ -306,11 +306,12 @@ function Collapsible({ title, children, defaultOpen = false }: { title: string; 
 
 interface MeterDetailDialogProps {
     meter: MeterWithReadings | undefined;
+    instance?: number;
     onClose: () => void;
     onAddReading: (meterId: string) => void;
 }
 
-export function MeterDetailDialog({ meter, onClose, onAddReading }: MeterDetailDialogProps) {
+export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: MeterDetailDialogProps) {
     const confirm = useConfirm();
     const Icon = meter ? METER_ICONS[meter.type].icon : null;
 
@@ -351,7 +352,7 @@ export function MeterDetailDialog({ meter, onClose, onAddReading }: MeterDetailD
             }
         >
             {meter && (
-                <div key={meter.id} className="space-y-8">
+                <div key={`${meter.id}:${instance}`} className="space-y-8">
                     <Statistics meter={meter} />
                     <Collapsible title={`Verlauf (${meter.readings.length})`} defaultOpen>
                         <History_ meter={meter} />

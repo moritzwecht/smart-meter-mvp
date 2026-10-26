@@ -12,7 +12,7 @@
    - Rendert per Portal in <body> (keine z-index-/overflow-Probleme)
 ============================================================================ */
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useIsPresent } from "framer-motion";
 import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -69,6 +69,16 @@ function useKeyboardHeight(active: boolean) {
 }
 
 const noopSubscribe = () => () => {};
+
+/** Während der Schließ-Animation fängt der Dialog keine Taps mehr ab. */
+function DialogLayer({ children, zIndex }: { children: ReactNode; zIndex: number }) {
+    const isPresent = useIsPresent();
+    return (
+        <div className="fixed inset-0 flex items-center justify-center sm:p-4" style={{ zIndex, pointerEvents: isPresent ? undefined : "none" }}>
+            {children}
+        </div>
+    );
+}
 
 // Stapel offener Dialoge: ESC und Fokus gehören immer dem obersten.
 const openStack: string[] = [];
@@ -133,7 +143,7 @@ export function BaseDialog({
     return createPortal(
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 flex items-center justify-center sm:p-4" style={{ zIndex }}>
+                <DialogLayer key="dialog" zIndex={zIndex}>
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -193,7 +203,7 @@ export function BaseDialog({
 
                         {footer && <div className="p-4 border-t border-border bg-accent/5">{footer}</div>}
                     </motion.div>
-                </div>
+                </DialogLayer>
             )}
         </AnimatePresence>,
         document.body,

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Eraser, Plus, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import type { ListWithItems } from "@/lib/offline/hooks";
@@ -15,15 +15,11 @@ function ListEditor({ list }: { list: ListWithItems }) {
     const inputRef = useRef<HTMLInputElement>(null);
     const nameRef = useRef<HTMLInputElement>(null);
 
-    // Frisch angelegte Liste: Namen markieren, damit man direkt lostippen kann
-    useEffect(() => {
-        if (list.items.length === 0 && list.name === "Neue Liste") {
-            const t = setTimeout(() => nameRef.current?.select(), 80);
-            return () => clearTimeout(t);
-        }
-        // nur beim Öffnen
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [list.id]);
+    // Frisch angelegte Liste: Namen direkt fokussieren und markieren, damit man sofort lostippen kann
+    const [isNew] = useState(() => list.items.length === 0 && list.name === "Neue Liste");
+    useLayoutEffect(() => {
+        if (isNew) nameRef.current?.select();
+    }, [isNew]);
 
     // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund)
     const pendingName = useRef<string | null>(null);
@@ -58,6 +54,7 @@ function ListEditor({ list }: { list: ListWithItems }) {
         <div className="space-y-6">
             <input
                 ref={nameRef}
+                autoFocus={isNew}
                 type="text"
                 aria-label="Name der Liste"
                 value={name}
@@ -143,7 +140,7 @@ function ListEditor({ list }: { list: ListWithItems }) {
     );
 }
 
-export function ListEditDialog({ list, onClose }: { list: ListWithItems | undefined; onClose: () => void }) {
+export function ListEditDialog({ list, instance, onClose }: { list: ListWithItems | undefined; instance?: number; onClose: () => void }) {
     const confirm = useConfirm();
     return (
         <BaseDialog
@@ -174,7 +171,7 @@ export function ListEditDialog({ list, onClose }: { list: ListWithItems | undefi
                 </button>
             }
         >
-            {list && <ListEditor key={list.id} list={list} />}
+            {list && <ListEditor key={`${list.id}:${instance}`} list={list} />}
         </BaseDialog>
     );
 }

@@ -19,6 +19,7 @@ const AUTOSAVE_MS = 600;
 function NoteEditor({ note }: { note: Note }) {
     const [title, setTitle] = useState(note.title);
     const [content, setContent] = useState(note.content ?? "");
+    const [isNew] = useState(() => !note.title && !note.content);
     const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const dirty = useRef<{ title: string; content: string } | null>(null);
 
@@ -45,6 +46,7 @@ function NoteEditor({ note }: { note: Note }) {
                 <FieldLabel htmlFor="note-title">Titel</FieldLabel>
                 <input
                     id="note-title"
+                    autoFocus={isNew}
                     type="text"
                     value={title}
                     maxLength={200}
@@ -68,7 +70,7 @@ function NoteEditor({ note }: { note: Note }) {
     );
 }
 
-export function NoteEditDialog({ note, onClose }: { note: Note | undefined; onClose: () => void }) {
+export function NoteEditDialog({ note, instance, onClose }: { note: Note | undefined; instance?: number; onClose: () => void }) {
     const confirm = useConfirm();
     return (
         <BaseDialog
@@ -99,7 +101,7 @@ export function NoteEditDialog({ note, onClose }: { note: Note | undefined; onCl
                 </button>
             }
         >
-            {note && <NoteEditor key={note.id} note={note} />}
+            {note && <NoteEditor key={`${note.id}:${instance}`} note={note} />}
         </BaseDialog>
     );
 }

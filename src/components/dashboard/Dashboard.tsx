@@ -28,14 +28,18 @@ import { NoteEditDialog } from "./note/NoteEditDialog";
 import { NoteWidget } from "./note/NoteWidget";
 import { ProfileTab } from "./ProfileTab";
 
-type DialogState =
+type DialogKind =
     | { kind: "note"; id: string }
     | { kind: "list"; id: string }
     | { kind: "reading"; id: string }
     | { kind: "meter"; id: string }
     | { kind: "add-meter" }
-    | { kind: "household"; id: number }
-    | null;
+    | { kind: "household"; id: number };
+
+/** `n` zählt jedes Öffnen hoch – so startet ein Formular auch beim schnellen Wiederöffnen leer. */
+type DialogState = (DialogKind & { n: number }) | null;
+
+let dialogCounter = 0;
 
 const HOUSEHOLD_KEY = "lastHouseholdId";
 const TAB_KEY = "activeTab";
@@ -96,7 +100,8 @@ export function Dashboard({ user }: { user: SessionUser }) {
         return (readStorage(TAB_KEY) as TabId) || "dashboard";
     });
     const [menuOpen, setMenuOpen] = useState(false);
-    const [dialog, setDialog] = useState<DialogState>(null);
+    const [dialog, setDialogState] = useState<DialogState>(null);
+    const setDialog = useCallback((next: DialogKind | null) => setDialogState(next && { ...next, n: ++dialogCounter }), []);
 
     useEffect(() => {
         void startSync({ onUnauthenticated: sessionExpired });
@@ -120,15 +125,15 @@ export function Dashboard({ user }: { user: SessionUser }) {
     }, []);
 
     // Stabile Callbacks für die (memoisierten) Widgets
-    const openNote = useCallback((id: string) => setDialog({ kind: "note", id }), []);
-    const openList = useCallback((id: string) => setDialog({ kind: "list", id }), []);
-    const openMeter = useCallback((id: string) => setDialog({ kind: "meter", id }), []);
-    const openReading = useCallback((id: string) => setDialog({ kind: "reading", id }), []);
+    const openNote = useCallback((id: string) => setDialog({ kind: "note", id }), [setDialog]);
+    const openList = useCallback((id: string) => setDialog({ kind: "list", id }), [setDialog]);
+    const openMeter = useCallback((id: string) => setDialog({ kind: "meter", id }), [setDialog]);
+    const openReading = useCallback((id: string) => setDialog({ kind: "reading", id }), [setDialog]);
     const pinNote = useCallback((id: string, isPinned: boolean) => void updateNote(id, { isPinned }), []);
     const pinList = useCallback((id: string, isPinned: boolean) => void updateList(id, { isPinned }), []);
     const pinMeter = useCallback((id: string, isPinned: boolean) => void updateMeter(id, { isPinned }), []);
     const toggleItem = useCallback((id: string, completed: boolean) => void updateItem(id, { completed }), []);
-    const closeDialog = useCallback(() => setDialog(null), []);
+    const closeDialog = useCallback(() => setDialog(null), [setDialog]);
 
     const neverSynced = sync.lastSyncedAt === null;
     if (households === undefined || (households.length === 0 && neverSynced && sync.status !== "offline" && sync.status !== "error")) {
@@ -237,10 +242,10 @@ export function Dashboard({ user }: { user: SessionUser }) {
                     onCreated={(id) => setDialog({ kind: "reading", id })}
                 />
             )}
-            <MeterReadingDialog meter={find(meters, "reading")} onClose={closeDialog} onOpenDetails={openMeter} />
-            <MeterDetailDialog meter={find(meters, "meter")} onClose={closeDialog} onAddReading={openReading} />
-            <ListEditDialog list={find(lists, "list")} onClose={closeDialog} />
-            <NoteEditDialog note={find(notes, "note")} onClose={closeDialog} />
+            <MeterReadingDialog meter={find(meters, "reading")} instance={dialog?.n} onClose={closeDialog} onOpenDetails={openMeter} />
+            <MeterDetailDialog meter={find(meters, "meter")} instance={dialog?.n} onClose={closeDialog} onAddReading={openReading} />
+            <ListEditDialog list={find(lists, "list")} instance={dialog?.n} onClose={closeDialog} />
+            <NoteEditDialog note={find(notes, "note")} instance={dialog?.n} onClose={closeDialog} />
             <HouseholdSettingsDialog household={dialog?.kind === "household" ? households.find((h) => h.id === dialog.id) : undefined} onClose={closeDialog} />
         </>
     );
