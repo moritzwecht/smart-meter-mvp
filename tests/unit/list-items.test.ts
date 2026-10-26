@@ -40,3 +40,28 @@ describe("Punkte hinzufügen", () => {
         expect(await items(listId)).toEqual(["Brot", "Eier", "Kaffee", "Milch"]);
     });
 });
+
+describe("Löschen rückgängig machen", () => {
+    it("stellt gelöschte Punkte mit Inhalt, Status und Reihenfolge wieder her", async () => {
+        const listId = await repo.addList(1, "Baumarkt");
+        await repo.addItems(listId, ["Schrauben", "Dübel", "Leim"]);
+        const before = await db.todoItems.where("listId").equals(listId).sortBy("createdAt");
+        await repo.updateItem(before[1].id, { completed: true });
+        const done = (await db.todoItems.where("listId").equals(listId).toArray()).filter((i) => i.completed);
+        await repo.clearCompletedItems(listId);
+        expect(await items(listId)).toEqual(["Leim", "Schrauben"]);
+
+        await repo.restoreItems(done);
+        const after = await db.todoItems.where("listId").equals(listId).sortBy("createdAt");
+        expect(after.map((i) => `${i.content}${i.completed ? " ✓" : ""}`)).toEqual(["Schrauben", "Dübel ✓", "Leim"]);
+    });
+
+    it("stellt nichts in einer inzwischen gelöschten Liste wieder her", async () => {
+        const listId = await repo.addList(1, "Weg");
+        const { added } = await repo.addItems(listId, ["x"]);
+        const item = (await db.todoItems.get(added[0]))!;
+        await repo.deleteList(listId);
+        await repo.restoreItems([item]);
+        expect(await db.todoItems.where("listId").equals(listId).count()).toBe(0);
+    });
+});

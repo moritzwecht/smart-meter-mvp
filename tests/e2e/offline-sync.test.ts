@@ -351,6 +351,21 @@ describe("Robustheit bei Verbindungsabbrüchen", () => {
         expect((await restarted.db.notes.toArray()).map((x) => x.title)).toContain("Alt");
     });
 
+    it("Rückgängig nach dem Löschen kommt auch bei den anderen an – selbst wenn das Löschen schon übertragen war", async () => {
+        const listId = await phone.repo.addList(householdId, "Einkauf");
+        const itemId = await phone.repo.addItem(listId, "Milch");
+        await phone.sync();
+        await annasPhone.sync();
+        const snapshot = (await phone.db.todoItems.get(itemId))!;
+        await phone.repo.deleteItem(itemId);
+        await phone.sync(); // Löschen ist beim Server
+        await phone.repo.restoreItems([snapshot]);
+        await phone.sync();
+        await annasPhone.sync();
+        expect((await annasPhone.db.todoItems.where("listId").equals(listId).toArray()).map((i) => i.content)).toEqual(["Milch"]);
+        expect(await server.count("todo_items", "deleted_at is null")).toBe(1);
+    });
+
     it("ein gerade angelegter Haushalt verschwindet nicht durch eine ältere Sync-Antwort", async () => {
         let release!: () => void;
         responseGate = new Promise((r) => (release = r));

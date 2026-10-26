@@ -242,6 +242,32 @@ export async function deleteItem(id: string) {
     });
 }
 
+/**
+ * "Rückgängig" nach dem Löschen: Die Punkte werden mit neuer ID und ihrem alten
+ * Stand wieder angelegt (gleiche Sortierung über createdAt). So funktioniert das
+ * auch, wenn das Löschen schon beim Server und bei den anderen angekommen ist.
+ */
+export async function restoreItems(items: TodoItem[]) {
+    await write(async () => {
+        for (const old of items) {
+            if (!(await db.todoLists.get(old.listId))) continue; // Liste inzwischen weg
+            const id = newId();
+            const now = nowIso();
+            const item: TodoItem = { ...old, id, updatedAt: now, deletedAt: null };
+            await db.todoItems.add(item);
+            await op({
+                opId: opId(),
+                entity: "item",
+                action: "create",
+                id,
+                parentId: old.listId,
+                fields: { content: old.content, completed: old.completed },
+                createdAt: old.createdAt,
+            });
+        }
+    });
+}
+
 /** Entfernt alle erledigten Punkte einer Liste (z. B. nach dem Einkauf). */
 export async function clearCompletedItems(listId: string) {
     await write(async () => {

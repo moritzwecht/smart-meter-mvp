@@ -131,6 +131,13 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await expect(dialog.getByRole("status")).toHaveText("2 Punkte hinzugefügt, 1 schon vorhanden.");
         await expect(dialog.locator("li")).toHaveCount(5);
 
+        // Versehentlich gelöscht? Rückgängig.
+        await dialog.getByRole("button", { name: "Butter löschen" }).click();
+        await expect(dialog.locator("li")).toHaveCount(4);
+        await page.getByRole("button", { name: "Rückgängig" }).click();
+        await expect(dialog.getByRole("button", { name: "Butter", exact: true })).toBeVisible();
+        await expect(dialog.locator("li")).toHaveCount(5);
+
         await page.getByRole("button", { name: "Fertig" }).click();
         await expect.poll(() => count("todo_items", "completed")).toBe(1);
         expect((await q<{ content: string }>("select content from todo_items where completed"))[0]?.content).toBe("Brot");

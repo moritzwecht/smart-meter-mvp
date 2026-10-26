@@ -5,6 +5,7 @@ import { Check, Eraser, Plus, Trash2 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
 import type { ListWithItems } from "@/lib/offline/hooks";
 import {
     addItems,
@@ -12,6 +13,7 @@ import {
     deleteItem,
     deleteList,
     discardListIfUntouched,
+    restoreItems,
     splitItemLines,
     updateItem,
     updateList,
@@ -98,6 +100,19 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
         setNewItem("");
         inputRef.current?.focus();
         await addContents([content]);
+    };
+
+    // Löschen ohne Rückfrage, aber mit "Rückgängig" – ein versehentlicher Tipp kostet nichts
+    const toast = useToast();
+    const removeItems = async (targets: TodoItem[], completedOnly = false) => {
+        if (!targets.length) return;
+        if (completedOnly) await clearCompletedItems(list.id);
+        else await Promise.all(targets.map((t) => deleteItem(t.id)));
+        toast({
+            message: targets.length === 1 ? `„${targets[0].content}“ gelöscht` : `${targets.length} erledigte Punkte entfernt`,
+            action: { label: "Rückgängig", onClick: () => void restoreItems(targets) },
+            duration: 6000,
+        });
     };
 
     // Mehrzeiligen Text (z. B. aus einer Nachricht oder Notiz) als einzelne Punkte übernehmen
@@ -188,7 +203,7 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
                             </button>
                             <button
                                 type="button"
-                                onClick={() => deleteItem(item.id)}
+                                onClick={() => removeItems([item])}
                                 className="hover-reveal w-11 h-11 shrink-0 flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors"
                                 aria-label={`${item.content} löschen`}
                             >
@@ -203,7 +218,7 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
             {doneCount > 0 && (
                 <button
                     type="button"
-                    onClick={() => clearCompletedItems(list.id)}
+                    onClick={() => removeItems(list.items.filter((i) => i.completed), true)}
                     className="w-full min-h-11 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center justify-center gap-2"
                 >
                     <Eraser className="w-3.5 h-3.5" />
