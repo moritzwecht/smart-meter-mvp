@@ -17,7 +17,6 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
                     email: invite.email,
                     householdName: invite.householdName,
                     inviterName: invite.inviterName,
-                    accountExists: invite.accountExists,
                 }
             }
             user={user ? publicUser(user) : null}

@@ -13,7 +13,7 @@ import { authSecret, isProduction } from "./env";
  * Signiertes JWT im httpOnly-Cookie, 90 Tage gültig und gleitend verlängert, solange
  * die App genutzt wird. Jede Anfrage prüft den Nutzer in der Datenbank – über
  * `sessionVersion` lassen sich so alle Sessions eines Nutzers sofort beenden
- * (Passwortänderung, "Überall abmelden").
+ * ("Überall abmelden").
  */
 
 /**
@@ -84,7 +84,6 @@ function toAuthUser(row: typeof users.$inferSelect): AuthUser {
         id: row.id,
         email: row.email,
         name: row.name || row.email.split("@")[0],
-        hasPassword: !!row.password,
         sessionVersion: row.sessionVersion,
     };
 }
@@ -116,7 +115,7 @@ export async function getCurrentUser(options: { refresh?: boolean } = {}): Promi
     } else if (claims.email) {
         // Cookie aus Version 1 → einmalig auf das neue Format umstellen
         row = await db.query.users.findFirst({ where: eq(users.email, String(claims.email).toLowerCase()) });
-        // Nach "Überall abmelden" / Passwortänderung gilt auch das alte Cookie nicht mehr
+        // Nach "Überall abmelden" gilt auch das alte Cookie nicht mehr
         if (!row || row.sessionVersion !== 0) return null;
         if (options.refresh) await startSession(row);
         return toAuthUser(row);
@@ -144,5 +143,5 @@ export async function requireUser(options: { refresh?: boolean } = {}): Promise<
 }
 
 export function publicUser(user: AuthUser): SessionUser {
-    return { id: user.id, email: user.email, name: user.name, hasPassword: user.hasPassword };
+    return { id: user.id, email: user.email, name: user.name };
 }

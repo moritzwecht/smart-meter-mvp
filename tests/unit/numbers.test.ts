@@ -35,3 +35,14 @@ describe("parseDecimal", () => {
         expect(toInputValue(null)).toBe("");
     });
 });
+
+describe("IP-Gruppierung für Rate-Limits", () => {
+    it("fasst IPv6 auf das /64-Netz zusammen und lässt IPv4 unverändert", async () => {
+        const { ipBucket } = await import("@/lib/server/rate-limit");
+        expect(ipBucket("203.0.113.7")).toBe("203.0.113.7");
+        expect(ipBucket("2001:db8:1:2:aaaa::1")).toBe("2001:db8:1:2::/64");
+        expect(ipBucket("2001:0db8:0001:0002:ffff:ffff:ffff:ffff")).toBe("2001:db8:1:2::/64");
+        expect(ipBucket("2001:db8::1")).toBe("2001:db8:0:0::/64");
+        expect(ipBucket("::1")).toBe("0:0:0:0::/64");
+    });
+});

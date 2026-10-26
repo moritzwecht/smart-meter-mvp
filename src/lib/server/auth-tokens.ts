@@ -1,14 +1,15 @@
 import "server-only";
-import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
+import { createHmac, randomInt } from "node:crypto";
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { authTokens, households, users } from "@/lib/db/schema";
 import { getDb } from "./db";
-import { hashToken, randomToken } from "./crypto";
+import { hashToken, randomToken, safeEqual } from "./crypto";
+import { authSecret } from "./env";
 
-export type TokenPurpose = "INVITE" | "RESET";
+export type TokenPurpose = "INVITE";
 
 const LIFETIME_MINUTES: Record<TokenPurpose, number> = {
     INVITE: 7 * 24 * 60,
-    RESET: 60,
 };
 
 export async function createAuthToken(options: {
@@ -53,12 +54,77 @@ export async function consumeToken(id: number): Promise<boolean> {
     return rows.length > 0;
 }
 
-/** Macht offene Reset-Links einer Adresse ungültig (nach Reset oder Passwortänderung). */
-export async function invalidateResetTokens(email: string) {
+// Anmeldecodes ------------------------------------------------------------------------
+//
+// Sechsstelliger Code per E-Mail, 10 Minuten gültig, nur einmal verwendbar. Pro Adresse
+// gilt nur der zuletzt angeforderte Code; nach 3 falschen Eingaben ist er verbraucht –
+// gezählt wird atomar in der Datenbank, also auch bei parallelen Anfragen. Zusammen mit
+// max. 10 Codes pro Adresse und Tag sind das höchstens 30 Rateversuche pro Tag.
+// Gespeichert wird nur ein HMAC (mit AUTH_SECRET und Salz) – sechs Ziffern ließen sich
+// aus einem einfachen Hash sonst in Sekunden zurückrechnen.
+
+export const LOGIN_CODE_MINUTES = 10;
+const LOGIN_CODE_MAX_TRIES = 3;
+
+function codeHmac(salt: string, email: string, code: string): string {
+    return createHmac("sha256", authSecret()).update(`${salt}:${email}:${code}`).digest("hex");
+}
+
+/** Macht alle noch offenen Codes einer Adresse ungültig. */
+async function invalidateLoginCodes(email: string) {
     await getDb()
         .update(authTokens)
         .set({ usedAt: new Date() })
-        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "RESET"), isNull(authTokens.usedAt)));
+        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "LOGIN"), isNull(authTokens.usedAt)));
+}
+
+export async function createLoginCode(email: string): Promise<string> {
+    await invalidateLoginCodes(email);
+    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const salt = randomToken(12);
+    await getDb()
+        .insert(authTokens)
+        .values({
+            purpose: "LOGIN",
+            tokenHash: `${salt}.${codeHmac(salt, email, code)}`,
+            email,
+            expiresAt: new Date(Date.now() + LOGIN_CODE_MINUTES * 60_000),
+        });
+    return code;
+}
+
+export type LoginCodeResult = "ok" | "wrong" | "exhausted";
+
+/** Prüft und verbraucht den aktuellen Code einer Adresse. */
+export async function consumeLoginCode(email: string, code: string): Promise<LoginCodeResult> {
+    const db = getDb();
+    // Versuch zählen, *bevor* verglichen wird – atomar und nur, solange noch Versuche übrig
+    // sind. So prüft auch eine Flut paralleler Anfragen höchstens 3 Codes.
+    const latest = db
+        .select({ id: authTokens.id })
+        .from(authTokens)
+        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "LOGIN"), isNull(authTokens.usedAt), gt(authTokens.expiresAt, new Date())))
+        .orderBy(desc(authTokens.id))
+        .limit(1);
+    const [row] = await db
+        .update(authTokens)
+        .set({ attempts: sql`${authTokens.attempts} + 1` })
+        .where(and(inArray(authTokens.id, latest), isNull(authTokens.usedAt), lt(authTokens.attempts, LOGIN_CODE_MAX_TRIES)))
+        .returning({ id: authTokens.id, tokenHash: authTokens.tokenHash, attempts: authTokens.attempts });
+    // Kein (gültiger) Code – bewusst dieselbe Antwort wie bei einem falschen Code
+    if (!row) return "wrong";
+
+    const [salt, expected] = row.tokenHash.split(".");
+    if (/^\d{6}$/.test(code) && safeEqual(codeHmac(salt, email, code), expected ?? "")) {
+        if (!(await consumeToken(row.id))) return "wrong";
+        await invalidateLoginCodes(email); // evtl. parallel angeforderte ältere Codes gleich mit
+        return "ok";
+    }
+    if (row.attempts >= LOGIN_CODE_MAX_TRIES) {
+        await invalidateLoginCodes(email);
+        return "exhausted";
+    }
+    return "wrong";
 }
 
 export async function getInviteInfo(token: string) {
@@ -73,15 +139,12 @@ export async function getInviteInfo(token: string) {
     const inviter = invite.createdBy
         ? await db.query.users.findFirst({ where: eq(users.id, invite.createdBy), columns: { name: true, email: true } })
         : undefined;
-    const existingUser = await db.query.users.findFirst({ where: eq(users.email, invite.email), columns: { id: true } });
     return {
         id: invite.id,
         email: invite.email,
         householdId: household.id,
         householdName: household.name,
         inviterName: inviter ? inviter.name || inviter.email : null,
-        /** Konto existiert bereits → anmelden (ohne Passwort: erst „Passwort vergessen“). */
-        accountExists: !!existingUser,
     };
 }
 

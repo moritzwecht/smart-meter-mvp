@@ -8,6 +8,7 @@ Mobile-first Haushalts-App für **Zählerstände** (Strom, Gas, Wasser), **Liste
 - **Listen**: direkt im Widget abhaken, erledigte Punkte gesammelt entfernen.
 - **Notizen** mit Autosave.
 - **Haushalte**: mehrere Haushalte, Mitglieder per Einladungslink, Inhaber/Mitglieder, Haushalt verlassen.
+- **Anmeldung ohne Passwort**: E-Mail eingeben, Code aus der Mail eintippen – fertig.
 - **Offline**: Alles wird lokal gespeichert und im Hintergrund synchronisiert – auch Änderungen mehrerer Geräte gleichzeitig.
 - **Home Assistant / ESPHome**: Zählerstände automatisch per API-Token eintragen.
 - **Ablese-Erinnerung** per Push-Benachrichtigung (monatlich, nur wenn wirklich etwas fehlt).
@@ -53,7 +54,7 @@ Jede Postgres-Datenbank funktioniert (lokal, Docker, Neon). Für Neon-URLs wird 
 | `npm run build` | Produktions-Build inkl. Service Worker (`serwist build`) |
 | `npm run check` | Typecheck + ESLint + Tests |
 | `npm test` | Unit-, Server- und Sync-Tests (PGlite – keine Datenbank nötig) |
-| `npm run test:browser` | Ende-zu-Ende im Browser gegen den Produktions-Build (braucht `npm run build` und eine **leere Test-Datenbank** in `E2E_DATABASE_URL`) |
+| `npm run test:browser` | Ende-zu-Ende im Browser gegen den Produktions-Build (braucht `npm run build` und eine **leere Test-Datenbank** in `E2E_DATABASE_URL`; E-Mails landen in einem Test-Postfach) |
 | `npm run db:generate` | Migration aus Schema-Änderungen erzeugen |
 | `npm run db:migrate` | Migrationen anwenden |
 
@@ -61,21 +62,21 @@ Jede Postgres-Datenbank funktioniert (lokal, Docker, Neon). Für Neon-URLs wird 
 
 ## Deployment (Vercel)
 
-Umgebungsvariablen: siehe [`.env.example`](.env.example). Pflicht sind `DATABASE_URL` (oder das von Vercel gesetzte `POSTGRES_URL`) und `AUTH_SECRET`.
+Umgebungsvariablen: siehe [`.env.example`](.env.example). Pflicht sind `DATABASE_URL` (oder das von Vercel gesetzte `POSTGRES_URL`), `AUTH_SECRET` und – weil die Anmeldung per Code läuft – `RESEND_API_KEY` mit `EMAIL_FROM` (Absender einer bei Resend verifizierten Domain). Lokal ohne Resend steht der Code in der Server-Konsole.
 
 **Upgrade von Version 1.x** – die Migration stellt das Datenmodell um (UUIDs, echte Zahlen/Booleans, Soft-Delete):
 
 1. Optional ein Backup in Neon anlegen (Branch). Die Migration legt zusätzlich Kopien aller alten Tabellen im Schema `v1_backup` an.
-   Vorab lohnt ein Blick auf doppelte E-Mail-Adressen (Version 1 hat Groß-/Kleinschreibung unterschieden; die Migration führt solche Konten zusammen, das Konto mit Passwort gewinnt):
+   Vorab lohnt ein Blick auf doppelte E-Mail-Adressen (Version 1 hat Groß-/Kleinschreibung unterschieden; die Migration führt solche Konten zusammen):
    ```sql
    SELECT lower(trim(email)), count(*) FROM users GROUP BY 1 HAVING count(*) > 1;
    ```
 2. `DATABASE_URL=<Produktions-URL> npm run db:migrate` – läuft in einer Transaktion: entweder alles oder nichts.
 3. Direkt danach deployen.
-4. Beim ersten Öffnen lädt die App alle Daten neu. Offline-Änderungen, die in Version 1 hängen geblieben waren, werden automatisch übernommen. Bestehende Sessions werden übernommen (alte Sessions galten max. 24 h – danach einmal neu anmelden). Konten ohne Passwort (z. B. aus alten Einladungen) setzen es über „Passwort vergessen“.
+4. Beim ersten Öffnen lädt die App alle Daten neu. Offline-Änderungen, die in Version 1 hängen geblieben waren, werden automatisch übernommen. Bestehende Sessions werden übernommen (alte Sessions galten max. 24 h – danach einmal neu anmelden). Angemeldet wird sich ab jetzt immer mit einem Code per E-Mail; Passwörter gibt es nicht mehr, die alten Hashes werden gelöscht.
 5. Wenn alles läuft: `DROP SCHEMA v1_backup CASCADE;`
 
-**Sicherheit in Kürze:** Passwörter mit bcrypt, Sessions als signiertes JWT im `__Host-`-Cookie (90 Tage, „überall abmelden“ möglich), Rate-Limits für Login/Registrierung/Reset/Einladungen, Einmal-Links nur als Hash gespeichert. Konten ohne Passwort (aus Version 1) bekommen eins ausschließlich über „Passwort vergessen“ – also mit Zugriff aufs Postfach. Ein Passwort-Reset beendet alle Sessions und widerruft API-Tokens.
+**Anmeldung & Sicherheit in Kürze:** Keine Passwörter – man gibt die E-Mail-Adresse ein und bekommt einen 6-stelligen Code (10 Minuten gültig, nur der zuletzt angeforderte gilt, nach 5 falschen Eingaben verbraucht; dazu Limits pro Adresse und IP). Neue Konten entstehen beim ersten Anmelden. Gespeichert wird nur ein HMAC des Codes. Code statt Link, weil Links auf dem Handy oft im falschen Browser landen statt in der Home-Bildschirm- oder nativen App. Sessions sind signierte JWTs im `__Host-`-Cookie (90 Tage, „überall abmelden“ im Profil).
 
 Der tägliche Job (`/api/cron/daily`: Erinnerungen + Aufräumen) ist in `vercel.json` eingetragen und braucht `CRON_SECRET`. Ohne Vercel kann ihn z. B. n8n täglich aufrufen: `GET /api/cron/daily` mit Header `Authorization: Bearer <CRON_SECRET>`.
 

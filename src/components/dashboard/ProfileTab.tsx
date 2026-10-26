@@ -3,9 +3,8 @@
 import { LogOut, Mail, MonitorSmartphone, Moon, Shield, Sun, User } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { logout, logoutEverywhere } from "@/app/actions/auth";
-import { changePassword, updateName } from "@/app/actions/profile";
+import { updateName } from "@/app/actions/profile";
 import { APP_VERSION } from "@/components/auth/AuthScreen";
-import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { Input } from "@/components/ui/Input";
@@ -40,44 +39,6 @@ function NameForm({ user }: { user: SessionUser }) {
             <Input label="Anzeigename" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Dein Name" />
             <Button type="submit" variant="ghost" disabled={saving || !name.trim() || name === user.name} className="w-full border-2 border-border">
                 {saving ? <Spinner /> : "Name speichern"}
-            </Button>
-        </form>
-    );
-}
-
-function PasswordForm({ user }: { user: SessionUser }) {
-    const toast = useToast();
-    const [current, setCurrent] = useState("");
-    const [next, setNext] = useState("");
-    const [repeat, setRepeat] = useState("");
-    const [error, setError] = useState("");
-    const [saving, setSaving] = useState(false);
-
-    const submit = async (e: FormEvent) => {
-        e.preventDefault();
-        setError("");
-        if (next !== repeat) return setError("Die neuen Passwörter stimmen nicht überein.");
-        setSaving(true);
-        const result = await runAction(() => changePassword({ currentPassword: current || undefined, newPassword: next }));
-        setSaving(false);
-        if (!result.ok) return setError(result.error);
-        setCurrent("");
-        setNext("");
-        setRepeat("");
-        await updateCachedUser({ hasPassword: true });
-        toast({ message: "Passwort geändert – andere Geräte wurden abgemeldet.", variant: "success" });
-    };
-
-    return (
-        <form onSubmit={submit} className="space-y-3">
-            {user.hasPassword && (
-                <Input label="Aktuelles Passwort" type="password" autoComplete="current-password" showPasswordToggle value={current} onChange={(e) => setCurrent(e.target.value)} />
-            )}
-            <Input label="Neues Passwort" type="password" autoComplete="new-password" showPasswordToggle minLength={8} value={next} onChange={(e) => setNext(e.target.value)} placeholder="Mindestens 8 Zeichen" />
-            <Input label="Neues Passwort wiederholen" type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
-            {error && <Alert variant="error">{error}</Alert>}
-            <Button type="submit" variant="ghost" disabled={saving || !next} className="w-full border-2 border-border">
-                {saving ? <Spinner /> : user.hasPassword ? "Passwort ändern" : "Passwort festlegen"}
             </Button>
         </form>
     );
@@ -127,7 +88,14 @@ export function ProfileTab({ user }: { user: SessionUser }) {
     };
 
     const signOutOthers = async () => {
-        if (!(await confirm({ title: "Auf allen anderen Geräten abmelden?", confirmLabel: "Abmelden" }))) return;
+        if (
+            !(await confirm({
+                title: "Auf allen anderen Geräten abmelden?",
+                message: "Dort muss man sich dann neu anmelden. API-Tokens (z. B. für Home Assistant) bleiben gültig – die löschst du bei Bedarf unten einzeln.",
+                confirmLabel: "Abmelden",
+            }))
+        )
+            return;
         const result = await runAction(logoutEverywhere);
         toast(result.ok ? { message: "Alle anderen Geräte wurden abgemeldet.", variant: "success" } : { message: result.error, variant: "error" });
     };
@@ -152,7 +120,6 @@ export function ProfileTab({ user }: { user: SessionUser }) {
             </Section>
 
             <Section title="Sicherheit" icon={<Shield className="w-3.5 h-3.5" />}>
-                <PasswordForm user={user} />
                 <Row icon={<MonitorSmartphone className="w-4 h-4" />} title="Andere Geräte abmelden">
                     <button type="button" onClick={signOutOthers} className="text-xs font-bold text-primary hover:underline shrink-0">
                         Abmelden

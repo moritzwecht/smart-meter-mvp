@@ -11,9 +11,9 @@ export async function setupServer() {
     const [moritz, anna, fremd] = await db
         .insert(users)
         .values([
-            { email: "moritz@example.com", name: "Moritz", password: "x" },
-            { email: "anna@example.com", name: "Anna", password: "x" },
-            { email: "fremd@example.com", name: "Fremd", password: "x" },
+            { email: "moritz@example.com", name: "Moritz" },
+            { email: "anna@example.com", name: "Anna" },
+            { email: "fremd@example.com", name: "Fremd" },
         ])
         .returning();
     const [zuhause, fremdHaushalt] = await db

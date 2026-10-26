@@ -40,6 +40,10 @@ export default defineConfig({
             AUTH_SECRET: "e2e-secret-0123456789-0123456789-abcdef",
             APP_URL: `http://localhost:${PORT}`,
             CRON_SECRET: "e2e-cron",
+            // E-Mails (Anmeldecodes) landen im Test-Postfach aus tests/browser/mail-server.ts
+            RESEND_API_KEY: "re_e2e_test",
+            RESEND_BASE_URL: `http://127.0.0.1:${process.env.E2E_MAIL_PORT ?? 3199}`,
+            EMAIL_FROM: "My Home <test@example.com>",
         },
     },
 });

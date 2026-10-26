@@ -35,7 +35,6 @@ const timestamps = {
 export const users = pgTable("users", {
     id: serial("id").primaryKey(),
     email: text("email").notNull().unique(),
-    password: text("password"),
     name: text("name"),
     /** Wird erhöht, um alle bestehenden Sessions ungültig zu machen. */
     sessionVersion: integer("session_version").default(0).notNull(),
@@ -176,18 +175,20 @@ export const notes = pgTable(
     ],
 );
 
-/** Einmal-Tokens für Einladungen und Passwort-Reset. Gespeichert wird nur der SHA-256-Hash. */
+/** Einladungen und Anmeldecodes. Gespeichert wird nur ein Hash, nie der Klartext. */
 export const authTokens = pgTable(
     "auth_tokens",
     {
         id: serial("id").primaryKey(),
-        purpose: text("purpose").notNull(), // 'INVITE' | 'RESET'
+        purpose: text("purpose").notNull(), // 'INVITE' | 'LOGIN' (früher auch 'RESET')
         tokenHash: text("token_hash").notNull().unique(),
         email: text("email").notNull(),
         householdId: integer("household_id").references(() => households.id, { onDelete: "cascade" }),
         createdBy: integer("created_by").references(() => users.id, { onDelete: "cascade" }),
         expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
         usedAt: timestamp("used_at", { withTimezone: true }),
+        /** Eingabeversuche (Anmeldecodes) */
+        attempts: integer("attempts").default(0).notNull(),
         createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     },
     (t) => [index("auth_tokens_email_idx").on(t.email), index("auth_tokens_household_idx").on(t.householdId)],
