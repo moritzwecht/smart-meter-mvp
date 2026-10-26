@@ -221,6 +221,26 @@ export type PlausibilityIssue =
     | { kind: "big-jump"; previous: number }
     | { kind: "future-date" };
 
+export interface ReadingPreview {
+    previous: ReadingLike;
+    /** Verbrauch seit der vorherigen Ablesung (negativ = niedrigerer Stand) */
+    consumption: number;
+    days: number;
+    /** nur bei mindestens einem Tag Abstand aussagekräftig */
+    perDay: number | null;
+}
+
+/** Was eine neue Ablesung bedeutet – für die Vorschau beim Eintippen. */
+export function previewReading(readings: ReadingLike[], candidate: ReadingLike): ReadingPreview | null {
+    if (candidate.isReplacement) return null;
+    const t = Date.parse(candidate.date);
+    const previous = [...readings].sort((a, b) => b.date.localeCompare(a.date)).find((r) => Date.parse(r.date) <= t);
+    if (!previous) return null;
+    const consumption = candidate.value - previous.value;
+    const days = (t - Date.parse(previous.date)) / DAY_MS;
+    return { previous, consumption, days, perDay: days >= 1 ? consumption / days : null };
+}
+
 /** Prüft eine neue Ablesung gegen die bisherigen – für Warnungen vor dem Speichern. */
 export function checkReading(readings: ReadingLike[], candidate: ReadingLike, now = Date.now()): PlausibilityIssue | null {
     const t = Date.parse(candidate.date);

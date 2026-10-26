@@ -20,7 +20,11 @@ function trackErrors(page: Page) {
 
 /** Automatische Barrierefreiheits-Prüfung (WCAG 2.1 AA): schwere Verstöße lassen den Test scheitern. */
 async function expectAccessible(page: Page, where: string) {
-    await page.waitForTimeout(400); // Animationen abwarten
+    // Laufende Ein-/Ausblend-Animationen würden Kontraste verfälschen
+    await page.waitForFunction(() =>
+        document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getTiming().iterations === Infinity),
+    );
+    await page.waitForTimeout(400);
     const { violations } = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     const serious = violations
         .filter((v) => v.impact === "serious" || v.impact === "critical")
@@ -73,6 +77,9 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         // absichtlich sofort, während der vorige Dialog noch ausblendet
         await page.getByRole("button", { name: "Eintragen", exact: true }).click();
         await page.getByLabel(/Zählerstand/).fill("2180");
+        // Live-Vorschau: Verbrauch, Tagesschnitt und Kosten seit der letzten Ablesung
+        await expect(page.getByText(/\+179,5 m³ in \d+ Tagen · ≈ 2,9\d m³\/Tag · ≈ 210,\d\d\s€/)).toBeVisible();
+        await page.screenshot({ path: test.info().outputPath("ablesen-vorschau.png") });
         await page.getByRole("button", { name: "Speichern" }).click();
         await expect(page.getByText("m³/Tag")).toBeVisible();
         await expect.poll(() => count("readings")).toBe(2);

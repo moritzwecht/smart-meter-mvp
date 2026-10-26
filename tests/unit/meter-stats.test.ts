@@ -160,3 +160,26 @@ describe("CSV-Export", () => {
         expect(lines[2]).toBe("1.2.2025;09:00;12400,25;54,75;;App");
     });
 });
+
+describe("Vorschau beim Ablesen", () => {
+    it("zeigt Verbrauch und Tagesschnitt seit der vorherigen Ablesung", async () => {
+        const { previewReading } = await import("@/lib/meter/stats");
+        const p = previewReading([r("2025-01-01T08:00:00", 1000), r("2025-01-11T08:00:00", 1100)], r("2025-01-21T08:00:00", 1250))!;
+        expect(p.consumption).toBe(150);
+        expect(p.days).toBeCloseTo(10);
+        expect(p.perDay).toBeCloseTo(15);
+    });
+
+    it("rechnet bei einem Datum in der Vergangenheit gegen die Ablesung davor", async () => {
+        const { previewReading } = await import("@/lib/meter/stats");
+        const p = previewReading([r("2025-01-01T08:00:00", 1000), r("2025-01-11T08:00:00", 1100)], r("2025-01-06T08:00:00", 1040))!;
+        expect(p.previous.value).toBe(1000);
+        expect(p.consumption).toBe(40);
+    });
+
+    it("kein Tagesschnitt bei weniger als einem Tag, keine Vorschau beim Zählerwechsel", async () => {
+        const { previewReading } = await import("@/lib/meter/stats");
+        expect(previewReading([r("2025-01-01T08:00:00", 1000)], r("2025-01-01T09:00:00", 1001))?.perDay).toBeNull();
+        expect(previewReading([r("2025-01-01T08:00:00", 1000)], r("2025-01-05T08:00:00", 0, true))).toBeNull();
+    });
+});

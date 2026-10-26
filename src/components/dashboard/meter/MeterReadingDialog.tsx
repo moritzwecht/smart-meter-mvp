@@ -6,8 +6,8 @@ import { FieldLabel } from "@/components/ui/AddTile";
 import { Alert } from "@/components/ui/Alert";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { formatConsumption, formatDate, formatReading, METER_TYPE_LABELS, toDateInputValue } from "@/lib/meter/format";
-import { checkReading, type PlausibilityIssue } from "@/lib/meter/stats";
-import { parseDecimal } from "@/lib/numbers";
+import { canComputeCost, checkReading, consumptionCost, previewReading, type PlausibilityIssue } from "@/lib/meter/stats";
+import { formatCurrency, parseDecimal } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
 import { addReading } from "@/lib/offline/repo";
 
@@ -37,6 +37,31 @@ function issueText(issue: PlausibilityIssue, unit: string): string {
         case "big-jump":
             return `Der Wert ist mehr als dreimal so hoch wie der letzte Stand (${formatReading(issue.previous)} ${unit}). Stimmt der Wert?`;
     }
+}
+
+/** Live-Vorschau beim Tippen: Was bedeutet der neue Stand? Fällt ein Tippfehler sofort auf. */
+function PreviewLine({ meter, value, day, isReplacement }: { meter: MeterWithReadings; value: string; day: string; isReplacement: boolean }) {
+    const parsed = parseDecimal(value);
+    if (parsed === null || !day) return <p className="min-h-5" aria-hidden />;
+    const preview = previewReading(meter.readings, { value: parsed, date: readingTimestamp(day), isReplacement });
+    if (!preview) return <p className="min-h-5" aria-hidden />;
+    const { consumption, days, perDay } = preview;
+    if (consumption < 0) {
+        return <p className="min-h-5 text-xs font-medium text-amber-700 dark:text-amber-400">Niedriger als der letzte Stand – Tippfehler oder Zählerwechsel?</p>;
+    }
+    const rounded = Math.round(days);
+    const span = rounded >= 1 ? ` in ${rounded} ${rounded === 1 ? "Tag" : "Tagen"}` : " seit der letzten Ablesung";
+    const cost = canComputeCost(meter) && consumption > 0 ? consumptionCost(meter, consumption) : null;
+    return (
+        <p className="min-h-5 text-xs text-muted-foreground tabular-nums">
+            <span className="font-bold text-foreground">
+                +{formatReading(consumption)} {meter.unit}
+            </span>
+            {span}
+            {perDay !== null && ` · ≈ ${formatConsumption(perDay)} ${meter.unit}/Tag`}
+            {cost !== null && ` · ≈ ${formatCurrency(cost)}`}
+        </p>
+    );
 }
 
 function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReadings; onDone: () => void; onOpenDetails: () => void }) {
@@ -104,6 +129,11 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
                     {meter.unit}
                 </div>
             </div>
+            {lastReading && (
+                <div className="-mt-3">
+                    <PreviewLine meter={meter} value={value} day={day} isReplacement={isReplacement} />
+                </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3 items-end">
                 <div className="space-y-2">
