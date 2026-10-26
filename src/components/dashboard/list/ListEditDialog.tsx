@@ -1,223 +1,168 @@
 "use client";
 
-import { useOptimistic, useTransition, useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Check, Trash2, Plus } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
+import { AnimatePresence, motion } from "framer-motion";
+import { Check, Eraser, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BaseDialog } from "@/components/ui/BaseDialog";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
+import type { ListWithItems } from "@/lib/offline/hooks";
+import { addItem, clearCompletedItems, deleteItem, deleteList, updateItem, updateList } from "@/lib/offline/repo";
+import { cn } from "@/lib/utils";
 
-interface ListEditDialogProps {
-    isOpen: boolean;
-    list: any;
-    setList: (list: any) => void;
-    onClose: () => void;
-    onUpdateList: (id: number, name: string) => void;
-    onAddItem: (content: string) => void;
-    onToggleItem: (id: number, status: "true" | "false") => void;
-    onDeleteItem: (id: number) => void;
-    onDeleteList: (id: number) => void;
-    newItemValue: string;
-    setNewItemValue: (val: string) => void;
-    isPending?: boolean;
-}
+function ListEditor({ list }: { list: ListWithItems }) {
+    const [name, setName] = useState(list.name);
+    const [newItem, setNewItem] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
 
-export function ListEditDialog({
-    isOpen,
-    list,
-    setList,
-    onClose,
-    onUpdateList,
-    onAddItem,
-    onToggleItem,
-    onDeleteItem,
-    onDeleteList,
-    newItemValue,
-    setNewItemValue,
-    isPending: parentIsPending,
-}: ListEditDialogProps) {
-    const [isTransitionPending, startTransition] = useTransition();
-    const isPending = parentIsPending || isTransitionPending;
-
-    // Preserve list for exit animations
-    const [lastList, setLastList] = useState(list);
+    // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund)
+    const pendingName = useRef<string | null>(null);
     useEffect(() => {
-        if (list) setLastList(list);
-    }, [list]);
+        const id = list.id;
+        return () => {
+            const value = pendingName.current?.trim();
+            if (value) void updateList(id, { name: value });
+        };
+    }, [list.id]);
 
-    const activeList = list || lastList;
-
-    const [optimisticList, addOptimisticAction] = useOptimistic(
-        activeList || { name: "", items: [] },
-        (state, action: { type: "toggle" | "add" | "delete"; payload: any }) => {
-            if (!state) return state;
-            switch (action.type) {
-                case "toggle":
-                    return {
-                        ...state,
-                        items: state.items?.map((item: any) =>
-                            item.id === action.payload.id
-                                ? { ...item, completed: action.payload.status }
-                                : item
-                        ),
-                    };
-                case "add":
-                    return {
-                        ...state,
-                        items: [
-                            ...(state.items || []),
-                            {
-                                id: `temp-${Date.now()}`,
-                                content: action.payload.content,
-                                completed: "false",
-                                isOptimistic: true,
-                            },
-                        ],
-                    };
-                case "delete":
-                    return {
-                        ...state,
-                        items: state.items?.filter((item: any) => item.id !== action.payload.id),
-                    };
-                default:
-                    return state;
-            }
-        }
-    );
-
-    const handleClose = () => {
-        if (activeList) {
-            onUpdateList(activeList.id, activeList.name);
-        }
-        onClose();
+    const saveName = () => {
+        const trimmed = name.trim();
+        pendingName.current = null;
+        if (trimmed && trimmed !== list.name) void updateList(list.id, { name: trimmed });
+        else if (!trimmed) setName(list.name);
     };
 
-    if (!activeList) return null;
+    const add = async (e: FormEvent) => {
+        e.preventDefault();
+        const content = newItem.trim();
+        if (!content) return;
+        setNewItem("");
+        inputRef.current?.focus();
+        await addItem(list.id, content);
+    };
+
+    const items = [...list.items].sort((a, b) => Number(a.completed) - Number(b.completed));
+    const doneCount = list.items.filter((i) => i.completed).length;
 
     return (
+        <div className="space-y-6">
+            <input
+                type="text"
+                aria-label="Name der Liste"
+                value={name}
+                maxLength={200}
+                onChange={(e) => {
+                    setName(e.target.value);
+                    pendingName.current = e.target.value;
+                }}
+                onBlur={saveName}
+                onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), e.preventDefault())}
+                className="w-full text-lg font-black input-field"
+            />
+
+            <form onSubmit={add} className="flex gap-2">
+                <input
+                    ref={inputRef}
+                    type="text"
+                    placeholder="Neuer Punkt…"
+                    aria-label="Neuer Punkt"
+                    maxLength={500}
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    enterKeyHint="done"
+                    className="flex-1 input-field"
+                />
+                <button type="submit" disabled={!newItem.trim()} className="btn btn-primary px-5" aria-label="Punkt hinzufügen">
+                    <Plus className="w-5 h-5" />
+                </button>
+            </form>
+
+            <ul className="space-y-2">
+                <AnimatePresence mode="popLayout" initial={false}>
+                    {items.map((item) => (
+                        <motion.li
+                            key={item.id}
+                            layout
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ layout: { type: "spring", stiffness: 300, damping: 30 }, opacity: { duration: 0.15 } }}
+                            className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group hover:bg-accent/50 transition-colors"
+                        >
+                            <button
+                                type="button"
+                                onClick={() => updateItem(item.id, { completed: !item.completed })}
+                                aria-pressed={item.completed}
+                                aria-label={item.completed ? `${item.content}: als offen markieren` : `${item.content}: abhaken`}
+                                className={cn(
+                                    "w-6 h-6 shrink-0 rounded-lg border-2 border-border flex items-center justify-center transition-all",
+                                    item.completed ? "bg-primary border-primary text-primary-foreground" : "hover:border-primary",
+                                )}
+                            >
+                                {item.completed && <Check className="w-4 h-4" />}
+                            </button>
+                            <span className={cn("flex-1 text-sm font-medium break-words min-w-0", item.completed ? "line-through opacity-40" : "text-foreground")}>
+                                {item.content}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => deleteItem(item.id)}
+                                className="hover-reveal p-2 -m-1 text-muted-foreground hover:text-red-500 transition-colors"
+                                aria-label={`${item.content} löschen`}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </motion.li>
+                    ))}
+                </AnimatePresence>
+            </ul>
+            {items.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Noch keine Punkte – leg los!</p>}
+
+            {doneCount > 0 && (
+                <button
+                    type="button"
+                    onClick={() => clearCompletedItems(list.id)}
+                    className="w-full py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center justify-center gap-2"
+                >
+                    <Eraser className="w-3.5 h-3.5" />
+                    {doneCount} erledigte entfernen
+                </button>
+            )}
+        </div>
+    );
+}
+
+export function ListEditDialog({ list, onClose }: { list: ListWithItems | undefined; onClose: () => void }) {
+    const confirm = useConfirm();
+    return (
         <BaseDialog
-            isOpen={isOpen}
-            onClose={handleClose}
-            title="Liste bearbeiten"
+            isOpen={!!list}
+            onClose={onClose}
+            title="Liste"
             className="sm:max-w-2xl"
             headerAction={
-                <button
-                    onClick={() => {
-                        if (window.confirm("Liste wirklich löschen?")) {
-                            onDeleteList(activeList.id);
-                            onClose();
-                        }
-                    }}
-                    className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
-                >
-                    <Trash2 className="w-5 h-5" />
-                </button>
+                list && (
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            if (await confirm({ title: `„${list.name}“ löschen?`, message: "Die Liste und alle Punkte werden für alle Mitglieder gelöscht.", confirmLabel: "Löschen", danger: true })) {
+                                onClose();
+                                await deleteList(list.id);
+                            }
+                        }}
+                        className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
+                        aria-label="Liste löschen"
+                    >
+                        <Trash2 className="w-5 h-5" />
+                    </button>
+                )
             }
             footer={
-                <button onClick={handleClose} className="w-full btn btn-primary py-3">
+                <button type="button" onClick={onClose} className="w-full btn btn-primary py-3">
                     Fertig
                 </button>
             }
         >
-            <div className="space-y-8">
-                <div className="space-y-2">
-                    <input
-                        type="text"
-                        value={activeList?.name || ""}
-                        onChange={(e) => setList({ ...activeList, name: e.target.value })}
-                        onBlur={() => activeList && onUpdateList(activeList.id, activeList.name)}
-                        className="w-full text-lg font-black input-field"
-                    />
-                </div>
-
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <AnimatePresence mode="popLayout" initial={false}>
-                            {[...(optimisticList.items || [])]
-                                .filter((item, index, self) => {
-                                    if (!item.isOptimistic) return true;
-                                    // Only show optimistic item if no real item with same content exists yet
-                                    return !self.some(other => !other.isOptimistic && other.content === item.content);
-                                })
-                                .sort((a, b) => {
-                                    if (a.completed === b.completed) return 0;
-                                    return a.completed === "true" ? 1 : -1;
-                                })
-                                .map((item: any) => (
-                                    <motion.div
-                                        key={item.id}
-                                        layout
-                                        initial={{ opacity: 0, scale: 0.9 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.9 }}
-                                        transition={{
-                                            layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
-                                            opacity: { duration: 0.2 }
-                                        }}
-                                        className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
-                                    >
-                                        <button
-                                            onClick={() => {
-                                                const newStatus = item.completed === "true" ? "false" : "true";
-                                                startTransition(async () => {
-                                                    addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
-                                                    await onToggleItem(item.id, newStatus);
-                                                });
-                                            }}
-                                            className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
-                                                ? "bg-primary border-primary text-primary-foreground transform scale-105"
-                                                : "hover:border-primary"
-                                                } `}
-                                        >
-                                            {item.completed === "true" && <Check className="w-4 h-4" />}
-                                        </button>
-                                        <span
-                                            className={`flex-1 text-sm font-medium ${item.completed === "true" ? "line-through opacity-40" : "text-foreground"
-                                                } `}
-                                        >
-                                            {item.content}
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                startTransition(async () => {
-                                                    addOptimisticAction({ type: "delete", payload: { id: item.id } });
-                                                    await onDeleteItem(item.id);
-                                                });
-                                            }}
-                                            className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </motion.div>
-                                ))}
-                        </AnimatePresence>
-
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                const content = newItemValue.trim();
-                                if (!content) return;
-                                setNewItemValue(""); // Instant clear
-                                startTransition(async () => {
-                                    addOptimisticAction({ type: "add", payload: { content } });
-                                    await onAddItem(content);
-                                });
-                            }}
-                            className="flex gap-2 mt-4"
-                        >
-                            <input
-                                type="text"
-                                placeholder="Neuer Punkt..."
-                                value={newItemValue}
-                                onChange={(e) => setNewItemValue(e.target.value)}
-                                className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
-                            />
-                            <button type="submit" disabled={!newItemValue.trim()} className="btn btn-primary px-6 disabled:opacity-50">
-                                <Plus className="w-5 h-5" />
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+            {list && <ListEditor key={list.id} list={list} />}
         </BaseDialog>
     );
 }

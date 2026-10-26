@@ -1,0 +1,137 @@
+import { describe, expect, it } from "vitest";
+import {
+    billingFactor,
+    checkReading,
+    consumptionBetween,
+    currentPeriodStart,
+    DAY_MS,
+    dailyAverage,
+    monthlyConsumption,
+    projectBillingPeriod,
+    recentDailyAverage,
+    toSegments,
+} from "@/lib/meter/stats";
+
+const r = (date: string, value: number, isReplacement = false) => ({ date: new Date(date).toISOString(), value, isReplacement });
+
+const baseMeter = {
+    type: "ELECTRICITY" as const,
+    unit: "kWh",
+    pricePerUnit: 0.3,
+    priceUnit: null,
+    zNumber: null,
+    calorificValue: null,
+    basicFee: 10,
+    monthlyPayment: 100,
+    billingStart: "2025-01-01",
+};
+
+describe("Verbrauch", () => {
+    it("berechnet den Tagesdurchschnitt über alle Abschnitte", () => {
+        const { segments } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 1100), r("2025-01-21", 1300)]);
+        expect(dailyAverage(segments)).toBeCloseTo(15); // 300 kWh / 20 Tage
+    });
+
+    it("ignoriert den Sprung beim Zählerwechsel", () => {
+        const { segments, anomalies } = toSegments([
+            r("2025-01-01", 9900),
+            r("2025-01-11", 10000),
+            r("2025-01-12", 0, true), // neuer Zähler
+            r("2025-01-22", 100),
+        ]);
+        expect(anomalies).toBe(0);
+        expect(segments.map((s) => s.consumption)).toEqual([100, 100]);
+        expect(dailyAverage(segments)).toBeCloseTo(10);
+    });
+
+    it("wertet niedrigere Stände ohne Zählerwechsel als Anomalie statt als negativen Verbrauch", () => {
+        const { segments, anomalies } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 900), r("2025-01-21", 1100)]);
+        expect(anomalies).toBe(1);
+        expect(segments).toHaveLength(1);
+        expect(segments[0].consumption).toBe(200);
+    });
+
+    it("interpoliert Verbrauch auf beliebige Zeiträume", () => {
+        const { segments } = toSegments([r("2025-01-01T00:00:00Z", 0), r("2025-01-31T00:00:00Z", 300)]);
+        const half = consumptionBetween(segments, Date.parse("2025-01-01T00:00:00Z"), Date.parse("2025-01-16T00:00:00Z"));
+        expect(half.consumption).toBeCloseTo(150);
+        expect(half.coverage).toBeCloseTo(1);
+    });
+
+    it("Ø der letzten 30 Tage spiegelt aktuelle Änderungen wider", () => {
+        const { segments } = toSegments([r("2025-01-01", 0), r("2025-11-01", 3040), r("2025-12-01", 3340)]);
+        expect(dailyAverage(segments)).toBeCloseTo(3340 / 334, 1);
+        expect(recentDailyAverage(segments, 30)).toBeCloseTo(10, 1);
+    });
+
+    it("liefert Monatswerte mit Abdeckung", () => {
+        const { segments } = toSegments([r("2025-01-15T12:00:00", 0), r("2025-03-15T12:00:00", 590)]);
+        const months = monthlyConsumption(segments);
+        expect(months.map((m) => m.month)).toEqual(["2025-01", "2025-02", "2025-03"]);
+        expect(months[1].coverage).toBeCloseTo(1);
+        expect(months[1].consumption).toBeCloseTo(280); // 28 Tage × 10 kWh
+        expect(months[0].coverage).toBeLessThan(1);
+    });
+});
+
+describe("Kosten & Prognose", () => {
+    it("rechnet Gas von m³ in kWh um", () => {
+        expect(billingFactor({ ...baseMeter, type: "GAS", unit: "m³", priceUnit: "kwh", zNumber: 0.95, calorificValue: 11.2 })).toBeCloseTo(10.64);
+        expect(billingFactor({ ...baseMeter, type: "GAS", unit: "m³", priceUnit: null })).toBe(1);
+    });
+
+    it("bestimmt den Beginn des Abrechnungsjahres", () => {
+        expect(new Date(currentPeriodStart("2024-03-01", Date.parse("2025-06-10"))).toDateString()).toBe(new Date(2025, 2, 1).toDateString());
+        expect(new Date(currentPeriodStart("2024-09-01", Date.parse("2025-06-10"))).toDateString()).toBe(new Date(2024, 8, 1).toDateString());
+        expect(new Date(currentPeriodStart(null, Date.parse("2025-06-10"))).toDateString()).toBe(new Date(2025, 0, 1).toDateString());
+    });
+
+    it("prognostiziert Verbrauch, Kosten und Guthaben", () => {
+        // 10 kWh/Tag konstant seit Jahresbeginn, Stand 1. Juli
+        const { segments } = toSegments([r("2025-01-01T00:00:00", 0), r("2025-07-01T00:00:00", 1810)]);
+        const p = projectBillingPeriod(baseMeter, segments, new Date(2025, 6, 2).getTime())!;
+        expect(p.consumptionSoFar).toBeCloseTo(1810, 0);
+        expect(p.projectedConsumption).toBeCloseTo(3650, -1);
+        expect(p.projectedCost).toBeCloseTo(3650 * 0.3 + 120, -1);
+        expect(p.payments).toBe(1200);
+        expect(p.balance).toBeCloseTo(1200 - (3650 * 0.3 + 120), -1);
+        expect(p.basis).toBe("average");
+    });
+
+    it("nutzt für den Rest des Jahres das Vorjahr (Saisonalität)", () => {
+        // Vorjahr: Winter viel, Sommer wenig
+        const { segments } = toSegments([
+            r("2024-01-01T00:00:00", 0),
+            r("2024-07-01T00:00:00", 1820), // 10/Tag
+            r("2025-01-01T00:00:00", 5500), // ~20/Tag im 2. Halbjahr
+            r("2025-07-01T00:00:00", 7310),
+        ]);
+        const p = projectBillingPeriod(baseMeter, segments, new Date(2025, 6, 2).getTime())!;
+        expect(p.basis).toBe("last-year");
+        expect(p.projectedConsumption - p.consumptionSoFar).toBeGreaterThan(3500);
+    });
+});
+
+describe("Plausibilität", () => {
+    const history = [r("2025-01-01", 1000), r("2025-01-11", 1100)]; // 10/Tag
+
+    it("warnt bei niedrigerem Stand", () => {
+        expect(checkReading(history, r("2025-01-20", 1050))?.kind).toBe("lower-than-previous");
+    });
+
+    it("akzeptiert niedrigeren Stand beim Zählerwechsel", () => {
+        expect(checkReading(history, r("2025-01-20", 5, true))).toBeNull();
+    });
+
+    it("warnt bei unrealistisch hohem Verbrauch (z. B. Ziffer zu viel)", () => {
+        expect(checkReading(history, r("2025-01-21", 11000))?.kind).toBe("unusually-high");
+    });
+
+    it("lehnt Datum in der Zukunft ab", () => {
+        expect(checkReading(history, r(new Date(Date.now() + 2 * DAY_MS).toISOString(), 1200))?.kind).toBe("future-date");
+    });
+
+    it("lässt normale Werte durch", () => {
+        expect(checkReading(history, r("2025-01-21", 1205))).toBeNull();
+    });
+});

@@ -1,130 +1,81 @@
 "use client";
 
-import { useOptimistic, useTransition, memo, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ListTodo, Check, Edit2, Trash2, Pin } from "lucide-react";
+import { Check, ListTodo, Pin } from "lucide-react";
+import { memo } from "react";
+import type { ListWithItems } from "@/lib/offline/hooks";
+import { cn } from "@/lib/utils";
 
 interface ListWidgetProps {
-    list: any;
-    onEdit: (list: any) => void;
-    onPin?: () => void;
+    list: ListWithItems;
+    onOpen: (listId: string) => void;
+    onTogglePin: (listId: string, pinned: boolean) => void;
+    onToggleItem: (itemId: string, completed: boolean) => void;
 }
 
-export const ListWidget = memo(function ListWidget({ list, onEdit, onPin }: ListWidgetProps) {
-    const [optimisticList] = useOptimistic(
-        list,
-        (state, action: { type: "toggle" | "add"; payload: any }) => {
-            switch (action.type) {
-                case "toggle":
-                    return {
-                        ...state,
-                        items: state.items?.map((item: any) =>
-                            item.id === action.payload.itemId ? { ...item, completed: action.payload.completed } : item
-                        ),
-                    };
-                default:
-                    return state;
-            }
-        }
-    );
+const PREVIEW = 4;
 
-    // Memoize sorted and sliced items to avoid re-sorting on every render
-    const displayItems = useMemo(() => {
-        const items = optimisticList.items || [];
-        return [...items]
-            .sort((a, b) => {
-                if (a.completed === b.completed) return 0;
-                return a.completed === "true" ? 1 : -1;
-            })
-            .slice(0, 3);
-    }, [optimisticList.items]);
+export const ListWidget = memo(function ListWidget({ list, onOpen, onTogglePin, onToggleItem }: ListWidgetProps) {
+    const open = list.items.filter((i) => !i.completed);
+    const done = list.items.length - open.length;
+    const preview = [...open, ...list.items.filter((i) => i.completed)].slice(0, PREVIEW);
 
     return (
-        <div
-            onClick={() => onEdit(optimisticList)}
-            className="bg-card text-card-foreground rounded-lg border border-border group flex flex-col p-3 gap-3 shadow-sm hover:border-primary/50 transition-all cursor-pointer"
-        >
+        <div className="bg-card text-card-foreground rounded-lg border border-border flex flex-col p-3 gap-3 shadow-sm hover:border-primary/50 transition-colors">
             <div className="flex justify-between items-start gap-3">
-                <div className="flex items-start gap-2.5 min-w-0">
+                <button type="button" onClick={() => onOpen(list.id)} className="flex items-start gap-2.5 min-w-0 flex-1 text-left">
                     <div className="mt-1.5 p-1.5 bg-accent rounded-lg shrink-0">
                         <ListTodo className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="text-xl font-black tracking-tight text-foreground line-clamp-1">
-                            {list.name}
-                        </h3>
+                        <h3 className="text-xl font-black tracking-tight text-foreground line-clamp-1">{list.name}</h3>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            {list.items.length === 0 ? "Leer" : `${open.length} offen${done ? ` · ${done} erledigt` : ""}`}
+                        </p>
                     </div>
-                </div>
-                {onPin && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onPin();
-                        }}
-                        className={`p-1.5 rounded-lg shrink-0 ${list.isPinned === "true"
-                            ? "text-primary bg-primary/10"
-                            : "text-muted-foreground/30 hover:text-primary hover:bg-primary/5"
-                            }`}
-                    >
-                        <Pin className={`w-3.5 h-3.5 ${list.isPinned === "true" ? "fill-current" : ""}`} />
-                    </button>
-                )}
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onTogglePin(list.id, !list.isPinned)}
+                    aria-pressed={list.isPinned}
+                    aria-label={list.isPinned ? "Vom Dashboard lösen" : "Ans Dashboard heften"}
+                    className={cn(
+                        "p-1.5 rounded-lg shrink-0",
+                        list.isPinned ? "text-primary bg-primary/10" : "text-muted-foreground/40 hover:text-primary hover:bg-primary/5",
+                    )}
+                >
+                    <Pin className={cn("w-3.5 h-3.5", list.isPinned && "fill-current")} />
+                </button>
             </div>
-            <div className="mt-3 space-y-2">
-                <AnimatePresence mode="popLayout" initial={false}>
-                    {displayItems.map((item: any) => (
-                            <motion.div
-                                key={item.id}
-                                layout
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                transition={{
-                                    layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
-                                    opacity: { duration: 0.2 }
-                                }}
+
+            {preview.length > 0 && (
+                <ul className="space-y-1">
+                    {preview.map((item) => (
+                        <li key={item.id}>
+                            <button
+                                type="button"
+                                onClick={() => onToggleItem(item.id, !item.completed)}
+                                aria-pressed={item.completed}
+                                className="text-xs flex items-center gap-3 w-full text-left p-1 -mx-1 rounded-md hover:bg-accent/40 transition-colors"
                             >
-                                <div
-                                    className="text-xs flex items-center gap-3 w-full text-left group/item p-1 -m-1 rounded-md transition-colors"
+                                <span
+                                    className={cn(
+                                        "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                                        item.completed ? "bg-primary text-primary-foreground border-primary" : "border-border",
+                                    )}
                                 >
-                                    <div
-                                        className={`w-4 h-4 rounded border border-border flex items-center justify-center shrink-0 transition-colors ${item.completed === "true" ? "bg-primary text-primary-foreground border-primary" : "group-hover/item:border-primary/50"
-                                            } `}
-                                    >
-                                        {item.completed === "true" && <Check className="w-2.5 h-2.5" />}
-                                    </div>
-                                    <span
-                                        className={`line-clamp-1 transition-all ${item.completed === "true" ? "line-through opacity-40 text-muted-foreground" : "text-foreground/80"
-                                            } `}
-                                    >
-                                        {item.content}
-                                    </span>
-                                </div>
-                            </motion.div>
-                        ))}
-                </AnimatePresence>
-                {list.items?.length > 3 && (
-                    <div className="text-[10px] text-muted-foreground mt-2 font-medium">
-                        +{list.items.length - 3} weitere Punkte
-                    </div>
-                )}
-                {(!list.items || list.items.length === 0) && (
-                    <p className="text-xs text-muted-foreground/50 italic">Keine Punkte vorhanden</p>
-                )}
-            </div>
+                                    {item.completed && <Check className="w-2.5 h-2.5" />}
+                                </span>
+                                <span className={cn("line-clamp-1", item.completed ? "line-through opacity-40" : "text-foreground/80")}>{item.content}</span>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+            {list.items.length > PREVIEW && (
+                <button type="button" onClick={() => onOpen(list.id)} className="text-[10px] text-muted-foreground font-medium text-left hover:text-primary">
+                    +{list.items.length - PREVIEW} weitere
+                </button>
+            )}
         </div>
-    );
-}, (prevProps, nextProps) => {
-    // Custom comparison to prevent unnecessary re-renders
-    // Return true if props are equal (should NOT re-render)
-    return (
-        prevProps.list.id === nextProps.list.id &&
-        prevProps.list.name === nextProps.list.name &&
-        prevProps.list.isPinned === nextProps.list.isPinned &&
-        prevProps.list.items?.length === nextProps.list.items?.length &&
-        // Check if any item's completed status changed
-        prevProps.list.items?.every((item: any, idx: number) =>
-            item.completed === nextProps.list.items?.[idx]?.completed
-        )
     );
 });

@@ -1,0 +1,179 @@
+"use client";
+
+import { LogOut, Mail, MonitorSmartphone, Moon, Shield, Sun, User } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { logout, logoutEverywhere } from "@/app/actions/auth";
+import { changePassword, updateName } from "@/app/actions/profile";
+import { APP_VERSION } from "@/components/auth/AuthScreen";
+import { Alert } from "@/components/ui/Alert";
+import { Button } from "@/components/ui/Button";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { Input } from "@/components/ui/Input";
+import { Section } from "@/components/ui/Section";
+import { Spinner } from "@/components/ui/Spinner";
+import { useToast } from "@/components/ui/Toast";
+import { Toggle } from "@/components/ui/Toggle";
+import { runAction } from "@/lib/client-actions";
+import { usePendingCount, useSyncState } from "@/lib/offline/hooks";
+import { signedOut, updateCachedUser } from "@/lib/offline/session";
+import type { SessionUser } from "@/lib/sync/types";
+import { formatDateTime } from "@/lib/meter/format";
+import { useTheme } from "@/lib/theme";
+
+function NameForm({ user }: { user: SessionUser }) {
+    const toast = useToast();
+    const [name, setName] = useState(user.name);
+    const [saving, setSaving] = useState(false);
+    const submit = async (e: FormEvent) => {
+        e.preventDefault();
+        setSaving(true);
+        const result = await runAction(() => updateName({ name }));
+        setSaving(false);
+        if (!result.ok) return toast({ message: result.error, variant: "error" });
+        await updateCachedUser({ name: result.data.name });
+        toast({ message: "Name gespeichert", variant: "success" });
+    };
+    return (
+        <form onSubmit={submit} className="space-y-3">
+            <Input label="Anzeigename" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} placeholder="Dein Name" />
+            <Button type="submit" variant="ghost" disabled={saving || !name.trim() || name === user.name} className="w-full border-2 border-border">
+                {saving ? <Spinner /> : "Name speichern"}
+            </Button>
+        </form>
+    );
+}
+
+function PasswordForm({ user }: { user: SessionUser }) {
+    const toast = useToast();
+    const [current, setCurrent] = useState("");
+    const [next, setNext] = useState("");
+    const [repeat, setRepeat] = useState("");
+    const [error, setError] = useState("");
+    const [saving, setSaving] = useState(false);
+
+    const submit = async (e: FormEvent) => {
+        e.preventDefault();
+        setError("");
+        if (next !== repeat) return setError("Die neuen Passwörter stimmen nicht überein.");
+        setSaving(true);
+        const result = await runAction(() => changePassword({ currentPassword: current || undefined, newPassword: next }));
+        setSaving(false);
+        if (!result.ok) return setError(result.error);
+        setCurrent("");
+        setNext("");
+        setRepeat("");
+        await updateCachedUser({ hasPassword: true });
+        toast({ message: "Passwort geändert – andere Geräte wurden abgemeldet.", variant: "success" });
+    };
+
+    return (
+        <form onSubmit={submit} className="space-y-3">
+            {user.hasPassword && (
+                <Input label="Aktuelles Passwort" type="password" autoComplete="current-password" showPasswordToggle value={current} onChange={(e) => setCurrent(e.target.value)} />
+            )}
+            <Input label="Neues Passwort" type="password" autoComplete="new-password" showPasswordToggle minLength={8} value={next} onChange={(e) => setNext(e.target.value)} placeholder="Mindestens 8 Zeichen" />
+            <Input label="Neues Passwort wiederholen" type="password" autoComplete="new-password" value={repeat} onChange={(e) => setRepeat(e.target.value)} />
+            {error && <Alert variant="error">{error}</Alert>}
+            <Button type="submit" variant="ghost" disabled={saving || !next} className="w-full border-2 border-border">
+                {saving ? <Spinner /> : user.hasPassword ? "Passwort ändern" : "Passwort festlegen"}
+            </Button>
+        </form>
+    );
+}
+
+function Row({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+    return (
+        <div className="py-3 px-4 bg-accent/20 border-2 border-border/50 rounded-xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+                <span className="text-muted-foreground">{icon}</span>
+                <span className="text-sm font-medium truncate">{title}</span>
+            </div>
+            {children}
+        </div>
+    );
+}
+
+export function ProfileTab({ user }: { user: SessionUser }) {
+    const toast = useToast();
+    const confirm = useConfirm();
+    const { theme, setTheme } = useTheme();
+    const pending = usePendingCount();
+    const { lastSyncedAt } = useSyncState();
+    const [busy, setBusy] = useState(false);
+
+    const signOut = async () => {
+        const ok = await confirm(
+            pending > 0
+                ? {
+                      title: "Trotzdem abmelden?",
+                      message: `${pending} Änderung${pending === 1 ? " ist" : "en sind"} noch nicht synchronisiert und ginge${pending === 1 ? "" : "n"} verloren. Am besten erst wieder online gehen.`,
+                      confirmLabel: "Abmelden",
+                      danger: true,
+                  }
+                : { title: "Abmelden?", message: "Die lokal gespeicherten Daten werden von diesem Gerät entfernt.", confirmLabel: "Abmelden", danger: true },
+        );
+        if (!ok) return;
+        setBusy(true);
+        await runAction(logout);
+        await signedOut();
+    };
+
+    const signOutOthers = async () => {
+        if (!(await confirm({ title: "Auf allen anderen Geräten abmelden?", confirmLabel: "Abmelden" }))) return;
+        const result = await runAction(logoutEverywhere);
+        toast(result.ok ? { message: "Alle anderen Geräte wurden abgemeldet.", variant: "success" } : { message: result.error, variant: "error" });
+    };
+
+    return (
+        <div className="space-y-8 pb-28 max-w-2xl mx-auto">
+            <div className="flex items-center gap-4 pt-2">
+                <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <User className="w-10 h-10 text-primary" />
+                </div>
+                <div className="min-w-0">
+                    <h2 className="text-2xl font-black truncate">{user.name}</h2>
+                    <p className="text-sm text-muted-foreground truncate flex items-center gap-2 mt-1">
+                        <Mail className="w-3.5 h-3.5 shrink-0" />
+                        {user.email}
+                    </p>
+                </div>
+            </div>
+
+            <Section title="Account" icon={<User className="w-3.5 h-3.5" />}>
+                <NameForm user={user} />
+            </Section>
+
+            <Section title="Sicherheit" icon={<Shield className="w-3.5 h-3.5" />}>
+                <PasswordForm user={user} />
+                <Row icon={<MonitorSmartphone className="w-4 h-4" />} title="Andere Geräte abmelden">
+                    <button type="button" onClick={signOutOthers} className="text-xs font-bold text-primary hover:underline shrink-0">
+                        Abmelden
+                    </button>
+                </Row>
+            </Section>
+
+            <Section title="Erscheinungsbild" icon={theme === "dark" ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}>
+                <div className="py-3 px-4 bg-accent/20 border-2 border-border/50 rounded-xl">
+                    <Toggle
+                        checked={theme === "dark"}
+                        onChange={(checked) => setTheme(checked ? "dark" : "light")}
+                        label={theme === "dark" ? "Dunkler Modus" : "Heller Modus"}
+                        icon={theme === "dark" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+                    />
+                </div>
+            </Section>
+
+            <Section title="Abmelden" icon={<LogOut className="w-3.5 h-3.5" />} variant="danger">
+                <Button variant="danger" onClick={signOut} disabled={busy} className="w-full py-4 text-sm font-black uppercase tracking-widest">
+                    {busy ? <Spinner /> : <LogOut className="w-4 h-4" />}
+                    Abmelden
+                </Button>
+            </Section>
+
+            <p className="text-center text-[10px] font-mono text-muted-foreground">
+                My Home {APP_VERSION && `v${APP_VERSION}`}
+                {lastSyncedAt && ` · zuletzt synchronisiert ${formatDateTime(lastSyncedAt)}`}
+            </p>
+        </div>
+    );
+}

@@ -5,21 +5,4 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
 
-export function formatNumber(num: number, decimals: number = 2): string {
-    return new Intl.NumberFormat("de-DE", {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-    }).format(num);
-}
-
-export function formatCurrency(num: number): string {
-    return new Intl.NumberFormat("de-DE", {
-        style: "currency",
-        currency: "EUR",
-    }).format(num);
-}
-export function parseSafe(val: string | number | null | undefined): number {
-    if (val === null || val === undefined) return 0;
-    if (typeof val === "number") return val;
-    return parseFloat(val.toString().replace(",", "."));
-}
+export { formatCurrency, formatNumber, parseDecimal } from "./numbers";

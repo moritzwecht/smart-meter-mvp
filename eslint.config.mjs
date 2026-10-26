@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generiert bzw. nativ
+    "public/sw.js",
+    "public/sw.js.map",
+    "android/**",
+    "ios/**",
   ]),
 ]);
 

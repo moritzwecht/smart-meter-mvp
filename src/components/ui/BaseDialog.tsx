@@ -1,86 +1,77 @@
-/* ============================================================================
-   BASE DIALOG COMPONENT
-   ============================================================================
-
-   Wiederverwendbarer Dialog/Modal mit Mobile-optimiertem Verhalten.
-
-   Features:
-   - Mobile: Slide-up von unten mit Native-App-Feel
-   - Desktop: Fade-in in der Mitte mit Blur-Backdrop
-   - Keyboard-Unterstützung (ESC zum Schließen)
-   - Auto-Anpassung an Mobile-Keyboard (iOS/Android)
-   - Optionaler Header, Footer und Close-Button
-   - Framer Motion Animationen für smooth UX
-
-   Props:
-   - isOpen: boolean - Steuert Sichtbarkeit des Dialogs
-   - onClose: () => void - Callback beim Schließen
-   - title: string - Optionaler Dialog-Titel
-   - children: ReactNode - Dialog-Inhalt
-   - className: string - Zusätzliche CSS-Klassen
-   - showCloseButton: boolean - Zeigt X-Button (default: true)
-   - footer: ReactNode - Optionaler Footer-Bereich (z.B. Action-Buttons)
-   - headerAction: ReactNode - Custom Actions im Header (z.B. Delete-Button)
-
-   Verwendung:
-   ```tsx
-   <BaseDialog
-     isOpen={isOpen}
-     onClose={() => setIsOpen(false)}
-     title="Notiz bearbeiten"
-     footer={
-       <Button onClick={handleSave}>Speichern</Button>
-     }
-   >
-     <textarea value={note} onChange={...} />
-   </BaseDialog>
-   ```
-
-   Responsive Behavior:
-   - Mobile (<640px): Full-width, slides from bottom, rounded top corners
-   - Desktop (≥640px): Centered, max-width, rounded all corners
-============================================================================ */
-
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import { useEffect, useState, useRef } from "react";
+/* ============================================================================
+   BASE DIALOG
+   ============================================================================
+   Wiederverwendbarer Dialog mit mobil optimiertem Verhalten.
+
+   - Mobil: Bottom-Sheet, das von unten einfährt und über der Tastatur bleibt
+   - Desktop: zentriert mit Blur-Hintergrund
+   - Barrierearm: role="dialog", Fokus wandert in den Dialog und zurück,
+     ESC schließt nur den obersten Dialog, Hintergrund scrollt nicht mit
+   - Rendert per Portal in <body> (keine z-index-/overflow-Probleme)
+============================================================================ */
+
+import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
-/* ============================================================================
-   TYPE DEFINITIONS
-============================================================================ */
-
 interface BaseDialogProps {
-    /** Kontrolliert Sichtbarkeit des Dialogs */
     isOpen: boolean;
-
-    /** Callback beim Schließen (ESC, Backdrop-Click, Close-Button) */
     onClose: () => void;
-
-    /** Optionaler Titel im Dialog-Header */
     title?: string;
-
-    /** Dialog-Inhalt */
-    children: React.ReactNode;
-
-    /** Zusätzliche CSS-Klassen für den Dialog-Container */
+    children: ReactNode;
     className?: string;
-
-    /** Zeigt X-Button zum Schließen (default: true) */
     showCloseButton?: boolean;
-
-    /** Optionaler Footer-Bereich (z.B. Action-Buttons) */
-    footer?: React.ReactNode;
-
-    /** Custom Actions im Header (z.B. Delete-Button neben Close) */
-    headerAction?: React.ReactNode;
+    footer?: ReactNode;
+    headerAction?: ReactNode;
+    /** Für Dialoge über Dialogen (z. B. Bestätigungen) */
+    zIndex?: number;
 }
 
-/* ============================================================================
-   COMPONENT
-============================================================================ */
+const mobileQuery = "(max-width: 639px)";
+
+function subscribeMobile(cb: () => void) {
+    const mq = window.matchMedia(mobileQuery);
+    mq.addEventListener("change", cb);
+    return () => mq.removeEventListener("change", cb);
+}
+
+function useIsMobile() {
+    return useSyncExternalStore(
+        subscribeMobile,
+        () => window.matchMedia(mobileQuery).matches,
+        () => false,
+    );
+}
+
+/** Höhe der Bildschirmtastatur (iOS/Android), damit das Sheet darüber bleibt. */
+function useKeyboardHeight(active: boolean) {
+    const [height, setHeight] = useState(0);
+    useEffect(() => {
+        const vv = window.visualViewport;
+        if (!active || !vv) return;
+        const update = () => {
+            const diff = window.innerHeight - vv.height - vv.offsetTop;
+            setHeight(diff > 100 ? diff : 0);
+        };
+        vv.addEventListener("resize", update);
+        vv.addEventListener("scroll", update);
+        return () => {
+            vv.removeEventListener("resize", update);
+            vv.removeEventListener("scroll", update);
+            setHeight(0);
+        };
+    }, [active]);
+    return height;
+}
+
+const noopSubscribe = () => () => {};
+
+// Stapel offener Dialoge: ESC und Fokus gehören immer dem obersten.
+const openStack: string[] = [];
 
 export function BaseDialog({
     isOpen,
@@ -91,117 +82,102 @@ export function BaseDialog({
     showCloseButton = true,
     footer,
     headerAction,
+    zIndex = 100,
 }: BaseDialogProps) {
-    /* ========================================================================
-       STATE MANAGEMENT
-       ========================================================================
-       - keyboardHeight: Höhe des mobilen Keyboards (iOS/Android)
-       - isMobile: Ist Device mobile? (< 640px)
-       - isMounted: Verhindert SSR-Probleme mit window-API */
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
-    const [isMobile, setIsMobile] = useState(false);
-    const [isMounted, setIsMounted] = useState(false);
-    const dialogRef = useRef<HTMLDivElement>(null);
-
-    /* ========================================================================
-       MOBILE & KEYBOARD DETECTION
-       ========================================================================
-       Erkennt Device-Größe und Mobile-Keyboard für optimale Darstellung */
+    const id = useId();
+    const titleId = `${id}-title`;
+    const isMobile = useIsMobile();
+    // Portal erst nach der Hydration rendern (Server kennt kein document)
+    const isClient = useSyncExternalStore(noopSubscribe, () => true, () => false);
+    const keyboardHeight = useKeyboardHeight(isOpen && isMobile);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const onCloseRef = useRef(onClose);
     useEffect(() => {
-        setIsMounted(true);
-
-        // Check ob Mobile basierend auf Screen-Width
-        const checkMobile = () => {
-            setIsMobile(window.innerWidth < 640);
-        };
-
-        checkMobile();
-        window.addEventListener("resize", checkMobile);
-
-        // Keyboard-Height Detection für iOS/Android
-        // Wichtig: Dialog muss sich nach oben schieben wenn Keyboard öffnet
-        const handleVisualViewportChange = () => {
-            if (window.visualViewport) {
-                const heightDiff = window.innerHeight - window.visualViewport.height;
-                // Nur als Keyboard betrachten wenn Unterschied > 100px
-                // (kleine Viewport-Changes ignorieren)
-                setKeyboardHeight(heightDiff > 100 ? heightDiff : 0);
-            }
-        };
-
-        if (window.visualViewport) {
-            window.visualViewport.addEventListener("resize", handleVisualViewportChange);
-            window.visualViewport.addEventListener("scroll", handleVisualViewportChange);
-        }
-
-        // Cleanup
-        return () => {
-            window.removeEventListener("resize", checkMobile);
-            if (window.visualViewport) {
-                window.visualViewport.removeEventListener("resize", handleVisualViewportChange);
-                window.visualViewport.removeEventListener("scroll", handleVisualViewportChange);
-            }
-        };
-    }, []);
-
-    /* ========================================================================
-       KEYBOARD NAVIGATION
-       ========================================================================
-       ESC-Taste schließt Dialog (Standard UX Pattern) */
-    useEffect(() => {
-        const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === "Escape") onClose();
-        };
-        window.addEventListener("keydown", handleEsc);
-        return () => window.removeEventListener("keydown", handleEsc);
+        onCloseRef.current = onClose;
     }, [onClose]);
 
-    return (
+    useEffect(() => {
+        if (!isOpen) return;
+        openStack.push(id);
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        const { overflow } = document.body.style;
+        document.body.style.overflow = "hidden";
+
+        // Fokus in den Dialog (Elemente mit autoFocus haben Vorrang)
+        const focusTimer = setTimeout(() => {
+            const panel = panelRef.current;
+            if (!panel || panel.contains(document.activeElement)) return;
+            const target = panel.querySelector<HTMLElement>("[autofocus], input, textarea, select, button:not([data-dialog-close])");
+            (target ?? panel).focus({ preventScroll: true });
+        }, 50);
+
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && openStack[openStack.length - 1] === id) {
+                e.stopPropagation();
+                onCloseRef.current();
+            }
+        };
+        window.addEventListener("keydown", onKey);
+        return () => {
+            clearTimeout(focusTimer);
+            window.removeEventListener("keydown", onKey);
+            const idx = openStack.lastIndexOf(id);
+            if (idx >= 0) openStack.splice(idx, 1);
+            if (openStack.length === 0) document.body.style.overflow = overflow;
+            previouslyFocused?.focus?.({ preventScroll: true });
+        };
+    }, [isOpen, id]);
+
+    if (!isClient) return null;
+
+    return createPortal(
         <AnimatePresence>
-            {(isMounted && isOpen) && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center sm:p-4">
-                    {/* Backdrop */}
+            {isOpen && (
+                <div className="fixed inset-0 flex items-center justify-center sm:p-4" style={{ zIndex }}>
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={onClose}
                         className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
+                        aria-hidden
                     />
-
-                    {/* Dialog Content */}
                     <motion.div
-                        ref={dialogRef}
-                        initial={isMobile ? { y: "100%", opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95, y: 20 }}
-                        animate={isMobile
-                            ? { y: -keyboardHeight, opacity: 1, scale: 1, transition: { type: "spring", damping: 25, stiffness: 200 } }
-                            : { opacity: 1, scale: 1, y: 0 }
+                        ref={panelRef}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby={title ? titleId : undefined}
+                        tabIndex={-1}
+                        initial={isMobile ? { y: "100%" } : { opacity: 0, scale: 0.96, y: 16 }}
+                        animate={
+                            isMobile
+                                ? { y: -keyboardHeight, transition: { type: "spring", damping: 28, stiffness: 260 } }
+                                : { opacity: 1, scale: 1, y: 0 }
                         }
-                        exit={isMobile ? { y: "100%", opacity: 1, scale: 1 } : { opacity: 0, scale: 0.95, y: 20 }}
-                        style={{
-                            // Ensure the dialog stays at the bottom on mobile
-                            bottom: isMobile ? 0 : "auto",
-                            position: isMobile ? "fixed" : "relative"
-                        }}
+                        exit={isMobile ? { y: "100%" } : { opacity: 0, scale: 0.96, y: 16 }}
                         className={cn(
-                            "w-full bg-card border-border shadow-2xl flex flex-col overflow-hidden",
-                            "sm:max-w-lg sm:rounded-2xl sm:border sm:max-h-[85vh]",
-                            "max-sm:rounded-t-3xl max-sm:border-t max-sm:max-h-[85vh]",
-                            className
+                            "w-full bg-card text-card-foreground border-border shadow-2xl flex flex-col overflow-hidden outline-none",
+                            "max-sm:fixed max-sm:bottom-0 max-sm:rounded-t-3xl max-sm:border-t max-sm:max-h-[90dvh] max-sm:pb-[env(safe-area-inset-bottom)]",
+                            "sm:relative sm:max-w-lg sm:rounded-2xl sm:border sm:max-h-[85vh]",
+                            className,
                         )}
                     >
-                        {/* Mobile Handle */}
-                        <div className="sm:hidden flex justify-center p-2">
+                        <div className="sm:hidden flex justify-center pt-2" aria-hidden>
                             <div className="w-12 h-1.5 bg-muted-foreground/20 rounded-full" />
                         </div>
 
                         {(title || showCloseButton || headerAction) && (
-                            <div className="flex justify-between items-center p-4 border-b border-border">
-                                {title && <h2 className="text-xl font-black tracking-tight">{title}</h2>}
-                                <div className="flex items-center gap-2 ml-auto">
+                            <div className="flex justify-between items-center gap-2 px-4 py-3 border-b border-border">
+                                {title && (
+                                    <h2 id={titleId} className="text-xl font-black tracking-tight truncate">
+                                        {title}
+                                    </h2>
+                                )}
+                                <div className="flex items-center gap-1 ml-auto">
                                     {headerAction}
                                     {showCloseButton && (
                                         <button
+                                            data-dialog-close
                                             onClick={onClose}
                                             className="p-2 hover:bg-accent rounded-full transition-colors"
                                             aria-label="Schließen"
@@ -213,18 +189,13 @@ export function BaseDialog({
                             </div>
                         )}
 
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4">
-                            {children}
-                        </div>
+                        <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-4">{children}</div>
 
-                        {footer && (
-                            <div className="p-4 border-t border-border bg-accent/5 mt-auto">
-                                {footer}
-                            </div>
-                        )}
+                        {footer && <div className="p-4 border-t border-border bg-accent/5">{footer}</div>}
                     </motion.div>
                 </div>
             )}
-        </AnimatePresence>
+        </AnimatePresence>,
+        document.body,
     );
 }
