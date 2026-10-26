@@ -116,3 +116,11 @@ describe("Täglicher Job", () => {
         expect(await server.count("notes")).toBe(1);
     });
 });
+
+describe("Prüfung Zähler (B9): Nachkommastellen", () => {
+    it("ein Sensorwert mit mehr als 4 Nachkommastellen wird beim zweiten Senden nicht als 'kleiner' abgelehnt", async () => {
+        expect((await post({ meterId, value: 100.00009, date: new Date(Date.now() - 3_600_000).toISOString() })).status).toBe(201);
+        const again = await post({ meterId, value: 100.00009 });
+        expect(again.status).not.toBe(422);
+    });
+});
