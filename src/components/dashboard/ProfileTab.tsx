@@ -19,6 +19,8 @@ import { signedOut, updateCachedUser } from "@/lib/offline/session";
 import type { SessionUser } from "@/lib/sync/types";
 import { formatDateTime } from "@/lib/meter/format";
 import { useTheme } from "@/lib/theme";
+import { ApiSection } from "./profile/ApiSection";
+import { ReminderSection } from "./profile/ReminderSection";
 
 function NameForm({ user }: { user: SessionUser }) {
     const toast = useToast();
@@ -162,6 +164,10 @@ export function ProfileTab({ user }: { user: SessionUser }) {
                     />
                 </div>
             </Section>
+
+            <ReminderSection />
+
+            <ApiSection />
 
             <Section title="Abmelden" icon={<LogOut className="w-3.5 h-3.5" />} variant="danger">
                 <Button variant="danger" onClick={signOut} disabled={busy} className="w-full py-4 text-sm font-black uppercase tracking-widest">

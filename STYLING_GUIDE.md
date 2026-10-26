@@ -7,14 +7,14 @@ Willkommen im Styling-Guide für unser Smart Meter MVP. Dieses Projekt nutzt **T
 ## 🚀 Tailwind CSS v4 Architektur
 
 Im Gegensatz zu älteren Versionen wird Tailwind v4 direkt in CSS konfiguriert. Du findest die Hauptkonfiguration in:
-`[src/app/globals.css](file:///c:/projects/smart-meter-mvp/src/app/globals.css)`
+[`src/app/globals.css`](src/app/globals.css)
 
 ### Das @theme Block
 Hier definieren wir unsere Design-Tokens (Farben, Fonts, Radien):
 
 ```css
 @theme {
-  --font-sans: "Inter", ...;
+  --font-sans: var(--font-geist-sans), ...;
   --color-primary: var(--primary);
   --radius-lg: 1rem;
   /* ... */

@@ -88,12 +88,19 @@ export function Dashboard({ user }: { user: SessionUser }) {
     const households = useHouseholds();
     const sync = useSyncState();
     const [preferredHousehold, setPreferredHousehold] = useState<number | null>(() => Number(readStorage(HOUSEHOLD_KEY)) || null);
-    const [tab, setTab] = useState<TabId>(() => (readStorage(TAB_KEY) as TabId) || "dashboard");
+    const [tab, setTab] = useState<TabId>(() => {
+        // z. B. aus einer Push-Benachrichtigung: /?tab=meters
+        const fromUrl = new URLSearchParams(window.location.search).get("tab");
+        const valid: TabId[] = ["dashboard", "lists", "notes", "meters", "profile"];
+        if (fromUrl && valid.includes(fromUrl as TabId)) return fromUrl as TabId;
+        return (readStorage(TAB_KEY) as TabId) || "dashboard";
+    });
     const [menuOpen, setMenuOpen] = useState(false);
     const [dialog, setDialog] = useState<DialogState>(null);
 
     useEffect(() => {
         void startSync({ onUnauthenticated: sessionExpired });
+        if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
     }, []);
 
     const householdId = households?.some((h) => h.id === preferredHousehold) ? preferredHousehold : (households?.[0]?.id ?? null);
