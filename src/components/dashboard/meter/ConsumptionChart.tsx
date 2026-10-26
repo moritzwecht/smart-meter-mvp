@@ -25,22 +25,20 @@ export function ConsumptionChart({ buckets, unit, colorClass }: { buckets: Month
                     {current.coverage < 0.95 && <span className="font-medium text-muted-foreground"> (Schätzung, {Math.round(current.coverage * 100)} % abgedeckt)</span>}
                 </span>
             </div>
-            <div
-                className="flex items-end gap-1 h-32"
-                role="img"
-                aria-label={`Monatsverbrauch: ${buckets.map((b) => `${formatMonthShort(b.month)} ${formatConsumption(b.consumption)} ${unit}`).join(", ")}`}
-            >
+            {/* Jeder Balken ist ein Knopf mit Beschriftung – per Tastatur und Screenreader erreichbar */}
+            <div className="flex items-end gap-1 h-32" role="group" aria-label="Monatsverbrauch">
                 {buckets.map((b, i) => (
                     <button
                         key={b.month}
                         type="button"
-                        tabIndex={-1}
+                        aria-pressed={i === shown}
+                        aria-label={`${formatMonthShort(b.month)} ${b.month.slice(0, 4)}: ${formatConsumption(b.consumption)} ${unit}${b.coverage < 0.95 ? " (Schätzung)" : ""}`}
                         // Hover nur mit Maus – auf Touch-Geräten würde er das Antippen überlagern
                         onPointerEnter={(e) => e.pointerType === "mouse" && setActive(i)}
                         onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}
+                        onFocus={() => setActive(i)}
                         onClick={() => setActive(i === active ? null : i)}
-                        className="flex-1 h-full flex flex-col justify-end group"
-                        aria-hidden
+                        className="flex-1 h-full flex flex-col justify-end group rounded-t-md outline-offset-2"
                     >
                         <div
                             className={cn(

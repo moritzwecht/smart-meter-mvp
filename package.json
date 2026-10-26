@@ -16,7 +16,8 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@capacitor/android": "6.2.2",
@@ -38,15 +39,17 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "resend": "^6.34.1",
-    "serwist": "^9.5.13",
     "server-only": "^0.0.1",
+    "serwist": "^9.5.13",
     "tailwind-merge": "^3.7.0",
     "web-push": "^3.6.7",
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@capacitor/cli": "6.2.2",
     "@electric-sql/pglite": "^0.5.11",
+    "@playwright/test": "1.63.0",
     "@serwist/cli": "^9.5.13",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22",

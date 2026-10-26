@@ -55,7 +55,7 @@ export const ListWidget = memo(function ListWidget({ list, onOpen, onTogglePin, 
                                 >
                                     {item.completed && <Check className="w-3 h-3" />}
                                 </span>
-                                <span className={cn("line-clamp-1", item.completed ? "line-through opacity-40" : "text-foreground/80")}>{item.content}</span>
+                                <span className={cn("line-clamp-1", item.completed ? "line-through text-muted-foreground" : "text-foreground/80")}>{item.content}</span>
                             </button>
                         </li>
                     ))}

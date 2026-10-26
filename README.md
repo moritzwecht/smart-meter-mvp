@@ -28,9 +28,11 @@ UI ──► repo.ts ──► IndexedDB (sofort sichtbar) + Outbox
 ```
 
 - Datensätze bekommen **UUIDs auf dem Client** → Operationen sind idempotent, doppelt senden schadet nie.
-- Die **Outbox führt Änderungen zusammen** (z. B. 100 Autosaves → ein Update; anlegen + löschen → nichts).
+- Die **Outbox führt Änderungen zusammen** (z. B. 100 Autosaves → ein Update; anlegen + löschen → nichts) – aber nie in eine Operation, die schon einmal gesendet wurde. So geht auch bei einem Verbindungsabbruch mitten im Request keine Eingabe verloren.
 - **Abgelehnte Operationen blockieren nie** die Warteschlange; danach wird der echte Stand neu geladen.
 - **Delta-Sync**: es kommen nur Änderungen seit dem letzten Stand (inkl. Löschungen), nach > 30 Tagen der volle Bestand.
+- Mehrere Tabs stimmen sich über die Web Locks API ab; Requests brechen nach 30 s ab, statt den Sync zu blockieren.
+- Jeder Request sagt, für welches Konto die lokalen Daten sind – ist im Browser inzwischen ein anderes Konto angemeldet, wird nichts übertragen.
 
 Details: `src/lib/offline/` (Client) und `src/lib/server/sync.ts` (Server).
 
@@ -50,7 +52,8 @@ Jede Postgres-Datenbank funktioniert (lokal, Docker, Neon). Für Neon-URLs wird 
 | `npm run dev` | Entwicklungsserver (ohne Service Worker) |
 | `npm run build` | Produktions-Build inkl. Service Worker (`serwist build`) |
 | `npm run check` | Typecheck + ESLint + Tests |
-| `npm test` | Tests (PGlite – keine Datenbank nötig) |
+| `npm test` | Unit-, Server- und Sync-Tests (PGlite – keine Datenbank nötig) |
+| `npm run test:browser` | Ende-zu-Ende im Browser gegen den Produktions-Build (braucht `npm run build` und eine **leere Test-Datenbank** in `E2E_DATABASE_URL`) |
 | `npm run db:generate` | Migration aus Schema-Änderungen erzeugen |
 | `npm run db:migrate` | Migrationen anwenden |
 
@@ -63,10 +66,16 @@ Umgebungsvariablen: siehe [`.env.example`](.env.example). Pflicht sind `DATABASE
 **Upgrade von Version 1.x** – die Migration stellt das Datenmodell um (UUIDs, echte Zahlen/Booleans, Soft-Delete):
 
 1. Optional ein Backup in Neon anlegen (Branch). Die Migration legt zusätzlich Kopien aller alten Tabellen im Schema `v1_backup` an.
+   Vorab lohnt ein Blick auf doppelte E-Mail-Adressen (Version 1 hat Groß-/Kleinschreibung unterschieden; die Migration führt solche Konten zusammen, das Konto mit Passwort gewinnt):
+   ```sql
+   SELECT lower(trim(email)), count(*) FROM users GROUP BY 1 HAVING count(*) > 1;
+   ```
 2. `DATABASE_URL=<Produktions-URL> npm run db:migrate` – läuft in einer Transaktion: entweder alles oder nichts.
 3. Direkt danach deployen.
 4. Beim ersten Öffnen lädt die App alle Daten neu. Offline-Änderungen, die in Version 1 hängen geblieben waren, werden automatisch übernommen. Bestehende Sessions werden übernommen (alte Sessions galten max. 24 h – danach einmal neu anmelden). Konten ohne Passwort (z. B. aus alten Einladungen) setzen es über „Passwort vergessen“.
 5. Wenn alles läuft: `DROP SCHEMA v1_backup CASCADE;`
+
+**Sicherheit in Kürze:** Passwörter mit bcrypt, Sessions als signiertes JWT im `__Host-`-Cookie (90 Tage, „überall abmelden“ möglich), Rate-Limits für Login/Registrierung/Reset/Einladungen, Einmal-Links nur als Hash gespeichert. Konten ohne Passwort (aus Version 1) bekommen eins ausschließlich über „Passwort vergessen“ – also mit Zugriff aufs Postfach. Ein Passwort-Reset beendet alle Sessions und widerruft API-Tokens.
 
 Der tägliche Job (`/api/cron/daily`: Erinnerungen + Aufräumen) ist in `vercel.json` eingetragen und braucht `CRON_SECRET`. Ohne Vercel kann ihn z. B. n8n täglich aufrufen: `GET /api/cron/daily` mit Header `Authorization: Bearer <CRON_SECRET>`.
 

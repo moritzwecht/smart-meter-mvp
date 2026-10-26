@@ -113,7 +113,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                 <button
                     type="button"
                     onClick={() => onAddReading(meter.id)}
-                    className="flex-1 min-h-11 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
+                    className="flex-1 min-h-11 bg-emerald-700 hover:bg-emerald-800 text-white py-2 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-1 shadow-lg shadow-emerald-700/20"
                 >
                     <Plus className="w-3 h-3" />
                     Eintragen

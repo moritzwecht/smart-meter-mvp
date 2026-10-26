@@ -119,7 +119,7 @@ function ListEditor({ list }: { list: ListWithItems }) {
                                 >
                                     {item.completed && <Check className="w-4 h-4" />}
                                 </span>
-                                <span className={cn("flex-1 text-base sm:text-sm font-medium break-words min-w-0", item.completed ? "line-through opacity-40" : "text-foreground")}>
+                                <span className={cn("flex-1 text-base sm:text-sm font-medium break-words min-w-0", item.completed ? "line-through text-muted-foreground" : "text-foreground")}>
                                     {item.content}
                                 </span>
                             </button>
