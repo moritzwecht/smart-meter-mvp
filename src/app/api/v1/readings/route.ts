@@ -26,7 +26,8 @@ const bodySchema = z.object({
  *   curl -X POST https://…/api/v1/readings \
  *     -H "Authorization: Bearer mh_…" -H "Content-Type: application/json" \
  *     -d '{"meterId":"…","value":12345.6}'
- * Antwort: 201 (neu), 200 (unverändert), 404/422 (Fehler mit Beschreibung).
+ * Antwort: 201 (neu), 200 (unverändert bzw. letzte API-Ablesung < 15 min aktualisiert),
+ * 404/422 (Fehler mit Beschreibung).
  */
 export async function POST(request: Request) {
     const auth = await authenticateApiRequest(request);

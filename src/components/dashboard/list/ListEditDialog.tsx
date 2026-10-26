@@ -13,6 +13,17 @@ function ListEditor({ list }: { list: ListWithItems }) {
     const [name, setName] = useState(list.name);
     const [newItem, setNewItem] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
+    const nameRef = useRef<HTMLInputElement>(null);
+
+    // Frisch angelegte Liste: Namen markieren, damit man direkt lostippen kann
+    useEffect(() => {
+        if (list.items.length === 0 && list.name === "Neue Liste") {
+            const t = setTimeout(() => nameRef.current?.select(), 80);
+            return () => clearTimeout(t);
+        }
+        // nur beim Öffnen
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [list.id]);
 
     // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund)
     const pendingName = useRef<string | null>(null);
@@ -46,6 +57,7 @@ function ListEditor({ list }: { list: ListWithItems }) {
     return (
         <div className="space-y-6">
             <input
+                ref={nameRef}
                 type="text"
                 aria-label="Name der Liste"
                 value={name}

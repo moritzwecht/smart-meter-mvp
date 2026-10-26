@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, History, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Download, History, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { FieldLabel } from "@/components/ui/AddTile";
 import { Alert } from "@/components/ui/Alert";
@@ -17,6 +17,7 @@ import {
     recentDailyAverage,
     toSegments,
 } from "@/lib/meter/stats";
+import { readingsToCsv, shareOrDownloadCsv } from "@/lib/meter/export";
 import { formatCurrency, parseDecimal, toInputValue } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
 import { deleteMeter, deleteReading, updateMeter, updateReading } from "@/lib/offline/repo";
@@ -238,11 +239,23 @@ function History_({ meter }: { meter: MeterWithReadings }) {
                     <ReadingRow key={r.id} reading={r} previous={desc[i + 1]} unit={meter.unit} />
                 ))}
             </div>
-            {desc.length > 10 && (
-                <button type="button" onClick={() => setShowAll((v) => !v)} className="w-full py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary">
-                    {showAll ? "Weniger anzeigen" : `Alle ${desc.length} Ablesungen anzeigen`}
+            <div className="flex justify-between gap-2">
+                {desc.length > 10 ? (
+                    <button type="button" onClick={() => setShowAll((v) => !v)} className="py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary">
+                        {showAll ? "Weniger anzeigen" : `Alle ${desc.length} anzeigen`}
+                    </button>
+                ) : (
+                    <span />
+                )}
+                <button
+                    type="button"
+                    onClick={() => shareOrDownloadCsv(readingsToCsv(meter.readings, meter.unit), meter.type)}
+                    className="py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center gap-1.5"
+                >
+                    <Download className="w-3.5 h-3.5" />
+                    CSV exportieren
                 </button>
-            )}
+            </div>
         </div>
     );
 }

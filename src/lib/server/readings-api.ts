@@ -6,6 +6,8 @@ import { getDb } from "./db";
 
 /*
  * Ablesungen von außen (Home Assistant, ESPHome, Skripte).
+ * Häufige Werte (< 15 Minuten nach der letzten API-Ablesung) aktualisieren diese,
+ * statt neue Einträge anzulegen.
  * Schutz vor typischen Sensorfehlern: Ein Wert unter dem letzten Stand (z. B.
  * nach einem Neustart des Sensors) wird abgelehnt, solange er nicht ausdrücklich
  * als Zählerwechsel markiert ist. Unveränderte Werte werden nicht doppelt gespeichert.
@@ -42,6 +44,7 @@ export async function listMetersForUser(userId: number) {
 
 export type ApiReadingResult =
     | { status: "created"; id: string }
+    | { status: "updated"; id: string }
     | { status: "unchanged"; id: string }
     | { status: "error"; httpStatus: number; error: string };
 
@@ -61,7 +64,7 @@ export async function createReadingFromApi(
     if (date.getTime() > Date.now() + 5 * 60_000) return { status: "error", httpStatus: 422, error: "Datum liegt in der Zukunft." };
 
     const [previous] = await db
-        .select({ id: readings.id, value: readings.value })
+        .select({ id: readings.id, value: readings.value, date: readings.date, source: readings.source })
         .from(readings)
         .where(and(eq(readings.meterId, meter.id), isNull(readings.deletedAt), lte(readings.date, date)))
         .orderBy(desc(readings.date))
@@ -76,6 +79,16 @@ export async function createReadingFromApi(
                 error: `Wert ${input.value} ist kleiner als der letzte Stand ${previous.value}. Bei einem Zählerwechsel "isReplacement": true mitsenden.`,
             };
         }
+    }
+
+    // Zu häufige Automationen (z. B. jede Minute) nicht die Historie fluten lassen:
+    // Liegt die letzte API-Ablesung keine 15 Minuten zurück, wird sie aktualisiert.
+    if (previous && !input.isReplacement && previous.source === "api" && date.getTime() - previous.date.getTime() < 15 * 60_000) {
+        await db
+            .update(readings)
+            .set({ value: input.value, date, updatedAt: sql`now()` })
+            .where(eq(readings.id, previous.id));
+        return { status: "updated", id: previous.id };
     }
 
     const id = randomUUID();

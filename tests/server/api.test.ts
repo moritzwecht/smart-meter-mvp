@@ -49,6 +49,10 @@ describe("API für Home Assistant", () => {
         const lower = await post({ meterId, value: 0 });
         expect(lower.status).toBe(422);
         expect((await post({ meterId, value: 0, isReplacement: true })).status).toBe(201);
+        // kurz darauf: aktualisiert statt neuer Eintrag
+        const update = await post({ meterId, value: 0.4 });
+        expect(update.status).toBe(200);
+        expect((await update.json()).status).toBe("updated");
         const rows = (await server.client.query<{ source: string }>(`select source from readings`)).rows;
         expect(rows).toHaveLength(2);
         expect(rows.every((r) => r.source === "api")).toBe(true);

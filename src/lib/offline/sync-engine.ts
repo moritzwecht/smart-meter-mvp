@@ -38,6 +38,8 @@ let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let retryAttempt = 0;
 let started = false;
+/** Wird bei stopSync erhöht: Antworten laufender Requests (z. B. nach Logout) werden verworfen. */
+let generation = 0;
 let onUnauthenticated: (() => void) | undefined;
 
 function setState(patch: Partial<SyncState>) {
@@ -144,6 +146,7 @@ async function uploadLegacyQueue() {
 
 /** Ein Push/Pull-Durchlauf. Gibt `true` zurück, wenn direkt noch einer nötig ist. */
 async function syncRound(): Promise<boolean> {
+    const gen = generation;
     const batch = await db.transaction("rw", db.outbox, async () => {
         const entries = await db.outbox.orderBy("seq").limit(BATCH_SIZE).toArray();
         await Promise.all(entries.map((e) => db.outbox.update(e.seq!, { sending: 1 })));
@@ -163,6 +166,7 @@ async function syncRound(): Promise<boolean> {
         throw error;
     }
 
+    if (gen !== generation) return false; // inzwischen abgemeldet → nichts mehr schreiben
     if (full) fullSyncRequested = false;
     const needsFull = await applyResponse(batch, response);
     if (needsFull) fullSyncRequested = true;
@@ -300,6 +304,7 @@ export async function startSync(options: { onUnauthenticated?: () => void } = {}
 }
 
 export function stopSync() {
+    generation++;
     if (!started) return;
     started = false;
     clearTimeout(debounceTimer);
