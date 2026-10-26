@@ -108,6 +108,22 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await expect(dialog.locator("li")).toHaveCount(3);
         await page.waitForTimeout(500); // Sheet wächst nach oben – erst klicken, wenn es steht
         await dialog.getByRole("button", { name: "Brot", exact: true }).click();
+
+        // Keine Doppelten: "milch" steht schon drauf
+        await page.getByLabel("Neuer Punkt").fill("milch");
+        await page.keyboard.press("Enter");
+        await expect(dialog.getByRole("status")).toHaveText("„Milch“ steht schon auf der Liste.");
+        await expect(dialog.locator("li")).toHaveCount(3);
+
+        // Mehrere Zeilen auf einmal einfügen (z. B. aus einer Nachricht)
+        await page.getByLabel("Neuer Punkt").evaluate((input) => {
+            const data = new DataTransfer();
+            data.setData("text/plain", "- Eier\n- Butter\n- Milch");
+            input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+        });
+        await expect(dialog.getByRole("status")).toHaveText("2 Punkte hinzugefügt, 1 schon vorhanden.");
+        await expect(dialog.locator("li")).toHaveCount(5);
+
         await page.getByRole("button", { name: "Fertig" }).click();
         await expect.poll(() => count("todo_items", "completed")).toBe(1);
         expect((await q<{ content: string }>("select content from todo_items where completed"))[0]?.content).toBe("Brot");

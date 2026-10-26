@@ -163,6 +163,70 @@ export async function addItem(listId: string, content: string) {
     return id;
 }
 
+/** Vergleichsform eines Punkts: "  milch " und "Milch" sind derselbe Punkt. */
+export const normalizeItem = (content: string) => content.trim().replace(/\s+/g, " ").toLocaleLowerCase("de");
+
+export interface AddItemsResult {
+    /** neu angelegt */
+    added: string[];
+    /** war erledigt und steht jetzt wieder offen auf der Liste */
+    revived: string[];
+    /** stand schon offen auf der Liste – nichts geändert */
+    existing: string[];
+}
+
+/**
+ * Punkte hinzufügen, ohne Doppelte: Ein schon offener Punkt bleibt, wie er ist; ein
+ * erledigter kommt zurück auf die Liste (praktisch bei Einkaufslisten – "Milch"
+ * steht nicht dreimal drauf). Mehrere Punkte landen in einer Transaktion.
+ */
+export async function addItems(listId: string, contents: string[]): Promise<AddItemsResult> {
+    const result: AddItemsResult = { added: [], revived: [], existing: [] };
+    await write(async () => {
+        const known = new Map<string, TodoItem>();
+        for (const item of await db.todoItems.where("listId").equals(listId).toArray()) {
+            const key = normalizeItem(item.content);
+            const current = known.get(key);
+            // Gibt es denselben Punkt offen und erledigt, zählt der offene
+            if (!current || (current.completed && !item.completed)) known.set(key, item);
+        }
+        for (const raw of contents) {
+            const content = raw.trim().replace(/\s+/g, " ").slice(0, 500);
+            const key = normalizeItem(content);
+            if (!key) continue;
+            const match = known.get(key);
+            if (match && !match.completed) {
+                if (!result.existing.includes(match.id) && !result.added.includes(match.id) && !result.revived.includes(match.id)) result.existing.push(match.id);
+                continue;
+            }
+            if (match) {
+                await db.todoItems.update(match.id, { completed: false, updatedAt: nowIso() });
+                await op({ opId: opId(), entity: "item", action: "update", id: match.id, fields: { completed: false } });
+                known.set(key, { ...match, completed: false });
+                result.revived.push(match.id);
+                continue;
+            }
+            const id = newId();
+            const createdAt = nowIso();
+            const item: TodoItem = { id, listId, content, completed: false, createdAt, updatedAt: createdAt, deletedAt: null };
+            await db.todoItems.add(item);
+            await op({ opId: opId(), entity: "item", action: "create", id, parentId: listId, fields: { content, completed: false }, createdAt });
+            known.set(key, item);
+            result.added.push(id);
+        }
+    });
+    return result;
+}
+
+/** Eingefügten Text in einzelne Punkte zerlegen (Zeilen, Aufzählungszeichen entfernen). */
+export function splitItemLines(text: string): string[] {
+    return text
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^\s*(?:[-*•–·]|\d+[.)]|\[[ xX]?\])\s*/, "").trim())
+        .filter(Boolean)
+        .slice(0, 100);
+}
+
 export async function updateItem(id: string, fields: Partial<Pick<TodoItem, "content" | "completed">>) {
     await write(async () => {
         if (!(await db.todoItems.update(id, { ...fields, updatedAt: nowIso() }))) return;

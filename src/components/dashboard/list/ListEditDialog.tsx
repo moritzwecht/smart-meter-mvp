@@ -2,15 +2,42 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Eraser, Plus, Trash2 } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import type { ListWithItems } from "@/lib/offline/hooks";
-import { addItem, clearCompletedItems, deleteItem, deleteList, discardListIfUntouched, updateItem, updateList } from "@/lib/offline/repo";
+import {
+    addItems,
+    clearCompletedItems,
+    deleteItem,
+    deleteList,
+    discardListIfUntouched,
+    splitItemLines,
+    updateItem,
+    updateList,
+    type AddItemsResult,
+} from "@/lib/offline/repo";
+import type { TodoItem } from "@/lib/sync/types";
 import { useFinalUnmount } from "@/lib/use-final-unmount";
 import { cn } from "@/lib/utils";
 
 export const NEW_LIST_NAME = "Neue Liste";
+
+/** Kurze Rückmeldung nach dem Hinzufügen – nur, wenn es etwas zu sagen gibt. */
+function describeAdd(result: AddItemsResult, contents: string[], before: TodoItem[]): string {
+    const name = (id: string) => before.find((i) => i.id === id)?.content ?? "";
+    if (contents.length === 1) {
+        if (result.existing.length) return `„${name(result.existing[0])}“ steht schon auf der Liste.`;
+        if (result.revived.length) return `„${name(result.revived[0])}“ ist wieder auf der Liste.`;
+        return "";
+    }
+    const parts = [
+        result.added.length && `${result.added.length} ${result.added.length === 1 ? "Punkt" : "Punkte"} hinzugefügt`,
+        result.revived.length && `${result.revived.length} wieder auf der Liste`,
+        result.existing.length && `${result.existing.length} schon vorhanden`,
+    ].filter(Boolean);
+    return parts.length ? `${parts.join(", ")}.` : "";
+}
 
 function ListEditor({ list, created }: { list: ListWithItems; created: boolean }) {
     const [name, setName] = useState(list.name);
@@ -45,13 +72,40 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
         else if (!trimmed) setName(list.name);
     };
 
+    // Rückmeldung, wenn ein Punkt schon draufstand oder wieder aktiviert wurde
+    const [hint, setHint] = useState("");
+    const [highlight, setHighlight] = useState<Set<string>>(() => new Set());
+    const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    useEffect(() => () => clearTimeout(feedbackTimer.current), []);
+
+    const addContents = async (contents: string[]) => {
+        if (!contents.length) return;
+        const result = await addItems(list.id, contents);
+        const message = describeAdd(result, contents, list.items);
+        setHint(message);
+        setHighlight(new Set([...result.revived, ...result.existing]));
+        clearTimeout(feedbackTimer.current);
+        feedbackTimer.current = setTimeout(() => {
+            setHint("");
+            setHighlight(new Set());
+        }, 2500);
+    };
+
     const add = async (e: FormEvent) => {
         e.preventDefault();
         const content = newItem.trim();
         if (!content) return;
         setNewItem("");
         inputRef.current?.focus();
-        await addItem(list.id, content);
+        await addContents([content]);
+    };
+
+    // Mehrzeiligen Text (z. B. aus einer Nachricht oder Notiz) als einzelne Punkte übernehmen
+    const paste = (e: ClipboardEvent<HTMLInputElement>) => {
+        const lines = splitItemLines(e.clipboardData.getData("text"));
+        if (lines.length < 2) return;
+        e.preventDefault();
+        void addContents(lines);
     };
 
     const items = [...list.items].sort((a, b) => Number(a.completed) - Number(b.completed));
@@ -75,7 +129,7 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
                 className="w-full text-lg font-black input-field"
             />
 
-            <form onSubmit={add} className="flex gap-2">
+            <form onSubmit={add} className="relative flex gap-2">
                 <input
                     ref={inputRef}
                     type="text"
@@ -84,12 +138,17 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
                     maxLength={500}
                     value={newItem}
                     onChange={(e) => setNewItem(e.target.value)}
+                    onPaste={paste}
                     enterKeyHint="done"
                     className="flex-1 input-field"
                 />
                 <button type="submit" disabled={!newItem.trim()} className="btn btn-primary px-5" aria-label="Punkt hinzufügen">
                     <Plus className="w-5 h-5" />
                 </button>
+                {/* Im Abstand unter dem Feld – verschiebt die Liste nicht */}
+                <p role="status" className={cn("absolute left-1 top-full mt-1 text-xs text-muted-foreground transition-opacity", !hint && "opacity-0")}>
+                    {hint}
+                </p>
             </form>
 
             <ul className="space-y-2">
@@ -102,7 +161,10 @@ function ListEditor({ list, created }: { list: ListWithItems; created: boolean }
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ layout: { type: "spring", stiffness: 300, damping: 30 }, opacity: { duration: 0.15 } }}
-                            className="flex items-center gap-1 pl-3 pr-1 bg-accent/30 rounded-xl group hover:bg-accent/50 transition-colors"
+                            className={cn(
+                                "flex items-center gap-1 pl-3 pr-1 bg-accent/30 rounded-xl group hover:bg-accent/50 transition-[background-color,box-shadow]",
+                                highlight.has(item.id) && "ring-2 ring-primary/40 bg-primary/5",
+                            )}
                         >
                             {/* Die ganze Zeile hakt ab – nicht nur das kleine Kästchen */}
                             <button
