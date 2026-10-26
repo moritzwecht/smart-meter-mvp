@@ -97,8 +97,12 @@ curl -X POST https://home.moritz-wecht.de/api/v1/readings \
 
 Antworten:
 - `201`: neu eingetragen.
-- `200`: unverändert (gleicher Wert wie zuletzt) oder aktualisiert. Pro Viertelstunde (:00, :15, :30, :45) wird höchstens eine Ablesung gespeichert, weitere Werte im selben Zeitfenster aktualisieren sie. Ein gleichbleibender Wert wird einmal am Tag neu gespeichert, damit die Ablese-Erinnerung weiß, dass der Zähler noch meldet.
-- `422`: Der Wert ist kleiner als der letzte Stand (Schutz vor Sensor-Resets – bei echtem Zählerwechsel `"isReplacement": true` mitsenden) oder größer als eine spätere Ablesung (bei Nachträgen mit `date`).
+- `200`: unverändert (gleicher Wert wie zuletzt) oder aktualisiert.
+  - Liegt ein Wert in derselben Viertelstunde (:00, :15, :30, :45) wie die letzte API-Ablesung, wird diese aktualisiert statt neu angelegt. Eine Automation im Minutentakt erzeugt so höchstens 4 Einträge pro Stunde.
+  - Ein gleichbleibender Wert wird einmal am Tag neu gespeichert, damit die Ablese-Erinnerung weiß, dass der Zähler noch meldet.
+- `422`: Der Wert ist kleiner als der letzte Stand – Schutz vor Sensor-Resets. Bei einem echten Zählerwechsel `"isReplacement": true` mitsenden.
+  - Ausnahme: Der letzte Stand wurde in der App eingetragen und war ein Tippfehler (zu hoch). Dann wird ein Wert angenommen, der zum Stand davor passt.
+  - Auch abgelehnt: ein Nachtrag mit `date`, der größer ist als eine spätere Ablesung.
 
 Werte werden auf 4 Nachkommastellen gerundet.
 

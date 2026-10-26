@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { households, householdUsers, meters, readings } from "@/lib/db/schema";
 import { roundReading } from "@/lib/numbers";
 import { getDb } from "./db";
@@ -14,8 +14,8 @@ import { getDb } from "./db";
  *   (nach 20 Stunden), damit die Ablese-Erinnerung weiß, dass der Zähler noch meldet.
  * - Schutz vor typischen Sensorfehlern: Ein Wert unter dem letzten Stand (z. B. nach
  *   einem Neustart des Sensors) wird abgelehnt, solange er nicht als Zählerwechsel
- *   markiert ist. Ausnahme: Der letzte Stand war selbst ein Ausreißer nach oben
- *   (Tippfehler in der App), der neue Wert passt zum Stand davor.
+ *   markiert ist. Ausnahme: Der letzte Stand wurde in der App eingetragen, war ein
+ *   Ausreißer nach oben (Tippfehler) und der neue Wert passt zum Stand davor.
  * - Nachträge (mit `date`) dürfen nicht über einer späteren Ablesung liegen.
  * Werte werden wie in der Datenbank auf 4 Nachkommastellen gerundet, bevor verglichen wird.
  */
@@ -75,11 +75,15 @@ export async function createReadingFromApi(
     const value = roundReading(input.value);
     const isReplacement = input.isReplacement ?? false;
 
-    // Die zwei letzten Stände bis zu diesem Zeitpunkt (gleiche Reihenfolge wie in der App)
+    // Die zwei Stände davor – in derselben Reihenfolge wie in der App: Bei gleichem
+    // Zeitpunkt kommt ein Zählerwechsel nach den normalen Ablesungen.
+    const before = isReplacement
+        ? lte(readings.date, date)
+        : or(lt(readings.date, date), and(eq(readings.date, date), eq(readings.isReplacement, false)));
     const [previous, beforePrevious] = await db
         .select({ id: readings.id, value: readings.value, date: readings.date, source: readings.source, isReplacement: readings.isReplacement })
         .from(readings)
-        .where(and(eq(readings.meterId, meter.id), isNull(readings.deletedAt), lte(readings.date, date)))
+        .where(and(eq(readings.meterId, meter.id), isNull(readings.deletedAt), before))
         .orderBy(desc(readings.date), desc(readings.isReplacement), desc(readings.createdAt))
         .limit(2);
 
@@ -87,8 +91,13 @@ export async function createReadingFromApi(
         if (value === previous.value) {
             if (date.getTime() - previous.date.getTime() < SAME_VALUE_AGAIN_AFTER_MS) return { status: "unchanged", id: previous.id };
         } else if (value < previous.value) {
-            // War der letzte Stand ein Ausreißer nach oben? Dann passt der neue Wert zum Stand davor.
-            const previousIsSpike = !previous.isReplacement && beforePrevious !== undefined && beforePrevious.value <= value;
+            // War der letzte Stand ein Tippfehler in der App (zu hoch)? Dann passt der neue Wert zum Stand davor.
+            // Nie bei Werten vom Sensor selbst (Neustart, alter Zustand) und nie bis auf einen Zähler-Startstand zurück.
+            const previousIsSpike =
+                previous.source === "app" &&
+                !previous.isReplacement &&
+                beforePrevious !== undefined &&
+                (beforePrevious.isReplacement ? value > beforePrevious.value : value >= beforePrevious.value);
             if (!previousIsSpike) {
                 return {
                     status: "error",
@@ -103,7 +112,13 @@ export async function createReadingFromApi(
         const [next] = await db
             .select({ value: readings.value, date: readings.date, isReplacement: readings.isReplacement })
             .from(readings)
-            .where(and(eq(readings.meterId, meter.id), isNull(readings.deletedAt), gt(readings.date, date)))
+            .where(
+                and(
+                    eq(readings.meterId, meter.id),
+                    isNull(readings.deletedAt),
+                    or(gt(readings.date, date), and(eq(readings.date, date), eq(readings.isReplacement, true))),
+                ),
+            )
             .orderBy(asc(readings.date), asc(readings.isReplacement), asc(readings.createdAt))
             .limit(1);
         if (next && !next.isReplacement && value > next.value) {

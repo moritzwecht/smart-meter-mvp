@@ -40,44 +40,67 @@ type ReadingLike = Pick<Reading, "value" | "date" | "isReplacement"> & { created
  * Ablesung (Endstand des alten Zählers) vor dem Zählerwechsel, dann nach Eintragungszeit.
  */
 export function sortReadings<T extends ReadingLike>(readings: readonly T[]): T[] {
-    return readings
-        .map((r) => ({ r, t: Date.parse(r.date) }))
-        .sort(
-            (a, b) =>
-                a.t - b.t ||
-                Number(a.r.isReplacement) - Number(b.r.isReplacement) ||
-                (a.r.createdAt ?? "").localeCompare(b.r.createdAt ?? ""),
-        )
-        .map((x) => x.r);
+    const keyed = readings.map((r) => ({ r, t: Date.parse(r.date) }));
+    const compare = (a: (typeof keyed)[number], b: (typeof keyed)[number]) =>
+        a.t - b.t || Number(a.r.isReplacement) - Number(b.r.isReplacement) || (a.r.createdAt ?? "").localeCompare(b.r.createdAt ?? "");
+    // Meist schon sortiert (z. B. aus der Datenbank) – dann spart das bei vielen Werten Zeit
+    let sorted = true;
+    for (let i = 1; i < keyed.length && sorted; i++) sorted = compare(keyed[i - 1], keyed[i]) <= 0;
+    return (sorted ? keyed : keyed.sort(compare)).map((x) => x.r);
 }
 
-/** Vorherige (Zeitpunkt ≤ t) und nächste (Zeitpunkt > t) Ablesung. */
-function neighbours<T extends ReadingLike>(readings: readonly T[], t: number): { previous?: T; next?: T } {
+interface Analysis<T> {
+    /** sortiert, ohne Ausreißer (die nicht mitgerechnet werden) */
+    counted: T[];
+    countedTimes: number[];
+    /** üblicher Verbrauch pro Tag */
+    usual: number | null;
+}
+
+// Pro Ablesungs-Liste nur einmal rechnen (Vorschau läuft bei jedem Tastendruck)
+const analysisCache = new WeakMap<object, Analysis<ReadingLike>>();
+
+function analyse<T extends ReadingLike>(readings: readonly T[]): Analysis<T> {
+    const cached = analysisCache.get(readings);
+    if (cached) return cached as Analysis<T>;
     const sorted = sortReadings(readings);
-    const i = sorted.findIndex((r) => Date.parse(r.date) > t);
-    const split = i === -1 ? sorted.length : i;
-    return { previous: sorted[split - 1], next: sorted[split] };
+    const { segments, ignored } = toSegments(sorted);
+    const skip = new Set<T>(ignored);
+    const counted = skip.size ? sorted.filter((r) => !skip.has(r)) : sorted;
+    const result: Analysis<T> = { counted, countedTimes: counted.map((r) => Date.parse(r.date)), usual: dailyAverage(segments) };
+    analysisCache.set(readings, result as Analysis<ReadingLike>);
+    return result;
+}
+
+/**
+ * Vorherige und nächste Ablesung – nach der Position, an der die neue einsortiert würde
+ * (gleicher Zeitpunkt: normale Ablesung vor Zählerwechsel, die neue als zuletzt eingetragene).
+ */
+function neighbours<T extends ReadingLike>(sorted: readonly T[], times: readonly number[], t: number, isReplacement: boolean) {
+    let i = 0;
+    while (i < sorted.length && (times[i] < t || (times[i] === t && (isReplacement || !sorted[i].isReplacement)))) i++;
+    return { index: i, previous: sorted[i - 1] as T | undefined, next: sorted[i] as T | undefined };
 }
 
 /**
  * Zeitpunkt für eine Ablesung an einem Kalendertag (YYYY-MM-DD, lokale Zeit):
  * heute = jetzt; an vergangenen Tagen 12:00 (Zeitzonen verschieben so nicht den Tag).
- * Gibt es an dem Tag schon Ablesungen ab 12:00, kommt die neue eine Minute danach –
- * so bleibt die Reihenfolge eindeutig (z. B. Endstand alter Zähler, dann neuer Zähler).
+ * Ist die Minute schon belegt, die nächste freie – so kommt ein weiterer Eintrag für
+ * denselben Tag eindeutig danach (z. B. Endstand alter Zähler, dann neuer Zähler).
  */
 export function timestampForDay(day: string, readings: readonly ReadingLike[], now = Date.now()): string {
     const [y, m, d] = day.split("-").map(Number);
     const dayStart = new Date(y, m - 1, d).getTime();
     const nextDay = new Date(y, m - 1, d + 1).getTime();
     if (now >= dayStart && now < nextDay) return new Date(now).toISOString();
-    const dayEnd = nextDay - 60_000;
-    const noon = new Date(y, m - 1, d, 12).getTime();
-    let latest = -Infinity;
+    const taken = new Set<number>();
     for (const r of readings) {
         const t = Date.parse(r.date);
-        if (t >= noon && t <= dayEnd) latest = Math.max(latest, t);
+        if (t >= dayStart && t < nextDay) taken.add(Math.floor(t / 60_000));
     }
-    return new Date(Math.min(Math.max(noon, latest + 60_000), dayEnd)).toISOString();
+    let t = new Date(y, m - 1, d, 12).getTime();
+    while (taken.has(t / 60_000) && t + 60_000 < nextDay) t += 60_000;
+    return new Date(t).toISOString();
 }
 
 // Abschnitte --------------------------------------------------------------------------
@@ -300,6 +323,14 @@ type Weight = (from: number, to: number) => number;
 
 const flatWeight: Weight = (from, to) => Math.max(0, to - from) / YEAR_MS;
 
+const monthBounds = new Map<number, [number, number]>();
+function monthRange(y: number, m: number): [number, number] {
+    const key = y * 12 + m;
+    let b = monthBounds.get(key);
+    if (!b) monthBounds.set(key, (b = [new Date(y, m, 1).getTime(), new Date(y, m + 1, 1).getTime()]));
+    return b;
+}
+
 const gasWeight: Weight = (from, to) => {
     if (!(to > from)) return 0;
     const first = new Date(from);
@@ -307,9 +338,8 @@ const gasWeight: Weight = (from, to) => {
     let m = first.getMonth();
     let w = 0;
     for (;;) {
-        const monthStart = new Date(y, m, 1).getTime();
+        const [monthStart, monthEnd] = monthRange(y, m);
         if (monthStart >= to) break;
-        const monthEnd = new Date(y, m + 1, 1).getTime();
         const overlap = Math.min(monthEnd, to) - Math.max(monthStart, from);
         if (overlap > 0) w += ((GAS_PROFILE[m] / 100) * overlap) / (monthEnd - monthStart);
         m++;
@@ -351,6 +381,9 @@ export interface BillingProjection {
     uncertain: boolean;
 }
 
+/** Erst ab so viel gemessener Zeit wird hochgerechnet – aus ein paar Stunden lässt sich kein Jahr ableiten. */
+export const MIN_PROJECTION_DAYS = 14;
+
 function billingAnchor(billingStart: string | null): [month: number, day: number] {
     if (!billingStart) return [0, 1];
     const [, m, d] = billingStart.split("-").map(Number);
@@ -386,11 +419,13 @@ export function projectBillingPeriod(
     const weight = meter.type === "GAS" ? gasWeight : flatWeight;
     let measured = 0;
     let measuredWeight = 0;
+    let measuredMs = 0;
     for (const s of segments) {
         measured += s.consumption;
         measuredWeight += weight(s.start, s.end);
+        measuredMs += s.end - s.start;
     }
-    if (!(measuredWeight > 0)) return null;
+    if (measuredMs < MIN_PROJECTION_DAYS * DAY_MS || !(measuredWeight > 0)) return null;
     /** Jahresverbrauch, hochgerechnet aus allen Ablesungen */
     const annual = measured / measuredWeight;
 
@@ -444,7 +479,7 @@ export type PlausibilityIssue =
     | { kind: "lower-than-previous"; previous: number; /** der vorherige Stand sieht selbst nach einem Tippfehler aus */ previousSuspicious: boolean }
     | { kind: "higher-than-next"; next: number; nextDate: string }
     | { kind: "unusually-high"; dailyRate: number; usualRate: number }
-    | { kind: "big-jump"; dailyRate: number }
+    | { kind: "big-jump"; dailyRate: number; previous: number; /** vielfacher Stand statt hoher Tagesrate */ ratio: boolean }
     | { kind: "future-date" };
 
 export interface ReadingPreview {
@@ -458,11 +493,15 @@ export interface ReadingPreview {
     perDay: number | null;
 }
 
-/** Was eine neue Ablesung bedeutet – für die Vorschau beim Eintippen. */
+/**
+ * Was eine neue Ablesung bedeutet – für die Vorschau beim Eintippen.
+ * Verglichen wird mit den mitgerechneten Ständen (ein erkannter Tippfehler zählt nicht).
+ */
 export function previewReading(readings: readonly ReadingLike[], candidate: ReadingLike): ReadingPreview | null {
     if (candidate.isReplacement) return null;
     const t = Date.parse(candidate.date);
-    const { previous, next } = neighbours(readings, t);
+    const { counted, countedTimes } = analyse(readings);
+    const { previous, next } = neighbours(counted, countedTimes, t, false);
     if (!previous) return null;
     const consumption = candidate.value - previous.value;
     const days = (t - Date.parse(previous.date)) / DAY_MS;
@@ -492,10 +531,10 @@ export function checkReading(
     const t = Date.parse(candidate.date);
     if (t > now + 5 * 60_000) return { kind: "future-date" };
     if (candidate.isReplacement) return null;
-    const sorted = sortReadings(readings);
-    const { previous, next } = neighbours(sorted, t);
+    const { counted, countedTimes, usual } = analyse(readings);
+    const { index, previous, next } = neighbours(counted, countedTimes, t, false);
     if (previous && candidate.value < previous.value) {
-        const beforePrevious = previous.isReplacement ? undefined : neighbours(sorted, Date.parse(previous.date) - 1).previous;
+        const beforePrevious = previous.isReplacement ? undefined : counted[index - 2];
         return {
             kind: "lower-than-previous",
             previous: previous.value,
@@ -511,12 +550,13 @@ export function checkReading(
     // sonst fällt eine Ziffer zu viel gerade dann nicht auf.
     const days = Math.max((t - Date.parse(previous.date)) / DAY_MS, 1);
     const dailyRate = increase / days;
-    const usual = dailyAverage(toSegments(sorted).segments);
     if (usual && usual > 0) {
         if (dailyRate > usual * 5 && dailyRate - usual > 1) return { kind: "unusually-high", dailyRate, usualRate: usual };
     } else {
+        // Noch kein Verbrauchsmuster: hohe Tagesrate – oder nach langer Zeit ein Vielfaches des Stands (Ziffer zu viel)
         const max = maxDailyRate(meter);
-        if (max !== null && dailyRate > max) return { kind: "big-jump", dailyRate };
+        if (max !== null && dailyRate > max) return { kind: "big-jump", dailyRate, previous: previous.value, ratio: false };
+        if (previous.value >= 1000 && candidate.value >= previous.value * 8) return { kind: "big-jump", dailyRate, previous: previous.value, ratio: true };
     }
     return null;
 }

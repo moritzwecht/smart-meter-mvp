@@ -78,8 +78,8 @@ describe("B3: Gas-Prognose ohne Vorjahr berücksichtigt den Winter", () => {
     });
 });
 
-describe("B4: Monatsbalken im laufenden Monat", () => {
-    it("liefert für einen angebrochenen Monat den erfassten Anteil – die Anzeige darf ihn nicht 'Schätzung' nennen", () => {
+describe("B4: Monatsbalken im laufenden Monat (Daten; die Beschriftung prüft tests/dom)", () => {
+    it("liefert für einen angebrochenen Monat den erfassten Anteil", () => {
         const { segments } = toSegments([r("2025-01-01T00:00:00", 0), r("2025-01-16T00:00:00", 150)]);
         const [jan] = monthlyConsumption(segments);
         expect(jan.consumption).toBeCloseTo(150);
@@ -226,7 +226,7 @@ describe("N1: gleicher Zeitpunkt", () => {
         expect(timestampForDay("2025-04-01", existing, now)).toBe(new Date(now).toISOString());
     });
 
-    it("CSV und Verlauf nutzen dieselbe Reihenfolge", () => {
+    it("CSV: Endstand des alten Zählers vor dem Startstand des neuen", () => {
         const row = (x: ReturnType<typeof r>, id: string) => ({ ...x, id, meterId: "m", source: "app", createdAt: "", updatedAt: "", deletedAt: null });
         const csv = readingsToCsv([row(newStart, "b"), row(oldFinal, "a")], "m³");
         const lines = csv.replace("\uFEFF", "").split("\r\n");
@@ -355,5 +355,72 @@ describe("B9/N6: Zahlen", () => {
         ["12.345", 12.345],
     ])("%s → %s", (input, expected) => {
         expect(parseDecimal(input)).toBe(expected);
+    });
+});
+
+// Nachbesserung nach der unabhängigen Prüfung der Umsetzung -------------------------------
+
+describe("Nachbesserung: Nachbarn bei gleichem Zeitpunkt", () => {
+    const now = Date.parse("2025-06-01");
+    const prev = r("2025-03-01T12:00:00", 9800);
+    const newStart = r("2025-03-10T12:00:00", 0, true);
+    const next = r("2025-03-20T12:00:00", 100);
+
+    it("Endstand des alten Zählers bearbeiten, wenn der Zählerwechsel denselben Zeitpunkt hat", () => {
+        const edited = r("2025-03-10T12:00:00", 10010);
+        expect(checkReading([prev, newStart, next], edited, now)).toBeNull();
+        expect(previewReading([prev, newStart, next], edited)?.previous.value).toBe(9800);
+    });
+
+    it("ein neuer Zählerwechsel zum selben Zeitpunkt kommt nach dem Endstand", () => {
+        const oldFinal = r("2025-03-10T12:00:00", 10000);
+        expect(checkReading([prev, oldFinal], r("2025-03-10T12:00:00", 0, true), now)).toBeNull();
+    });
+});
+
+describe("Nachbesserung: Vergleich mit dem mitgerechneten Stand", () => {
+    it("ein erkannter Tippfehler (Delle) ist nicht der Vergleichswert für den nächsten Stand", () => {
+        const xs = [r("2025-01-01T12:00", 1000), r("2025-01-11T12:00", 1100), r("2025-01-21T12:00", 1200), r("2025-01-31T12:00", 290)];
+        expect(toSegments(xs).ignored.map((x) => x.value)).toEqual([290]);
+        const cand = r("2025-02-01T12:00", 1310);
+        expect(checkReading(xs, cand, Date.parse("2025-03-01"), { type: "ELECTRICITY", unit: "kWh" })).toBeNull();
+        const p = previewReading(xs, cand)!;
+        expect([p.previous.value, p.consumption, p.perDay]).toEqual([1200, 110, 10]); // 11 Tage
+    });
+});
+
+describe("Nachbesserung: Ziffer zu viel nach langer Zeit (B8)", () => {
+    const now = Date.parse("2026-03-01");
+    const kwh = { type: "ELECTRICITY" as const, unit: "kWh" };
+    it("2000 → 50000 nach einem Jahr wird erkannt", () => {
+        expect(checkReading([r("2024-01-01", 2000)], r("2025-01-01", 50000), now, kwh)).toMatchObject({ kind: "big-jump", ratio: true });
+    });
+    it("normaler Jahresverbrauch und kleine Startstände bleiben ohne Warnung", () => {
+        expect(checkReading([r("2024-01-01", 2000)], r("2025-01-01", 8000), now, kwh)).toBeNull();
+        expect(checkReading([r("2024-01-01", 150)], r("2025-01-01", 3150), now, kwh)).toBeNull();
+    });
+});
+
+describe("Nachbesserung: Prognose erst ab 14 Tagen", () => {
+    it("zwei Ablesungen eine Stunde auseinander ergeben keine (absurde) Jahresprognose", () => {
+        const { segments } = toSegments([r("2025-07-10T10:00", 1000), r("2025-07-10T11:00", 1000.5)]);
+        expect(projectBillingPeriod(gas, segments, Date.parse("2025-07-10T12:00"))).toBeNull();
+    });
+    it("ab 14 Tagen gibt es eine Prognose", () => {
+        const { segments } = toSegments([r("2025-07-01T10:00", 1000), r("2025-07-15T10:00", 1028)]);
+        expect(projectBillingPeriod(gas, segments, Date.parse("2025-07-16T12:00"))).not.toBeNull();
+    });
+});
+
+describe("Nachbesserung: nächste freie Minute", () => {
+    const now = Date.parse("2025-04-01T10:00:00");
+    it("zwischen Werten im Viertelstundentakt landet ein Nachtrag bei 12:00 bzw. der nächsten freien Minute", () => {
+        const api = Array.from({ length: 96 }, (_, i) => r(new Date(2025, 2, 10, 0, i * 15).toISOString(), 1000 + i));
+        const t = new Date(timestampForDay("2025-03-10", api, now));
+        expect([t.getHours(), t.getMinutes()]).toEqual([12, 1]);
+    });
+    it("eine Ablesung um 23:59 stört nicht", () => {
+        const t = new Date(timestampForDay("2025-03-10", [r(new Date(2025, 2, 10, 23, 59).toISOString(), 1)], now));
+        expect([t.getHours(), t.getMinutes()]).toEqual([12, 0]);
     });
 });

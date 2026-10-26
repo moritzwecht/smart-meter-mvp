@@ -15,9 +15,13 @@ import {
     conversionMissing,
     dailyAverage,
     DAYS_PER_MONTH,
+    isCubicMeters,
+    MIN_PROJECTION_DAYS,
     monthlyConsumption,
     projectBillingPeriod,
     recentDailyAverage,
+    sortReadings,
+    timestampForDay,
     toSegments,
 } from "@/lib/meter/stats";
 import { readingsToCsv, shareOrDownloadCsv } from "@/lib/meter/export";
@@ -71,6 +75,7 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
     }, [meter]);
 
     const missingConversion = (meter.pricePerUnit ?? 0) > 0 && conversionMissing(meter);
+    const tooShort = stats.overall !== null && !stats.projection;
     const anomalyAlert = (stats.ignored > 0 || stats.drops > 0) && (
         <Alert variant="warning">
             {stats.ignored > 0 &&
@@ -140,10 +145,16 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
                 </div>
             )}
 
+            {tooShort && (
+                <p className="text-xs text-muted-foreground">
+                    Prognose und Kosten fürs Jahr erscheinen, sobald die Ablesungen mindestens {MIN_PROJECTION_DAYS} Tage auseinanderliegen.
+                </p>
+            )}
             {missingConversion && (
                 <Alert variant="warning">
-                    Für die Kosten fehlen Zustandszahl und Brennwert (der Preis gilt pro kWh, der Zähler misst in {meter.unit}). Trag sie unten in den
-                    Einstellungen ein – sie stehen auf deiner Gasrechnung.
+                    {isCubicMeters(meter.unit)
+                        ? `Für die Kosten fehlen Zustandszahl und Brennwert (der Preis gilt pro kWh, der Zähler misst in m³). Trag sie unten in den Einstellungen ein – sie stehen auf deiner Gasrechnung.`
+                        : `Der Preis gilt pro kWh, der Zähler misst aber in ${meter.unit} – das lässt sich nicht umrechnen. Prüf unten in den Einstellungen Einheit und Preis.`}
                 </Alert>
             )}
             {anomalyAlert}
@@ -187,24 +198,17 @@ function ReadingRow({
             setError("Bitte einen gültigen Stand und ein Datum eingeben.");
             return;
         }
-        // Uhrzeit beibehalten; liegt sie heute noch in der Zukunft, gilt "jetzt"
-        const original = new Date(reading.date);
-        const [y, m, d] = day.split("-").map(Number);
-        let time = new Date(y, m - 1, d, original.getHours(), original.getMinutes(), original.getSeconds()).getTime();
-        if (day === toDateInputValue(new Date()) && time > Date.now()) time = Date.now();
-        const date = new Date(time).toISOString();
+        const others = meter.readings.filter((r) => r.id !== reading.id);
+        // Gleicher Tag: Zeitpunkt unverändert. Anderer Tag: wie beim Eintragen (heute jetzt, sonst 12:00
+        // bzw. die nächste freie Minute) – so kommen sich zwei Ablesungen nie in die Quere.
+        const date = day === toDateInputValue(new Date(reading.date)) ? reading.date : timestampForDay(day, others);
         const changed = parsed !== reading.value || date !== reading.date || isReplacement !== reading.isReplacement;
         if (!changed) {
             setEditing(false);
             return;
         }
         const candidate = { value: parsed, date, isReplacement };
-        const issue = checkReading(
-            meter.readings.filter((r) => r.id !== reading.id),
-            candidate,
-            Date.now(),
-            meter,
-        );
+        const issue = checkReading(others, candidate, Date.now(), meter);
         if (issue?.kind === "future-date") {
             setError(plausibilityText(issue, unit));
             return;
@@ -327,12 +331,19 @@ function ReadingRow({
 
 function History_({ meter }: { meter: MeterWithReadings }) {
     const [showAll, setShowAll] = useState(false);
-    const flags = useMemo(() => {
+    const { flags, previousOf } = useMemo(() => {
         const { ignored, drops } = toSegments(meter.readings);
-        const map = new Map<Reading, "ignored" | "drop">();
-        for (const r of ignored) map.set(r, "ignored");
-        for (const r of drops) map.set(r, "drop");
-        return map;
+        const flags = new Map<Reading, "ignored" | "drop">();
+        for (const r of ignored) flags.set(r, "ignored");
+        for (const r of drops) flags.set(r, "drop");
+        // Differenz zur vorherigen mitgerechneten Ablesung – ein Tippfehler verzerrt sonst auch die Zeile danach
+        const previousOf = new Map<Reading, Reading>();
+        let last: Reading | undefined;
+        for (const r of sortReadings(meter.readings)) {
+            if (last) previousOf.set(r, last);
+            if (flags.get(r) !== "ignored") last = r;
+        }
+        return { flags, previousOf };
     }, [meter.readings]);
     const desc = [...meter.readings].reverse();
     const visible = showAll ? desc : desc.slice(0, 10);
@@ -342,8 +353,8 @@ function History_({ meter }: { meter: MeterWithReadings }) {
     return (
         <div className="space-y-2">
             <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50">
-                {visible.map((r, i) => (
-                    <ReadingRow key={r.id} reading={r} previous={desc[i + 1]} meter={meter} flag={flags.get(r)} />
+                {visible.map((r) => (
+                    <ReadingRow key={r.id} reading={r} previous={previousOf.get(r)} meter={meter} flag={flags.get(r)} />
                 ))}
             </div>
             <div className="flex justify-between gap-2">

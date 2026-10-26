@@ -72,6 +72,8 @@ export function plausibilityText(issue: PlausibilityIssue, unit: string): string
         case "unusually-high":
             return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – sonst sind es ca. ${formatConsumption(issue.usualRate)}. Stimmt der Wert?`;
         case "big-jump":
-            return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – ungewöhnlich viel. Stimmt der Wert?`;
+            return issue.ratio
+                ? `Der Wert ist ein Vielfaches des vorherigen Stands (${formatReading(issue.previous)} ${unit}). Stimmt der Wert?`
+                : `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – ungewöhnlich viel. Stimmt der Wert?`;
     }
 }

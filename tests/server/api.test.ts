@@ -165,6 +165,35 @@ describe("Prüfung Zähler: API", () => {
         expect((await post({ meterId, value: 0, date: at(180) })).status).toBe(422);
     });
 
+    it("Sensor-Resets bleiben abgelehnt – auch kurz nach einem Zählerwechsel mit Startstand 0", async () => {
+        await post({ meterId, value: 5000, date: at(0) });
+        await post({ meterId, value: 0, date: at(60), isReplacement: true });
+        await post({ meterId, value: 100, date: at(120) });
+        expect((await post({ meterId, value: 0, date: at(180) })).status).toBe(422);
+    });
+
+    it("ein älterer Sensorwert (z. B. nach Neustart von Home Assistant) überschreibt keinen neueren", async () => {
+        await post({ meterId, value: 1000, date: at(0) });
+        await post({ meterId, value: 1000.2, date: at(15) });
+        await post({ meterId, value: 1000.4, date: at(30) });
+        expect((await post({ meterId, value: 1000.2, date: at(33) })).status).toBe(422);
+        expect((await post({ meterId, value: 1000.2, date: at(50) })).status).toBe(422);
+        expect((await values()).map((r) => r.value)).toEqual([1000, 1000.2, 1000.4]);
+    });
+
+    it("gleicher Zeitpunkt wie ein Zählerwechsel: verglichen wird mit dem Endstand des alten Zählers", async () => {
+        await post({ meterId, value: 9800, date: at(0) });
+        await post({ meterId, value: 10000, date: at(60) });
+        await post({ meterId, value: 0, date: at(60), isReplacement: true });
+        const res = await post({ meterId, value: 10001, date: at(60) });
+        expect(res.status).toBeLessThan(300);
+        expect((await values()).map((r) => [r.value, r.is_replacement])).toEqual([
+            [9800, false],
+            [10001, false],
+            [0, true],
+        ]);
+    });
+
     it("B7: ein Nachtrag darf nicht über einer späteren Ablesung liegen", async () => {
         await post({ meterId, value: 1000, date: at(0) });
         await post({ meterId, value: 1100, date: at(600) });

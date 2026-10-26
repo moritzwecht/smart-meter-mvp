@@ -10,10 +10,13 @@ Stand: 26.10.2026 · Umfang: alles, was mit Zählern rechnet oder entscheidet.
 | Server | `readings-api.ts` (Home Assistant), `cron.ts` (Erinnerung), `sync/schemas.ts` (Validierung), DB-Spalten |
 
 **Vorgehen:**
-1. Code gelesen, jeden Verdacht mit einem Test belegt. Jeder Test beschreibt das **richtige** Verhalten und schlug vor der Korrektur fehl: `tests/unit/meter-audit.test.ts`, `tests/server/api.test.ts`.
+1. Code gelesen, jeden Verdacht mit einem Test belegt (`tests/unit/meter-audit.test.ts`, `tests/server/api.test.ts`).
+   - Jeder Test beschreibt das **richtige** Verhalten.
+   - Die Tests zu Befunden schlugen vor der Korrektur fehl. Kontrolltests, die korrektes Verhalten absichern, liefen schon vorher grün.
 2. Eine unabhängige Gegenprüfung hat jeden Befund nachvollzogen, Schweregrade und Lösungsvorschläge bewertet und weitere Fehler gefunden (N1–N6).
 3. Danach wurde dieses Dokument berichtigt.
-4. Alle Befunde wurden behoben (siehe „Umsetzung“). Die Tests oben laufen jetzt grün, dazu kommen Tests für die neuen Fälle (auch Bearbeiten im Dialog und die API).
+4. Alle Befunde wurden behoben (siehe „Umsetzung“). Die Tests oben laufen jetzt grün. Dazu kommen Tests für die neuen Fälle, auch für Bearbeiten und Anzeigen im Dialog (`tests/dom/dialogs.test.ts`) und für die API.
+5. Eine zweite unabhängige Prüfung hat die Umsetzung nachvollzogen. Sie bestätigte die Korrekturen und fand Randfälle, die nachgebessert wurden (siehe „Nachbesserung“).
 
 ## So rechnet die App
 
@@ -23,7 +26,7 @@ Stand: 26.10.2026 · Umfang: alles, was mit Zählern rechnet oder entscheidet.
 - **Kosten** = Verbrauch × Umrechnungsfaktor × Arbeitspreis, dazu die Grundgebühr.
   - Bei Gas mit Preis pro kWh und Zähler in m³ ist der Faktor Zustandszahl × Brennwert.
   - Fehlen Zustandszahl oder Brennwert, zeigt die App keine Kosten, sondern einen Hinweis. Vor der Korrektur wurde stillschweigend mit 1 gerechnet (B2).
-- **Prognose fürs Abrechnungsjahr**:
+- **Prognose fürs Abrechnungsjahr** (sobald die Ablesungen mindestens 14 Tage auseinanderliegen):
   - Bisheriger Verbrauch: Lücken werden geschätzt.
   - Rest des Jahres: der Verbrauch im gleichen Zeitraum des Vorjahres, wenn dieser zu mindestens 80 % erfasst ist. Sonst eine Hochrechnung aus dem bisherigen Verbrauch – bei Gas nach einem typischen Jahresprofil (B3), bei Strom und Wasser gleichmäßig.
   - Ist weniger als ein Viertel des Jahresverbrauchs gemessen, steht „unsicher“ an der Prognose.
@@ -155,7 +158,7 @@ Wo: `checkReading`, Fall „big-jump“.
 - Startstand 5 und 500 kWh nach einem Monat: Fehlwarnung.
 - Startstand 150 und 3150 kWh nach einem Jahr: ebenfalls Fehlwarnung.
 
-Vorschlag: Ohne Verbrauchsmuster gegen eine **Tagesrate** prüfen, mit großzügigen Obergrenzen je Typ und Einheit (z. B. Strom 100 kWh/Tag, Gas 30 m³/Tag, Wasser 3 m³/Tag). Eine Ziffer zu viel bleibt erkennbar.
+Vorschlag: Ohne Verbrauchsmuster gegen eine **Tagesrate** prüfen, mit großzügigen Obergrenzen je Typ und Einheit (z. B. Strom 100 kWh/Tag, Gas 30 m³/Tag, Wasser 3 m³/Tag). Nach langer Zeit fällt eine Ziffer zu viel zusätzlich am Verhältnis zum vorherigen Stand auf (siehe „Nachbesserung“).
 
 ### B9 – Nachkommastellen (niedrig)
 
@@ -243,7 +246,7 @@ Umgesetzt wie oben vorgeschlagen, mit diesen Details und Abweichungen:
   - Nur zwei Stände mit Rückgang sind nicht entscheidbar. Dann zählt der Abschnitt nicht, und die App meldet es.
   - Ausreißer und Rückgänge sind im Verlauf markiert („nicht mitgerechnet“ bzw. „Zählerwechsel?“).
   - Liegt ein neuer Stand unter dem vorherigen, aber über dem davor, sagt die Warnung beim Eintragen: Die vorherige Ablesung war vermutlich der Tippfehler.
-  - Die API nimmt in diesem Fall wieder Werte an. Ein Sensor-Reset auf 0 bleibt abgelehnt.
+  - Die API nimmt in diesem Fall wieder Werte an – aber nur, wenn der zu hohe Stand in der App eingetragen wurde. Werte vom Sensor selbst (Neustart, älterer Zustand) bleiben abgelehnt.
 - **B2**:
   - Plausible Bereiche: Zustandszahl 0,5–1,5, Brennwert 5–15 kWh/m³. Sonst lehnt das Formular ab.
   - Unter dem Preisfeld erscheint ein Hinweis, wenn der Preis pro m³ unter 0,40 € liegt.
@@ -261,8 +264,26 @@ Umgesetzt wie oben vorgeschlagen, mit diesen Details und Abweichungen:
 - **B11**: Beim Bearbeiten bleibt die Uhrzeit erhalten. Läge sie heute noch in der Zukunft, gilt „jetzt“.
 - **N2** – Abweichung vom Vorschlag: feste Viertelstunden (:00, :15, :30, :45) nach dem Datum der Ablesung, statt nach dem Anlagezeitpunkt der Zeile.
   - Das funktioniert auch für nachgetragene Werte mit `date`.
-  - Es entstehen höchstens 4 Ablesungen pro Stunde.
+  - Eine laufende Automation erzeugt so höchstens 4 Einträge pro Stunde. Nachträge mit `date`, Zählerwechsel und Ablesungen aus der App kommen gegebenenfalls dazu.
 - **README**: Das Verhalten der API ist dort jetzt beschrieben.
+
+## Nachbesserung
+
+Die unabhängige Prüfung der Umsetzung fand diese Punkte. Alle sind behoben und mit Tests belegt.
+
+| Punkt | Schwere | Problem | Lösung |
+| --- | --- | --- | --- |
+| API und Tippfehler | mittel | Die Ausnahme für Tippfehler (B1) ließ in seltenen Fällen einen echten Sensor-Reset durch (z. B. 0 kurz nach einem Zählerwechsel mit Startstand 0). Auch ein älterer Sensorwert nach einem Neustart von Home Assistant kam durch. | Ausnahme nur, wenn der zu hohe Stand aus der App stammt. Nie bis auf einen Zähler-Startstand zurück. |
+| Gleicher Zeitpunkt | niedrig | Vorherige und nächste Ablesung wurden nur nach der Zeit bestimmt. Bei Endstand und Zählerwechsel zur selben Zeit (typisch für alte Nachträge um 12:00) gab es Fehlwarnungen, in der App und in der API. | Nachbarn nach der Position in der Sortierung, in der App wie in der Datenbankabfrage. |
+| Bearbeiten | niedrig | Ein auf einen anderen Tag verschobener Stand konnte genau den Zeitpunkt einer anderen Ablesung bekommen. Eine von beiden fiel dann still aus der Rechnung. Speichern ohne Änderung schnitt Millisekunden ab und erzeugte unnötig einen Abgleich. | Gleicher Tag: Zeitpunkt bleibt. Anderer Tag: Zeitpunkt wie beim Eintragen (nächste freie Minute). |
+| Vergleichswert | niedrig | Vorschau und Warnung verglichen mit einem schon als Tippfehler erkannten Stand. Das ergab z. B. „1.020 kWh pro Tag“. | Verglichen wird mit dem vorherigen **mitgerechneten** Stand. Auch im Verlauf zeigt die Differenz jetzt zur vorherigen mitgerechneten Ablesung. |
+| Ziffer zu viel nach langer Zeit | niedrig | 2.000 → 50.000 nach einem Jahr ergibt nur 131 kWh/Tag und blieb ohne Warnung. | Zusätzlich: ab einem vorherigen Stand von 1.000 warnt ein Wert, der mindestens achtmal so hoch ist. |
+| Sehr kurze Messzeit | niedrig | Zwei Ablesungen eine Stunde auseinander ergaben bei Gas über 14.000 m³ Jahresprognose. | Prognose und Kosten fürs Jahr erst ab 14 Tagen zwischen den Ablesungen. Vorher steht ein Hinweis da. |
+| Nachtrag-Zeitpunkt | Hinweis | Neben Werten im Viertelstundentakt landete ein Nachtrag um 23:46. Eine Ablesung um 23:59 konnte den Zeitpunkt blockieren. | 12:00 bzw. die nächste freie Minute danach. |
+| Hinweistext | Hinweis | „Zustandszahl und Brennwert fehlen“ erschien auch bei Gaszählern in Litern. Dort gibt es diese Felder gar nicht. | Eigener Text für Einheiten außer m³. |
+| Tempo | Hinweis | Bei sehr vielen Werten aus Home Assistant (über 100.000) dauerte die Vorschau rund 100 ms pro Tastendruck. | Bereits sortierte Daten werden nicht neu sortiert. Die Auswertung wird pro Datenstand nur einmal berechnet. |
+
+Auch die Dokumentation wurde berichtigt: Testaussage, Sensor-Reset, Einträge pro Stunde, API-Ausnahme und Grenzen der Ausreißer-Erkennung.
 
 ## Geprüft und korrekt
 
@@ -286,7 +307,7 @@ Umgesetzt wie oben vorgeschlagen, mit diesen Details und Abweichungen:
   - Sie kommt am eingestellten Tag nach deutscher Zeit (Tag 1–28, der Job läuft um 07:00 UTC).
   - Sie kommt nur, wenn ein Zähler seit 5 Tagen keinen neuen Stand hat.
 - **Home-Assistant-API**:
-  - Ein kleinerer Wert wird abgelehnt, außer er ist als Zählerwechsel markiert.
+  - Ein kleinerer Wert wird abgelehnt, außer er ist als Zählerwechsel markiert oder korrigiert einen Tippfehler aus der App (B1).
   - Ein Datum in der Zukunft wird abgelehnt.
 - **Zahlen lesen**: „12.345,6“, „12345,6“, „12345.6“, „0,32 €“ und „1,234,567“ werden richtig gelesen.
 
@@ -298,5 +319,8 @@ Umgesetzt wie oben vorgeschlagen, mit diesen Details und Abweichungen:
 - **Ø 30 Tage** bezieht sich auf die 30 Tage vor der letzten Ablesung, nicht vor heute.
 - **Ausreißer-Erkennung (B1)** erkennt einzelne Tippfehler.
   - Zwei Tippfehler direkt hintereinander sehen aus wie ein nicht markierter Zählerwechsel. Dann zählt wie bisher nur der Sprung nicht, und die App weist darauf hin.
-  - Liegt die neueste Ablesung unter den beiden vorherigen Ständen, zählt sie zunächst nicht. Erst die nächste Ablesung zeigt, ob es ein Zählerwechsel war.
+  - Ist die neueste Ablesung niedriger als die vorherige, steht erst mit der nächsten Ablesung sicher fest, welcher Wert falsch war. Bis dahin entscheidet die Regel oben (kleinerer Verbrauch).
+  - Ein zu hoher Endstand des alten Zählers direkt vor einem markierten Zählerwechsel fällt nicht auf. Danach kommt kein Stand mehr, der ihn als Ausreißer zeigt. Die Warnung beim Eintragen hilft hier.
+  - Ein nicht markierter Zählerwechsel mit einem Tippfehler gleich danach wird nicht sicher erkannt.
+- **Home Assistant**: Liefert ein Sensor mehrmals hintereinander zu hohe Werte (z. B. falsche Skalierung), lehnt die API danach jeden richtigen Wert ab. Abhilfe: die falschen Ablesungen in der App löschen.
 - **Zwei Stände mit exakt gleichem Zeitpunkt**: Es zählt der zuletzt eingetragene.

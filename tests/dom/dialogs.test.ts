@@ -30,6 +30,9 @@ const { BaseDialog } = await import("@/components/ui/BaseDialog");
 const { ListEditDialog } = await import("@/components/dashboard/list/ListEditDialog");
 const { NoteEditDialog } = await import("@/components/dashboard/note/NoteEditDialog");
 const { MeterDetailDialog } = await import("@/components/dashboard/meter/MeterDetailDialog");
+const { MeterWidget } = await import("@/components/dashboard/meter/MeterWidget");
+const { ConsumptionChart } = await import("@/components/dashboard/meter/ConsumptionChart");
+const { MeterCostFields, emptyMeterForm } = await import("@/components/dashboard/meter/MeterForm");
 const { sortReadings } = await import("@/lib/meter/stats");
 const repo = await import("@/lib/offline/repo");
 const { db } = await import("@/lib/offline/db");
@@ -148,7 +151,7 @@ describe("Zähler: Ablesung bearbeiten (Prüfung B6/B11)", () => {
         expect(document.body.textContent).not.toContain("War das ein Zählerwechsel?");
     });
 
-    it("prüft geänderte Stände wie beim Eintragen und lehnt ein Datum in der Zukunft ab", async () => {
+    it("prüft geänderte Stände wie beim Eintragen – zweites Tippen bestätigt", async () => {
         const { meterId } = await setup();
         // neueste Ablesung 105 → 99999: weit über dem üblichen Verbrauch
         await click(buttons("Ablesung bearbeiten")[0]);
@@ -175,5 +178,138 @@ describe("Zähler: Ablesung bearbeiten (Prüfung B6/B11)", () => {
         expect(document.body.textContent).toContain("Zukunft");
         const latest = (await db.readings.where("meterId").equals(meterId).toArray()).find((r) => r.value === 105)!;
         expect(Date.parse(latest.date)).toBeLessThan(Date.now());
+    });
+});
+
+describe("Zähler: Bearbeiten ohne Seiteneffekte (Nachbesserung)", () => {
+    const pastDay = (n: number) => {
+        const d = new Date(Date.now() - n * 86_400_000);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    const noon = (n: number) => {
+        const d = new Date(Date.now() - n * 86_400_000);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).toISOString();
+    };
+
+    async function setup(readings: { value: number; date: string }[]) {
+        const meterId = await repo.addMeter(1, { type: "ELECTRICITY", unit: "kWh" });
+        for (const x of readings) await repo.addReading(meterId, { ...x, isReplacement: false });
+        const load = async () => ({ ...(await db.meters.get(meterId))!, readings: sortReadings(await db.readings.where("meterId").equals(meterId).toArray()) });
+        await mount(h(ConfirmProvider, null, h(ToastProvider, null, h(MeterDetailDialog, { meter: await load(), onClose() {}, onAddReading() {} }))));
+        await act(() => sleep(50));
+        return { meterId, all: () => db.readings.where("meterId").equals(meterId).sortBy("value") };
+    }
+
+    it("Speichern ohne Änderung ändert nichts – auch nicht die Millisekunden", async () => {
+        const date = new Date(Date.now() - 3 * 86_400_000 + 123).toISOString();
+        const { all } = await setup([{ value: 100, date: noon(10) }, { value: 200, date }]);
+        const before = await all();
+        await click(buttons("Ablesung bearbeiten")[0]);
+        await click(buttons("Speichern")[0]);
+        await act(() => sleep(20));
+        expect(await all()).toEqual(before);
+        expect(document.querySelector('input[aria-label="Zählerstand"]')).toBeNull(); // Bearbeiten beendet
+    });
+
+    it("auf einen Tag mit einer anderen Ablesung verschieben: beide zählen, eine Minute auseinander", async () => {
+        const { all } = await setup([
+            { value: 1000, date: noon(40) },
+            { value: 1100, date: noon(30) },
+            { value: 1200, date: noon(20) },
+            { value: 1300, date: noon(10) },
+        ]);
+        // Verlauf absteigend: [1300, 1200, 1100, 1000] → 1200 auf den Tag von 1100 legen
+        await click(buttons("Ablesung bearbeiten")[1]);
+        await act(async () => setInput(document.querySelector<HTMLInputElement>('input[aria-label="Datum"]')!, pastDay(30)));
+        await click(buttons("Speichern")[0]);
+        // 100 kWh in einer Minute: zu Recht eine Warnung – bestätigen
+        expect(document.body.textContent).toContain("Stimmt der Wert?");
+        await click(buttons("Trotzdem speichern")[0]);
+        await act(() => sleep(20));
+        const rows = await all();
+        expect(Date.parse(rows[2].date) - Date.parse(rows[1].date)).toBe(60_000);
+        const { toSegments } = await import("@/lib/meter/stats");
+        const { segments, anomalies } = toSegments(rows);
+        expect(anomalies).toBe(0);
+        expect(segments.reduce((s, x) => s + x.consumption, 0)).toBe(300);
+    });
+});
+
+describe("Zähler: Anzeigen (Prüfung B3/B4/B5/B2)", () => {
+    const DAY = 86_400_000;
+    const meter = (fields: Record<string, unknown>, readings: [daysAgo: number, value: number][]) => ({
+        id: "m1",
+        householdId: 1,
+        name: "Zähler",
+        type: "ELECTRICITY" as const,
+        unit: "kWh",
+        isPinned: false,
+        monthlyPayment: null,
+        basicFee: null,
+        pricePerUnit: null,
+        priceUnit: null,
+        zNumber: null,
+        calorificValue: null,
+        billingStart: null,
+        createdAt: "",
+        updatedAt: "",
+        deletedAt: null,
+        ...fields,
+        readings: readings.map(([days, value], i) => ({
+            id: `r${i}`,
+            meterId: "m1",
+            value,
+            date: new Date(Date.now() - days * DAY).toISOString(),
+            isReplacement: false,
+            source: "app",
+            createdAt: "",
+            updatedAt: "",
+            deletedAt: null,
+        })),
+    });
+    const details = (m: ReturnType<typeof meter>) =>
+        mount(h(ConfirmProvider, null, h(ToastProvider, null, h(MeterDetailDialog, { meter: m as never, onClose() {}, onAddReading() {} }))));
+    const text = () => document.body.textContent ?? "";
+
+    it("B4: angebrochener Monat heißt „erfasst“, nicht „Schätzung“ – auch für Screenreader", async () => {
+        await mount(h(ConsumptionChart, { buckets: [{ month: "2026-09", consumption: 300, coverage: 1 }, { month: "2026-10", consumption: 144, coverage: 0.48 }], unit: "kWh", colorClass: "" }));
+        expect(text()).toContain("erfasst: 48 % des Monats");
+        expect(text()).not.toContain("Schätzung");
+        expect(document.querySelector('button[aria-pressed="true"]')?.getAttribute("aria-label")).toContain("erfasst: 48 % des Monats");
+    });
+
+    it("B5: Monatskosten enthalten die Grundgebühr", async () => {
+        // 10 kWh/Tag × 0,30 € × 30,44 Tage + 10 € = 101,31 €
+        await details(meter({ pricePerUnit: 0.3, basicFee: 10 }, [[60, 1000], [30, 1300], [0, 1600]]));
+        expect(text()).toMatch(/≈ 101,31\s€ pro Monat inkl\. Grundgebühr/);
+    });
+
+    it("B2: Gas pro kWh ohne Zustandszahl/Brennwert zeigt einen Hinweis statt Kosten", async () => {
+        await details(meter({ type: "GAS", unit: "m³", pricePerUnit: 0.11, priceUnit: "kwh", monthlyPayment: 100 }, [[60, 1000], [0, 1300]]));
+        expect(text()).toContain("fehlen Zustandszahl und Brennwert");
+        expect(text()).not.toContain("Kosten (Prognose)");
+    });
+
+    it("B2: Gas pro kWh mit Litern: Hinweis passt zur Einheit", async () => {
+        await details(meter({ type: "GAS", unit: "l", pricePerUnit: 0.11, priceUnit: "kwh" }, [[60, 1000], [0, 1300]]));
+        expect(text()).toContain("lässt sich nicht umrechnen");
+    });
+
+    it("B2: Hinweis, wenn ein Gaspreis pro m³ nach einem Preis pro kWh aussieht", async () => {
+        const form = { ...emptyMeterForm("GAS"), priceUnit: null, pricePerUnit: "0,11" };
+        const rerender = await mount(h(MeterCostFields, { form, onChange() {}, idPrefix: "t" }));
+        expect(text()).toContain("Gaspreise stehen meist pro kWh");
+        await rerender(h(MeterCostFields, { form: { ...form, pricePerUnit: "1,20" }, onChange() {}, idPrefix: "t" }));
+        expect(text()).not.toContain("Gaspreise stehen meist pro kWh");
+    });
+
+    it("B3: wenige Daten → „unsicher“ im Widget, unter 14 Tagen gar keine Prognose", async () => {
+        const m = meter({ pricePerUnit: 0.3, monthlyPayment: 100 }, [[40, 1000], [0, 1400]]);
+        await mount(h(MeterWidget, { meter: m as never, onAddReading() {}, onOpen() {}, onTogglePin() {} }));
+        expect(text()).toContain("unsicher");
+        await unmount();
+        await details(meter({ pricePerUnit: 0.3, monthlyPayment: 100 }, [[2, 1000], [0, 1020]]));
+        expect(text()).toContain("mindestens 14 Tage");
+        expect(text()).not.toContain("Prognose Jahr");
     });
 });
