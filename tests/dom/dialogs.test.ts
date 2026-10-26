@@ -25,6 +25,7 @@ beforeAll(() => {
 });
 
 const { ConfirmProvider } = await import("@/components/ui/ConfirmDialog");
+const { ToastProvider } = await import("@/components/ui/Toast");
 const { BaseDialog } = await import("@/components/ui/BaseDialog");
 const { ListEditDialog } = await import("@/components/dashboard/list/ListEditDialog");
 const { NoteEditDialog } = await import("@/components/dashboard/note/NoteEditDialog");
@@ -59,7 +60,11 @@ describe("Neue Listen und Notizen", () => {
         const list = { ...(await db.todoLists.get(listId))!, items: [] };
         const note = (await db.notes.get(noteId))!;
         await mount(
-            h(StrictMode, null, h(ConfirmProvider, null, h(ListEditDialog, { list, created: true, onClose() {} }), h(NoteEditDialog, { note, created: true, onClose() {} }))),
+            h(
+                StrictMode,
+                null,
+                h(ToastProvider, null, h(ConfirmProvider, null, h(ListEditDialog, { list, created: true, onClose() {} }), h(NoteEditDialog, { note, created: true, onClose() {} }))),
+            ),
         );
         await act(() => sleep(100));
         expect(await db.todoLists.get(listId)).toBeDefined();
@@ -74,7 +79,7 @@ describe("Neue Listen und Notizen", () => {
         // z. B. von jemand anderem angelegt, dessen Punkte nur noch nicht angekommen sind
         const listId = await repo.addList(1, "Neue Liste");
         const list = { ...(await db.todoLists.get(listId))!, items: [] };
-        await mount(h(ConfirmProvider, null, h(ListEditDialog, { list, onClose() {} })));
+        await mount(h(ToastProvider, null, h(ConfirmProvider, null, h(ListEditDialog, { list, onClose() {} }))));
         await act(() => sleep(50));
         await unmount();
         expect(await db.todoLists.get(listId)).toBeDefined();
