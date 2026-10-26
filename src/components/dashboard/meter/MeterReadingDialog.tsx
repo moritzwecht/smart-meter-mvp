@@ -6,10 +6,10 @@ import { FieldLabel } from "@/components/ui/AddTile";
 import { Alert } from "@/components/ui/Alert";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useToast } from "@/components/ui/Toast";
-import { formatConsumption, formatDate, formatReading, plausibilityText, toDateInputValue } from "@/lib/meter/format";
+import { formatAmount, formatConsumption, formatDate, formatReading, plausibilityText, toDateInputValue } from "@/lib/meter/format";
 import { meterTitle } from "@/lib/meter/names";
 import { canComputeCost, checkReading, consumptionCost, previewReading, readingNeighbours, timestampForDay } from "@/lib/meter/stats";
-import { formatCurrency, formatNumber, parseDecimal } from "@/lib/numbers";
+import { formatCurrency, parseDecimal } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
 import { addReading, addReplacement, deleteReading } from "@/lib/offline/repo";
 import type { Reading } from "@/lib/sync/types";
@@ -22,8 +22,12 @@ interface MeterReadingDialogProps {
     onOpenDetails: (meterId: string) => void;
 }
 
-/** Verbrauch zwischen zwei Ständen: höchstens eine Nachkommastelle ab 100, sonst zwei. */
-export const formatAmount = (value: number) => formatNumber(value, Math.abs(value) >= 100 ? 1 : 2, 0);
+/** Ablesungen bis zu einem Zeitpunkt – der Endstand des alten Zählers wird nur mit diesen verglichen, nicht mit dem neuen Zähler. */
+export const readingsUntil = (readings: readonly Reading[], date: string | null) =>
+    date ? readings.filter((r) => Date.parse(r.date) <= Date.parse(date)) : readings;
+
+/** Hinweis, wenn beim Zählerwechsel kein Endstand eingetragen wird */
+export const NO_FINAL_HINT = "Ohne Endstand fehlt der Verbrauch seit der letzten Ablesung – in der Prognose wird er geschätzt.";
 
 /** „7.010“ mit Tausenderpunkt gemeint? Wird als 7,010 gelesen. */
 const looksLikeThousandsDot = (raw: string) => /^\d{1,3}\.\d{3}$/.test(raw.trim());
@@ -137,7 +141,8 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
             : oldValue !== null
               ? { value: oldValue, date, isReplacement: false }
               : { value: parsed, date, isReplacement: true };
-        const issue = checkReading(meter.readings, checked, Date.now(), meter);
+        // Der Endstand gehört zum alten Zähler – spätere Stände (neuer Zähler) sind kein Maßstab
+        const issue = checkReading(isReplacement ? readingsUntil(meter.readings, date) : meter.readings, checked, undefined, meter);
         if (issue?.kind === "future-date") {
             setError(plausibilityText(issue, meter.unit));
             return;
@@ -189,14 +194,15 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
                                 setOldFinal(e.target.value.replace(/[^0-9,.]/g, ""));
                                 reset();
                             }}
+                            autoFocus
                             className="w-full input-field pr-16 text-lg font-bold tabular-nums"
                         />
                         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-foreground pointer-events-none">{meter.unit}</span>
                     </div>
-                    {oldFinal.trim() ? (
-                        <ReadingPreview meter={meter} readings={meter.readings} raw={oldFinal} date={date} />
+                    {warning ? null : oldFinal.trim() ? (
+                        <ReadingPreview meter={meter} readings={readingsUntil(meter.readings, date)} raw={oldFinal} date={date} />
                     ) : (
-                        <p className="text-xs text-muted-foreground">Ohne Endstand fehlt der Verbrauch seit der letzten Ablesung – die App schätzt ihn dann.</p>
+                        <p className="text-xs text-muted-foreground">{NO_FINAL_HINT}</p>
                     )}
                 </div>
             )}
@@ -206,7 +212,7 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
                 <div className="relative">
                     <input
                         id="reading-value"
-                        autoFocus
+                        autoFocus={!isReplacement}
                         type="text"
                         inputMode="decimal"
                         aria-label={isReplacement ? undefined : `Zählerstand in ${meter.unit}`}
@@ -223,7 +229,7 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
                 <div className="-mt-1">
                     {isReplacement ? (
                         <p className="text-xs text-muted-foreground">Ab hier zählt der neue Zähler – der Sprung zum Startstand ist kein Verbrauch.</p>
-                    ) : hasReadings ? (
+                    ) : warning ? null : hasReadings ? (
                         <ReadingPreview meter={meter} readings={meter.readings} raw={value} date={date} />
                     ) : (
                         <p className="text-xs text-muted-foreground">
@@ -267,7 +273,7 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
             {warning && <Alert variant="warning">{warning} Zum Speichern erneut tippen.</Alert>}
             {error && <Alert variant="error">{error}</Alert>}
 
-            <button type="submit" className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
+            <button type="submit" className="w-full btn btn-primary min-h-14 text-sm uppercase tracking-[0.2em] font-black">
                 {warning ? "Trotzdem speichern" : "Speichern"}
             </button>
 

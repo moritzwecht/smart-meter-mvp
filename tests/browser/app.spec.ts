@@ -85,7 +85,7 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await expect(page.getByText(/\+179,5 m³ in \d+ Tagen · ≈ 2,9\d m³\/Tag · ≈ 210,\d\d\s€/)).toBeVisible();
         await page.screenshot({ path: test.info().outputPath("ablesen-vorschau.png") });
         await page.getByRole("button", { name: "Speichern" }).click();
-        await expect(page.getByText("m³/Tag")).toBeVisible();
+        await expect(page.locator("main").getByText("m³/Tag")).toBeVisible();
         await expect.poll(() => count("readings")).toBe(2);
     });
 
@@ -94,6 +94,10 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await page.getByLabel(/Zählerstand/).fill("21800");
         await page.getByRole("button", { name: "Speichern" }).click();
         await expect(page.getByRole("alert").getByText(/Komma verrutscht\?/)).toBeVisible();
+        await expectAccessible(page, "Ablesen mit Warnung");
+        await page.getByLabel("Zählerwechsel: neuer Zähler eingebaut").check();
+        await expect(page.getByLabel("Endstand alter Zähler (empfohlen)")).toBeFocused();
+        await expectAccessible(page, "Ablesen mit Zählerwechsel");
         await page.keyboard.press("Escape");
         expect(await count("readings")).toBe(2);
     });
@@ -103,7 +107,27 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await expect(page.getByText(/pro Tag \(letzte 30 Tage\)/)).toBeVisible();
         await expect(page.getByText("Kosten Abrechnungsjahr (geschätzt)")).toBeVisible();
         await expectAccessible(page, "Zähler-Details");
+
+        // Ablesung bearbeiten (Esc bricht nur das Bearbeiten ab)
+        await page.getByRole("button", { name: /^Ablesung vom .* bearbeiten$/ }).first().click();
+        await expect(page.getByLabel("Stand", { exact: true })).toBeFocused();
+        await expectAccessible(page, "Ablesung bearbeiten");
         await page.keyboard.press("Escape");
+        await expect(page.getByLabel("Stand", { exact: true })).toBeHidden();
+
+        // Einstellungen als eigene Ansicht; ungespeicherte Änderung → Rückfrage
+        await page.getByRole("button", { name: "Einstellungen & Kosten" }).click();
+        await page.getByLabel("Name (optional)").fill("Heizung");
+        await expectAccessible(page, "Zähler-Einstellungen");
+        await page.keyboard.press("Escape");
+        await expect(page.getByText("Änderungen verwerfen?")).toBeVisible();
+        await expectAccessible(page, "Änderungen verwerfen");
+        await page.getByRole("button", { name: "Abbrechen" }).click();
+        await page.getByRole("button", { name: "Einstellungen speichern" }).click();
+        await expect(page.getByRole("heading", { name: "Gaszähler · Heizung" })).toBeVisible();
+        await expect.poll(async () => (await q<{ name: string }>("select name from meters"))[0]?.name).toBe("Heizung");
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("button", { name: "Gas · Heizung: Ablesung eintragen" })).toBeVisible();
     });
 
     await test.step("Einkaufsliste anlegen und abhaken", async () => {
@@ -184,6 +208,9 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await nav(page, "Profil");
         await expect(page.getByText("Ablese-Erinnerung")).toBeVisible();
         await expectAccessible(page, "Profil");
+        await page.getByRole("button", { name: "Zähler-IDs & Beispiel für Home Assistant anzeigen" }).click();
+        await expect(page.getByText("So speichert die App deine Werte")).toBeVisible();
+        await expectAccessible(page, "Profil mit Home-Assistant-Beispiel");
     });
 
     let inviteLink = "";

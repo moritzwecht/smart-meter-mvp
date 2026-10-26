@@ -399,6 +399,50 @@ describe("Zähler: Abläufe aus der UX-Prüfung (U7, U9, U11, U13)", () => {
         expect(document.body.textContent).not.toContain("wurde der Zähler getauscht?");
     });
 
+    it("Nachbesserung N1: korrekter Endstand beim nachträglichen Markieren – keine Fehlwarnung durch Stände des neuen Zählers", async () => {
+        const meterId = await repo.addMeter(1, { type: "WATER", unit: "m³" });
+        await repo.addReading(meterId, { value: 580, date: ago(50), isReplacement: false });
+        await repo.addReading(meterId, { value: 597.3, date: ago(40), isReplacement: false });
+        await repo.addReading(meterId, { value: 12.4, date: ago(30), isReplacement: false }); // neuer Zähler, nicht markiert
+        await repo.addReading(meterId, { value: 20.9, date: ago(20), isReplacement: false });
+        await repo.addReading(meterId, { value: 29.1, date: ago(10), isReplacement: false });
+        await mount(providers(h(MeterDetailDialog, { meter: await load(meterId), onClose() {}, onAddReading() {} })));
+        await act(() => sleep(50));
+        // zugeklappter Verlauf wird für die Aktion aufgeklappt
+        await click(buttons(/^Verlauf/)[0]);
+        await click(buttons("Als Zählerwechsel markieren")[0]);
+        expect(document.activeElement?.id).toMatch(/^edit-old-/); // Fokus im leeren Endstand
+        await typeInto('input[id^="edit-old-"]', "600");
+        expect(document.body.textContent).not.toContain("Stimmt der Wert?");
+        await click(buttons("Speichern")[0]);
+        await act(() => sleep(30));
+        const rows = sortReadings(await db.readings.where("meterId").equals(meterId).toArray());
+        expect(rows.map((r) => [r.value, r.isReplacement])).toEqual([
+            [580, false],
+            [597.3, false],
+            [600, false],
+            [12.4, true],
+            [20.9, false],
+            [29.1, false],
+        ]);
+    });
+
+    it("Nachbesserung N7: Esc im Bearbeiten bricht nur das Bearbeiten ab", async () => {
+        const meterId = await repo.addMeter(1, { type: "ELECTRICITY", unit: "kWh" });
+        await repo.addReading(meterId, { value: 100, date: ago(20), isReplacement: false });
+        await repo.addReading(meterId, { value: 200, date: ago(10), isReplacement: false });
+        let closed = 0;
+        await mount(providers(h(MeterDetailDialog, { meter: await load(meterId), onClose: () => closed++, onAddReading() {} })));
+        await act(() => sleep(50));
+        await click(buttons(EDIT)[0]);
+        const input = document.querySelector<HTMLInputElement>('input[id^="edit-value-"]')!;
+        await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+        await act(() => sleep(20));
+        expect(closed).toBe(0);
+        expect(document.querySelector('input[id^="edit-value-"]')).toBeNull();
+        expect(document.activeElement?.getAttribute("aria-label")).toMatch(EDIT);
+    });
+
     it("U11: Einstellungen – ungespeicherte Änderungen werden nicht still verworfen, Einheit ändern fragt nach", async () => {
         const meterId = await repo.addMeter(1, { type: "ELECTRICITY", unit: "kWh", monthlyPayment: 85 });
         await repo.addReading(meterId, { value: 100, date: ago(10), isReplacement: false });
@@ -426,5 +470,24 @@ describe("Zähler: Abläufe aus der UX-Prüfung (U7, U9, U11, U13)", () => {
         await act(() => sleep(50));
         const meter = (await db.meters.get(meterId))!;
         expect([meter.unit, meter.monthlyPayment]).toEqual(["m³", 999]);
+    });
+});
+
+describe("Nachbesserung U1: gespeicherter Cent-Preis", () => {
+    it("Karte und Details zeigen keine absurden Beträge, sondern „Preis prüfen“", async () => {
+        const meterId = await repo.addMeter(1, { type: "ELECTRICITY", unit: "kWh", pricePerUnit: 32, monthlyPayment: 85 });
+        const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+        await repo.addReading(meterId, { value: 1000, date: day(60), isReplacement: false });
+        await repo.addReading(meterId, { value: 1600, date: day(1), isReplacement: false });
+        const meter = { ...(await db.meters.get(meterId))!, readings: sortReadings(await db.readings.where("meterId").equals(meterId).toArray()) };
+        await mount(h(MeterWidget, { meter: meter as never, onAddReading() {}, onOpen() {}, onTogglePin() {} }));
+        expect(document.body.textContent).toContain("Preis prüfen");
+        expect(document.body.textContent).not.toContain("Nachzahlung");
+        await unmount();
+        await mount(h(ConfirmProvider, null, h(ToastProvider, null, h(MeterDetailDialog, { meter: meter as never, onClose() {}, onAddReading() {} }))));
+        await act(() => sleep(50));
+        expect(document.body.textContent).toContain("vermutlich in Cent statt Euro");
+        expect(document.body.textContent).not.toContain("Kosten Abrechnungsjahr");
+        expect(document.body.textContent).not.toContain("pro Monat inkl. Grundgebühr");
     });
 });

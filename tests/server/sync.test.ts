@@ -54,6 +54,16 @@ describe("Sync-Push", () => {
         // leerer Name → Standardname des Typs
         await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "GAS", name: "" } })]);
         expect(await name()).toBe("Gas");
+        // leerer Name ohne Typ → Standardname des gespeicherten Typs (Gas)
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { name: "" } })]);
+        expect(await name()).toBe("Gas");
+        // ältere App-Version wechselt den Typ: ein Standardname folgt dem Typ …
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "WATER", unit: "m³" } })]);
+        expect(await name()).toBe("Wasser");
+        // … ein eigener Name bleibt
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { name: "Garten" } })]);
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "GAS", unit: "m³" } })]);
+        expect(await name()).toBe("Garten");
         // zu lang wird abgelehnt
         const [tooLong] = await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { name: "x".repeat(41) } })]);
         expect(tooLong.status).toBe("rejected");

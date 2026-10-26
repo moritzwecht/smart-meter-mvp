@@ -37,24 +37,29 @@ rest_command:
     payload: '{"meterId": "{{ meter_id }}", "value": {{ value }}}'`;
 }
 
-/** Beispiel-Automation – als eigener Eintrag für automations.yaml (oder in der HA-Oberfläche als YAML einfügen) */
+/**
+ * Beispiel-Automation als einzelner Eintrag – so passt sie direkt in den YAML-Editor der
+ * HA-Oberfläche. In automations.yaml gehört ein „- “ davor (Listeneintrag).
+ */
 function automationExample(meterId: string, title: string, unit: string) {
-    return `# automations.yaml – oder in Home Assistant unter
-# Einstellungen → Automationen → Neu → „Als YAML bearbeiten“
-- alias: "Zählerstand ${title} an My Home"
-  description: "Sensor muss in ${unit} melden"
-  triggers:
-    - trigger: time
-      at: "23:55:00"
-  conditions:
-    # nur gültige Zahlen senden (nicht "unavailable"/"unknown")
-    - condition: template
-      value_template: "{{ states('sensor.DEIN_ZAEHLER') | is_number }}"
-  actions:
-    - action: rest_command.my_home_reading
-      data:
-        meter_id: "${meterId}"
-        value: "{{ states('sensor.DEIN_ZAEHLER') }}"`;
+    return `# Home Assistant: Einstellungen → Automationen → Neu →
+# ⋮ → „In YAML bearbeiten“ und einfügen.
+# (In automations.yaml stattdessen mit „- “ vor „id:“.)
+id: "my_home_${meterId.slice(0, 8)}"
+alias: "Zählerstand ${title} an My Home"
+description: "Sensor muss in ${unit} melden"
+triggers:
+  - trigger: time
+    at: "23:55:00"
+conditions:
+  # nur gültige Zahlen senden (nicht "unavailable"/"unknown")
+  - condition: template
+    value_template: "{{ states('sensor.DEIN_ZAEHLER') | is_number }}"
+actions:
+  - action: rest_command.my_home_reading
+    data:
+      meter_id: "${meterId}"
+      value: "{{ states('sensor.DEIN_ZAEHLER') }}"`;
 }
 
 function CodeBlock({ label, code, onCopy }: { label: string; code: string; onCopy: () => void }) {
@@ -150,7 +155,7 @@ export function ApiSection() {
                             <button
                                 type="button"
                                 aria-label={`Token ${t.name} löschen`}
-                                className="w-11 h-11 -m-2 flex items-center justify-center text-muted-foreground hover:text-red-700 dark:hover:text-red-400"
+                                className="shrink-0 w-11 h-11 -m-2 flex items-center justify-center text-muted-foreground hover:text-red-700 dark:hover:text-red-400"
                                 onClick={async () => {
                                     if (!(await confirm({ title: `Token „${t.name}“ löschen?`, message: "Geräte, die ihn nutzen, können danach keine Werte mehr eintragen.", confirmLabel: "Löschen", danger: true }))) return;
                                     const result = await runAction(() => deleteToken({ id: t.id }));
@@ -193,10 +198,9 @@ export function ApiSection() {
                                         <button
                                             type="button"
                                             className="shrink-0 min-h-11 px-3 flex items-center gap-1.5 font-mono text-foreground/80 hover:text-primary"
-                                            aria-label={`Zähler-ID von ${meterTitle(m)} kopieren`}
                                             onClick={() => void copyText(m.id, "Zähler-ID")}
                                         >
-                                            {m.id.slice(0, 8)}…
+                                            {m.id.slice(0, 8)}…<span className="sr-only"> – Zähler-ID von {meterTitle(m)} kopieren</span>
                                             <Copy className="w-3.5 h-3.5" aria-hidden />
                                         </button>
                                     </li>
@@ -234,7 +238,7 @@ export function ApiSection() {
                                     )}
                                     <CodeBlock label="REST-Befehl (configuration.yaml)" code={restCommandExample(origin)} onCopy={() => void copyText(restCommandExample(origin), "Beispiel")} />
                                     <CodeBlock
-                                        label="Automation (automations.yaml)"
+                                        label="Automation"
                                         code={automationExample(exampleMeter.id, meterTitle(exampleMeter), exampleMeter.unit)}
                                         onCopy={() => void copyText(automationExample(exampleMeter.id, meterTitle(exampleMeter), exampleMeter.unit), "Beispiel")}
                                     />

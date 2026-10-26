@@ -358,7 +358,8 @@ export function MeterCostFields({
                         {tooHigh && price !== null && (
                             <div className="text-xs text-amber-800 dark:text-amber-300 space-y-1" role="status">
                                 <p>
-                                    {formatNumber(price, 4, 2)} {priceSuffix} ist sehr hoch. Steht auf der Rechnung ein Preis in Cent?
+                                    {formatNumber(price, 4, 2)} {priceSuffix} ist sehr hoch.{" "}
+                                    {tooHigh === 1000 ? "Ist das der Preis pro m³? Pro Liter ist es ein Tausendstel." : "Steht auf der Rechnung ein Preis in Cent?"}
                                 </p>
                                 <button
                                     type="button"

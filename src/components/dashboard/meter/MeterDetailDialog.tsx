@@ -39,7 +39,7 @@ import type { Reading } from "@/lib/sync/types";
 import { cn } from "@/lib/utils";
 import { ConsumptionChart } from "./ConsumptionChart";
 import { focusFormField, MeterCostFields, meterFieldsFromForm, meterFormFromFields, MeterTypeFields, type MeterFormError, type MeterFormState } from "./MeterForm";
-import { ReadingPreview } from "./MeterReadingDialog";
+import { NO_FINAL_HINT, ReadingPreview, readingsUntil } from "./MeterReadingDialog";
 import { METER_ICONS } from "./MeterWidget";
 
 const CHART_COLORS = { ELECTRICITY: "bg-amber-500", WATER: "bg-blue-500", GAS: "bg-orange-500" } as const;
@@ -135,7 +135,8 @@ function Statistics({ meter, onOpenSettings, onFix }: { meter: MeterWithReadings
                 return stats.flags.get(r) === "drop" ? (
                     <Notice key={r.id} action="Als Zählerwechsel markieren" onAction={() => onFix({ id: r.id, preset: "replacement" })}>
                         {formatDate(r.date)}: {formatReading(r.value)} {unit} ist niedriger als {previous ? `${formatReading(previous.value)} ${unit}` : "der Stand davor"} –
-                        wurde der Zähler getauscht? Bis dahin zählt der Verbrauch dazwischen nicht.
+                        wurde der Zähler getauscht? Solange das offen ist, zählt der Verbrauch
+                        {previous ? ` zwischen ${formatDate(previous.date)} und ${formatDate(r.date)}` : " dazwischen"} nicht.
                     </Notice>
                 ) : (
                     <Notice key={r.id} action="Korrigieren" onAction={() => onFix({ id: r.id })}>
@@ -180,16 +181,18 @@ function Statistics({ meter, onOpenSettings, onFix }: { meter: MeterWithReadings
     }
 
     const p = stats.projection;
-    const hasCost = canComputeCost(meter);
+    // Preis vermutlich in Cent eingetragen: Beträge wären absurd – nur der Hinweis „Preis prüfen“
+    const hasCost = canComputeCost(meter) && !priceTooHigh;
     // Monatskosten wie der Abschlag: Arbeitspreis + Grundgebühr
     const perMonthCost = hasCost && stats.recent !== null ? consumptionCost(meter, stats.recent) * DAYS_PER_MONTH + (meter.basicFee ?? 0) : null;
-    const showOverall = stats.measuredDays > 31;
+    const showRecent = stats.recent !== null && stats.recentDays >= 1;
+    const showOverall = stats.measuredDays > 31 || !showRecent;
 
     return (
         <div className="space-y-6">
             {notices}
             <dl className="grid grid-cols-2 gap-3">
-                {p?.balance != null && (
+                {hasCost && p?.balance != null && (
                     <Stat
                         wide
                         label={p.balance >= 0 ? "Voraussichtliches Guthaben" : "Voraussichtliche Nachzahlung"}
@@ -203,20 +206,22 @@ function Statistics({ meter, onOpenSettings, onFix }: { meter: MeterWithReadings
                         }
                     />
                 )}
-                <Stat
-                    label={
-                        <>
-                            <Avg /> pro Tag (letzte {stats.recentDays} {stats.recentDays === 1 ? "Tag" : "Tage"})
-                        </>
-                    }
-                    value={stats.recent !== null ? `${formatConsumption(stats.recent)} ${unit}` : "–"}
-                    hint={
-                        <>
-                            bis {formatDate(stats.lastEnd!)}
-                            {perMonthCost !== null && ` · ≈ ${formatCurrency(perMonthCost, { whole: true })} pro Monat inkl. Grundgebühr`}
-                        </>
-                    }
-                />
+                {showRecent && (
+                    <Stat
+                        label={
+                            <>
+                                <Avg /> pro Tag ({stats.recentDays === 1 ? "letzter Tag" : `letzte ${stats.recentDays} Tage`})
+                            </>
+                        }
+                        value={`${formatConsumption(stats.recent!)} ${unit}`}
+                        hint={
+                            <>
+                                bis {formatDate(stats.lastEnd!)}
+                                {perMonthCost !== null && ` · ≈ ${formatCurrency(perMonthCost, { whole: true })} pro Monat inkl. Grundgebühr`}
+                            </>
+                        }
+                    />
+                )}
                 {showOverall && (
                     <Stat
                         label={
@@ -242,7 +247,7 @@ function Statistics({ meter, onOpenSettings, onFix }: { meter: MeterWithReadings
                             }
                         />
                         <Stat
-                            label={`Prognose bis ${formatDate(p.periodEnd - DAY_MS)}`}
+                            label={`Prognose bis ${formatDate(p.periodEnd - 1)}`}
                             value={`${formatConsumption(p.projectedConsumption)} ${unit}`}
                             hint={
                                 <>
@@ -254,7 +259,7 @@ function Statistics({ meter, onOpenSettings, onFix }: { meter: MeterWithReadings
                         />
                     </>
                 )}
-                {p?.projectedCost != null && (
+                {hasCost && p?.projectedCost != null && (
                     <Stat label="Kosten Abrechnungsjahr (geschätzt)" value={`≈ ${formatCurrency(p.projectedCost, { whole: true })}`} hint="inkl. Grundgebühr" />
                 )}
             </dl>
@@ -298,8 +303,16 @@ function ReadingRow({
     const { unit } = meter;
     const delta = previous && !reading.isReplacement ? reading.value - previous.value : null;
     const dateText = formatDate(reading.date);
+    const editButton = useRef<HTMLButtonElement>(null);
+    const editing = edit?.id === reading.id;
+    const wasEditing = useRef(false);
+    // Nach Speichern/Abbrechen den Fokus zurück auf die Zeile geben
+    useEffect(() => {
+        if (wasEditing.current && !editing) editButton.current?.focus();
+        wasEditing.current = editing;
+    }, [editing]);
 
-    if (edit?.id === reading.id) {
+    if (edit && editing) {
         return <ReadingEditor key={`${reading.id}:${edit.preset ?? ""}`} reading={reading} meter={meter} preset={edit.preset} onDone={() => onEdit(null)} />;
     }
 
@@ -333,6 +346,7 @@ function ReadingRow({
             </div>
             <div className="flex">
                 <button
+                    ref={editButton}
                     type="button"
                     onClick={() => onEdit({ id: reading.id })}
                     className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-primary"
@@ -396,7 +410,8 @@ function ReadingEditor({ reading, meter, preset, onDone }: { reading: Reading; m
             : oldValue !== null
               ? { value: oldValue, date, isReplacement: false }
               : { value: parsed, date, isReplacement: true };
-        const issue = checkReading(others, checked, Date.now(), meter);
+        // Der Endstand gehört zum alten Zähler – spätere Stände (neuer Zähler) sind kein Maßstab
+        const issue = checkReading(isReplacement ? readingsUntil(others, date) : others, checked, Date.now(), meter);
         if (issue?.kind === "future-date") {
             setError(plausibilityText(issue, unit));
             return;
@@ -414,35 +429,50 @@ function ReadingEditor({ reading, meter, preset, onDone }: { reading: Reading; m
 
     return (
         <li ref={ref} className="p-3 bg-accent/20">
-            <form onSubmit={save} noValidate className="space-y-3">
+            <form
+                onSubmit={save}
+                noValidate
+                className="space-y-3"
+                // Esc bricht nur das Bearbeiten ab, statt das ganze Sheet zu schließen
+                onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                        e.stopPropagation();
+                        onDone();
+                    }
+                }}
+            >
                 {addsOldFinal && (
                     <div className="space-y-1">
                         <FieldLabel htmlFor={`edit-old-${reading.id}`}>Endstand alter Zähler (empfohlen)</FieldLabel>
-                        <input
-                            id={`edit-old-${reading.id}`}
-                            inputMode="decimal"
-                            value={oldFinal}
-                            placeholder="Letzter Stand vor dem Ausbau"
-                            onChange={(e) => {
-                                setOldFinal(e.target.value);
-                                setWarning(null);
-                            }}
-                            className="input-field w-full py-2"
-                        />
-                        {oldFinal.trim() ? (
-                            <ReadingPreview meter={meter} readings={others} raw={oldFinal} date={date} />
+                        <div className="relative">
+                            <input
+                                id={`edit-old-${reading.id}`}
+                                autoFocus
+                                inputMode="decimal"
+                                value={oldFinal}
+                                placeholder="Letzter Stand vor dem Ausbau"
+                                onChange={(e) => {
+                                    setOldFinal(e.target.value);
+                                    setWarning(null);
+                                }}
+                                className="input-field w-full py-2 pr-12"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">{unit}</span>
+                        </div>
+                        {warning ? null : oldFinal.trim() ? (
+                            <ReadingPreview meter={meter} readings={readingsUntil(others, date)} raw={oldFinal} date={date} />
                         ) : (
-                            <p className="text-xs text-muted-foreground">Ohne Endstand zählt der Verbrauch bis zum Wechsel nicht mit.</p>
+                            <p className="text-xs text-muted-foreground">{NO_FINAL_HINT}</p>
                         )}
                     </div>
                 )}
-                <div className="grid grid-cols-[1fr_auto] gap-2">
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-[1fr_auto] gap-2">
                     <div className="space-y-1 min-w-0">
                         <FieldLabel htmlFor={`edit-value-${reading.id}`}>{isReplacement ? "Startstand neuer Zähler" : "Stand"}</FieldLabel>
                         <div className="relative">
                             <input
                                 id={`edit-value-${reading.id}`}
-                                autoFocus
+                                autoFocus={!addsOldFinal}
                                 inputMode="decimal"
                                 value={value}
                                 onChange={(e) => {
@@ -465,11 +495,11 @@ function ReadingEditor({ reading, meter, preset, onDone }: { reading: Reading; m
                                 setDay(e.target.value);
                                 setWarning(null);
                             }}
-                            className="input-field py-2"
+                            className="input-field w-full py-2"
                         />
                     </div>
                 </div>
-                {!isReplacement && <ReadingPreview meter={meter} readings={others} raw={value} date={date} />}
+                {!isReplacement && !warning && <ReadingPreview meter={meter} readings={others} raw={value} date={date} />}
                 <label className="flex items-center gap-3 min-h-11 text-xs font-medium cursor-pointer select-none">
                     <input
                         type="checkbox"
@@ -539,12 +569,11 @@ function History_({ meter, edit, onEdit }: { meter: MeterWithReadings; edit: Edi
     );
 }
 
-function Collapsible({ title, children, defaultOpen = false }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
-    const [open, setOpen] = useState(defaultOpen);
+function Collapsible({ title, children, open, onToggle }: { title: string; children: ReactNode; open: boolean; onToggle: () => void }) {
     return (
         <section className="space-y-3">
             <h3>
-                <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex items-center gap-2 w-full min-h-11 text-left">
+                <button type="button" onClick={onToggle} aria-expanded={open} className="flex items-center gap-2 w-full min-h-11 text-left">
                     <ChevronDown className={cn("w-4 h-4 opacity-50 transition-transform", !open && "-rotate-90")} aria-hidden />
                     <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{title}</span>
                 </button>
@@ -564,6 +593,7 @@ interface MeterDetailDialogProps {
 interface DetailState {
     instance?: number;
     view: "overview" | "settings";
+    historyOpen: boolean;
     form: MeterFormState | null;
     error: MeterFormError | null;
     edit: EditRequest | null;
@@ -574,7 +604,7 @@ const SETTINGS_PREFIX = "meter-settings";
 export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: MeterDetailDialogProps) {
     const confirm = useConfirm();
     const toast = useToast();
-    const fresh = (): DetailState => ({ instance, view: "overview", form: null, error: null, edit: null });
+    const fresh = (): DetailState => ({ instance, view: "overview", historyOpen: true, form: null, error: null, edit: null });
     const [state, setState] = useState<DetailState>(fresh);
     // Bei jedem Öffnen frisch starten
     if (state.instance !== instance) setState(fresh());
@@ -616,9 +646,9 @@ export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: Me
         const unitChanged = result.fields.unit !== meter.unit;
         const typeChanged = result.fields.type !== meter.type;
         if (n > 0 && (unitChanged || typeChanged)) {
-            const what = unitChanged ? `als ${result.fields.unit}` : `als ${METER_TYPE_LABELS[result.fields.type]}`;
+            const what = [typeChanged && `als ${METER_TYPE_LABELS[result.fields.type]}`, unitChanged && `in ${result.fields.unit}`].filter(Boolean).join(" ");
             const ok = await confirm({
-                title: unitChanged ? "Einheit ändern?" : "Zählertyp ändern?",
+                title: typeChanged && unitChanged ? "Zählertyp und Einheit ändern?" : unitChanged ? "Einheit ändern?" : "Zählertyp ändern?",
                 message: `${n === 1 ? "Die Ablesung bleibt" : `Die ${n} Ablesungen bleiben`} unverändert und ${n === 1 ? "gilt" : "gelten"} danach ${what}. Nur ändern, wenn das beim Anlegen falsch eingestellt war.`,
                 confirmLabel: "Ändern",
             });
@@ -670,12 +700,12 @@ export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: Me
                 (settings ? (
                     <div className="space-y-3">
                         {state.error && <Alert variant="error">{state.error.error}</Alert>}
-                        <button type="button" onClick={() => void saveSettings()} className="w-full btn btn-primary py-3">
+                        <button type="button" onClick={() => void saveSettings()} className="w-full btn btn-primary min-h-12">
                             Einstellungen speichern
                         </button>
                     </div>
                 ) : (
-                    <button type="button" onClick={() => onAddReading(meter.id)} className="w-full btn btn-primary py-3">
+                    <button type="button" onClick={() => onAddReading(meter.id)} className="w-full btn btn-primary min-h-12">
                         {Icon && <Icon className="w-4 h-4" />}
                         Ablesung eintragen
                     </button>
@@ -698,8 +728,8 @@ export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: Me
             )}
             {meter && !settings && (
                 <div key={`${meter.id}:${instance}`} className="space-y-8">
-                    <Statistics meter={meter} onOpenSettings={openSettings} onFix={(edit) => setState((s) => ({ ...s, edit }))} />
-                    <Collapsible title={`Verlauf (${meter.readings.length})`} defaultOpen>
+                    <Statistics meter={meter} onOpenSettings={openSettings} onFix={(edit) => setState((s) => ({ ...s, edit, historyOpen: true }))} />
+                    <Collapsible title={`Verlauf (${meter.readings.length})`} open={state.historyOpen} onToggle={() => setState((s) => ({ ...s, historyOpen: !s.historyOpen }))}>
                         <History_ meter={meter} edit={state.edit} onEdit={(edit) => setState((s) => ({ ...s, edit }))} />
                     </Collapsible>
                 </div>

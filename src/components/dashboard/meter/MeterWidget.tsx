@@ -4,7 +4,7 @@ import { AlertTriangle, BarChart3, Droplets, Flame, Plus, Zap } from "lucide-rea
 import { memo, useMemo, useState } from "react";
 import { formatConsumption, formatReading, formatRelativeDay } from "@/lib/meter/format";
 import { meterTitle } from "@/lib/meter/names";
-import { DAY_MS, projectBillingPeriod, recentDailyAverage, dailyAverage, toSegments } from "@/lib/meter/stats";
+import { DAY_MS, priceLooksTooHigh, projectBillingPeriod, recentDailyAverage, dailyAverage, toSegments } from "@/lib/meter/stats";
 import { formatCurrency } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
 import { PinButton } from "@/components/ui/PinButton";
@@ -46,7 +46,9 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
     const lastReading = meter.readings[meter.readings.length - 1];
     const stale = !!lastReading && now - Date.parse(lastReading.date) > STALE_DAYS * DAY_MS;
     const projection = stats.projection;
-    const budgetRatio = projection?.projectedCost != null && projection.payments ? projection.projectedCost / projection.payments : null;
+    // Preis vermutlich in Cent eingetragen → keine absurden Beträge zeigen, sondern zum Prüfen auffordern
+    const priceTooHigh = priceLooksTooHigh(meter) !== null;
+    const budgetRatio = !priceTooHigh && projection?.projectedCost != null && projection.payments ? projection.projectedCost / projection.payments : null;
     const balance = projection?.balance ?? null;
     const balanceText =
         balance !== null ? `≈ ${formatCurrency(Math.abs(balance), { whole: true })} ${balance >= 0 ? "Guthaben" : "Nachzahlung"}` : "";
@@ -62,7 +64,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                         <p className="text-xs font-bold text-muted-foreground truncate">{title}</p>
                         {stats.perDay !== null ? (
                             <>
-                                <div className={cn("flex items-baseline gap-1", stale && "opacity-60")}>
+                                <div className="flex items-baseline gap-1">
                                     <span className="text-xl font-black tabular-nums">{formatConsumption(stats.perDay)}</span>
                                     <span className="text-xs font-bold text-muted-foreground">
                                         {meter.unit}/Tag<span className="sr-only"> im Durchschnitt</span>
@@ -95,16 +97,19 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                 <PinButton large pinned={meter.isPinned} name={title} onToggle={() => onTogglePin(meter.id, !meter.isPinned)} />
             </div>
 
-            {(stale || stats.anomalies > 0) && (
+            {(stale || stats.anomalies > 0 || priceTooHigh) && (
                 <button
                     type="button"
-                    onClick={() => onOpen(meter.id)}
+                    // Auffälligkeiten → Details zum Prüfen; veralteter Stand → direkt ablesen
+                    onClick={() => (stats.anomalies > 0 || priceTooHigh ? onOpen(meter.id) : onAddReading(meter.id))}
                     className="flex items-center gap-2 min-h-11 -my-1 px-2 rounded-lg bg-amber-500/10 text-xs font-medium text-amber-800 dark:text-amber-300 text-left"
                 >
                     <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
                     {stats.anomalies > 0
                         ? `${stats.anomalies === 1 ? "1 Ablesung" : `${stats.anomalies} Ablesungen`} prüfen`
-                        : `Letzte Ablesung ${formatRelativeDay(lastReading!.date)} – jetzt ablesen?`}
+                        : priceTooHigh
+                          ? "Preis prüfen – in Cent statt Euro eingetragen?"
+                          : `Letzte Ablesung ${formatRelativeDay(lastReading!.date)} – jetzt ablesen?`}
                 </button>
             )}
 

@@ -72,7 +72,7 @@ Schwere: **hoch** = führt zu falschen Zahlen oder Entscheidungen oder blockiert
   - Ein Zähler darf deshalb ohne Zustandszahl und Brennwert angelegt werden; ein Hinweis erklärt, dass Kosten erst danach erscheinen.
   - Unplausible Werte sperren weiter: Der Fehler steht dann über dem Knopf, und der Fokus springt aufs Feld.
 - **U2 und der Server:**
-  - Namen ohne Datenbank-Migration über die vorhandene Spalte `name`. Leer heißt Standardname, also der Typ.
+  - Namen ohne Datenbank-Migration über die vorhandene Spalte `name`. Leer heißt Standardname des Typs (des mitgeschickten oder, falls keiner kommt, des gespeicherten).
   - Der Server übernimmt den Namen nur, wenn er mitgeschickt wird. Bisher setzte er den Namen bei jeder Typangabe auf den Typ zurück.
   - So überschreiben auch ältere App-Versionen, die beim Speichern der Einstellungen den Typ mitschicken, keinen eigenen Namen.
 - **U11:** Einheit und Typ nicht sperren, sondern bestätigen lassen – sonst bliebe bei einer falsch gewählten Einheit nur Löschen.
@@ -105,7 +105,7 @@ Schwere: **hoch** = führt zu falschen Zahlen oder Entscheidungen oder blockiert
 | U12 | Bearbeiten als Formular: Beschriftungen, Einheit im Feld, Live-Vorschau, Enter speichert, Knöpfe „Abbrechen“ und „Speichern“ bzw. „Trotzdem speichern“, gleicher Haken-Text wie beim Ablesen. Ein Datum in der Zukunft wird mit eigener Meldung abgelehnt (statt Browser-Blase). |
 | U13 | Toast „Gespeichert: 7.024,2 m³ (+9,5 m³ seit 24.10.2026)“ mit „Rückgängig“ (6 s); beim Zählerwechsel entfernt Rückgängig beide Einträge. |
 | U14 | Einheiten nie in Großbuchstaben. |
-| U15 | Aufklapp-Köpfe, Textknöpfe, Umschalter, Einheiten, Checkboxen (mit Beschriftung), Schließen und Profil-Knöpfe mindestens 44 px. |
+| U15 | Aufklapp-Köpfe, Textknöpfe, Umschalter, Einheiten, Checkboxen (mit Beschriftung), Schließen, Profil-Knöpfe und die Hauptknöpfe der Zählerdialoge mindestens 44 px. Ursache bei den Hauptknöpfen: `.btn` steht in `globals.css` außerhalb von `@layer` und überschreibt `py-…`; dort jetzt `min-h-…`. |
 | U16 | Knöpfe mit Zählerbezug („Gas: Ablesung eintragen“), „Ø“ mit „Durchschnitt“ für Screenreader, Kacheln als Liste von Begriffen (`dl`), Verlaufszeilen mit Trennern und „Verbrauch seit vorher“, „Ablesung vom … bearbeiten/löschen“, Abschnittstitel als Überschriften, Karte als benannter Bereich. |
 | U17 | In „Bisher“ und „Prognose“ zusätzlich „≈ … kWh“, wenn die Umrechnung vollständig ist. |
 | U18 | Absatz „So speichert die App deine Werte“. REST-Befehl und Automation sind getrennte Blöcke in aktueller Syntax (`triggers`/`actions`), mit Bedingung `is_number`, Auswahl des Zählers, Kopieren-Knopf und per Tastatur scrollbar. IDs mit Namen, Kopier-Symbol und aria-label. |
@@ -130,4 +130,38 @@ Schwere: **hoch** = führt zu falschen Zahlen oder Entscheidungen oder blockiert
   - Anzeigen (Diagramm, Monatskosten, Umrechnung, Cent-Hinweis, „grobe Schätzung“)
 - Unit-Tests für die Cent-Prüfung, Ø ab einem Tag und den geschätzten Anteil.
 - Ein Server-Test für die Namen.
-- Der Browser-Test mit axe-core läuft über die geänderten Ansichten.
+- Der Browser-Test mit axe-core prüft jetzt auch:
+  - Ablesen mit Warnung und mit Zählerwechsel
+  - Bearbeiten
+  - Einstellungen und „Änderungen verwerfen?“
+  - das Home-Assistant-Beispiel im Profil
+
+## Gegenprüfung der Umsetzung und Nachbesserung
+
+Eine weitere unabhängige Prüfung hat die Umsetzung in der laufenden App nachvollzogen:
+- 320 und 390 px, hell und dunkel
+- axe-core, Tippflächen, Fokus
+- Server-Sync direkt
+- 20.000 Ablesungen
+
+**Ergebnis:**
+- 23 Punkte sind erledigt. Teilweise erledigt waren U1, U9, U15 und U25 (U27 bewusst nur teilweise).
+- Die Rechenwerte stimmen nachgerechnet.
+- Keine Überbreite, Tippen bleibt flüssig.
+
+Gefundene Punkte, alle behoben und mit Tests belegt:
+
+| Punkt | Schwere | Problem | Lösung |
+| --- | --- | --- | --- |
+| N1 | mittel | „Als Zählerwechsel markieren“ warnte bei einem korrekten Endstand („höher als die spätere Ablesung“), weil mit Ständen des neuen Zählers verglichen wurde. | Endstand nur gegen Ablesungen bis zum Wechsel prüfen, in Dialog und Bearbeiten. Test mit zwei Folgeablesungen. |
+| N2 | mittel | Abgeschwächter Ø bei veraltetem Stand: Kontrast 2,3:1. | Keine Abschwächung; der Hinweis genügt. |
+| N3 | mittel | Zähler-ID-Knopf: Name ohne sichtbaren Text (WCAG 2.5.3). | Sichtbare ID plus Text für Screenreader. |
+| N4 | niedrig | „Verwerfen“/Gefahr-Knöpfe: Kontrast 4,36:1. | Dunkleres Rot. |
+| N5 | niedrig | Bearbeiten bei 320 px: Feld zu schmal, Endstand ohne Einheit. | Unter 360 px einspaltig, Einheit am Endstand. |
+| N6 | niedrig | Toast sprang nach dem Speichern von oben nach unten. | Position wird beim Erscheinen festgelegt. |
+| N7 | niedrig | Aktionen aus Hinweisen bei zugeklapptem Verlauf wirkungslos; Fokus im falschen Feld; nach Speichern Fokus verloren; Esc im Bearbeiten schloss das ganze Sheet. | Verlauf klappt auf, Fokus im Endstand, Fokus zurück auf die Zeile, Esc bricht nur das Bearbeiten ab. |
+| N8 | niedrig | Warnung doppelt (Vorschau und Meldung). Weitere Kleinigkeiten:<br>– „10,00“ neben „10,0“<br>– „+8,20“ neben „+8,2“<br>– unklarer Hinweistext<br>– Liter-Hinweis sprach von Cent<br>– widersprüchliche Texte ohne Endstand<br>– Rückfrage bei Typ- und Einheitswechsel<br>– „letzte 0 Tage“<br>– „Prognose bis“ an der Sommerzeitgrenze | Vorschau ausgeblendet, solange die Warnung steht. Die Kleinigkeiten:<br>– Stellenzahl nach dem Runden<br>– ein Format für Differenzen<br>– Zeitraum im Hinweis<br>– „Preis pro m³?“ bei Litern<br>– ein gemeinsamer Text<br>– „Zählertyp und Einheit ändern?“<br>– Kachel nur ab einem Tag<br>– `periodEnd − 1 ms` |
+| N9 | niedrig | Server: leerer Name ohne Typ wurde „Zähler“. Typwechsel einer älteren App-Version ließ „Strom“ am Gaszähler stehen. „Gas“ als eigener Name eines Stromzählers ging verloren. | Leer → Standardname des gespeicherten Typs. Standardnamen folgen dem Typ, eigene Namen bleiben. Ein Standardname eines anderen Typs gilt als eigener Name. |
+| N10 | niedrig | Home-Assistant-Automation ließ sich nicht direkt in den YAML-Editor der Oberfläche einfügen, `id` fehlte. | Einzelner Eintrag mit `id`, Hinweis für automations.yaml. |
+| N11 | niedrig | „Jetzt ablesen?“ öffnete die Details. | Öffnet das Ablesen. |
+| U1 (Rest) | mittel | Ein schon gespeicherter Cent-Preis zeigte auf Karte und in den Details weiter absurde Beträge (z. B. „≈ 107.735 € Nachzahlung“). | Keine Beträge, stattdessen „Preis prüfen – in Cent statt Euro eingetragen?“ auf der Karte und der Hinweis in den Details. |

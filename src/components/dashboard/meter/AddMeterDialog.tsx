@@ -58,7 +58,7 @@ export function AddMeterDialog({ householdId, isOpen, onClose, onCreated, pinByD
                 <div className="space-y-3">
                     {/* Fehler direkt über dem Knopf – sonst liegt er außerhalb des sichtbaren Bereichs */}
                     {error && <Alert variant="error">{error.error}</Alert>}
-                    <button type="button" onClick={create} className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
+                    <button type="button" onClick={create} className="w-full btn btn-primary min-h-14 text-sm uppercase tracking-[0.2em] font-black">
                         Zähler anlegen
                     </button>
                 </div>

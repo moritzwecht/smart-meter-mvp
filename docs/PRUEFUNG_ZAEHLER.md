@@ -29,7 +29,7 @@ Stand: 26.10.2026 · Umfang: alles, was mit Zählern rechnet oder entscheidet.
 - **Prognose fürs Abrechnungsjahr** (sobald die Ablesungen mindestens 14 Tage auseinanderliegen):
   - Bisheriger Verbrauch: Lücken werden geschätzt.
   - Rest des Jahres: der Verbrauch im gleichen Zeitraum des Vorjahres, wenn dieser zu mindestens 80 % erfasst ist. Sonst eine Hochrechnung aus dem bisherigen Verbrauch – bei Gas nach einem typischen Jahresprofil (B3), bei Strom und Wasser gleichmäßig.
-  - Ist weniger als ein Viertel des Jahresverbrauchs gemessen, steht „unsicher“ an der Prognose.
+  - Ist weniger als ein Viertel des Jahresverbrauchs gemessen, steht „grobe Schätzung“ an der Prognose.
   - Daraus: Kosten inkl. 12 × Grundgebühr, verglichen mit 12 × Abschlag ergibt Guthaben bzw. Nachzahlung.
 
 ## Befunde
@@ -116,7 +116,7 @@ Vorschlag: Ein typisches Jahresprofil für Gas verwenden, also Heizung nach Grad
 So wird es verwendet:
 - Der gemessene Verbrauch wird an diesem Profil skaliert. Genauso werden der Rest des Jahres und Lücken geschätzt.
 - Vorjahresdaten haben weiter Vorrang.
-- Solange der gemessene Zeitraum weniger als ein Viertel des Jahresverbrauchs abdeckt, kennzeichnet die App die Prognose als **unsicher**. Die Hochrechnung reagiert dann stark auf den Warmwasseranteil: Bei 10–30 % ergeben sich im Beispiel 1.650–3.000 m³.
+- Solange der gemessene Zeitraum weniger als ein Viertel des Jahresverbrauchs abdeckt, kennzeichnet die App die Prognose als **grobe Schätzung** (zuerst „unsicher“, in der UX-Prüfung umbenannt). Die Hochrechnung reagiert dann stark auf den Warmwasseranteil: Bei 10–30 % ergeben sich im Beispiel 1.650–3.000 m³.
 - Grenze: Haushalte, die Gas nur zum Kochen oder für Warmwasser nutzen, passen nicht zum Profil. Ab dem zweiten Jahr zählt das Vorjahr.
 
 ### B4 – „Schätzung“ im Monatsdiagramm (mittel)
@@ -254,7 +254,7 @@ Umgesetzt wie oben vorgeschlagen, mit diesen Details und Abweichungen:
   - Bestehende Gaszähler ohne Umrechnungswerte: Die Statistik zeigt einen Hinweis statt Kosten, und die Einstellungen sind aufgeklappt.
 - **B3**:
   - Auch Lücken bei der Vorjahres-Basis werden nach dem Profil geschätzt.
-  - Abweichung: „unsicher“ gilt für alle Zählerarten. Zwei Monate Strom auf ein Jahr hochgerechnet sind ebenso unsicher.
+  - Abweichung: „grobe Schätzung“ gilt für alle Zählerarten. Zwei Monate Strom auf ein Jahr hochgerechnet sind ebenso unsicher.
 - **B5**: „≈ … € pro Monat inkl. Grundgebühr“, mit einem durchschnittlichen Monat von 30,4 Tagen.
 - **B8**: Obergrenzen pro Tag, solange es kein Verbrauchsmuster gibt:
   - Strom 150 kWh
@@ -320,11 +320,11 @@ Auch die Dokumentation wurde berichtigt: Testaussage, Sensor-Reset, Einträge pr
 - **„12.345“ in der Eingabe** gilt als 12,345, nicht als 12345. Die Schreibweise ist mehrdeutig, und bei Preisen wie „0.325“ ist die Dezimal-Lesart richtig. Die Live-Vorschau beim Ablesen und die Warnung vor zu niedrigen Ständen machen den Fehler sofort sichtbar.
 - **12 Abschläge pro Jahr**: Manche Versorger berechnen 11 Abschläge. Wer das hat, trägt den Abschlag so ein, dass die Jahressumme stimmt (Jahresbetrag ÷ 12).
 - **Strom und Wasser**: Die Prognose ohne Vorjahr nutzt den flachen Durchschnitt. Die Schwankung übers Jahr ist dort klein.
-- **Ø 30 Tage** bezieht sich auf die 30 Tage vor der letzten Ablesung, nicht vor heute.
+- **Ø pro Tag (letzte 30 Tage)** bezieht sich auf die 30 Tage vor der letzten Ablesung, nicht vor heute. Die Kachel nennt deshalb „bis …“. Liegt die letzte Ablesung mehr als 45 Tage zurück, erscheint ein Hinweis.
 - **Ausreißer-Erkennung (B1)** erkennt einzelne Tippfehler.
   - Zwei Tippfehler direkt hintereinander sehen aus wie ein nicht markierter Zählerwechsel. Dann zählt wie bisher nur der Sprung nicht, und die App weist darauf hin.
   - Ist die neueste Ablesung niedriger als die vorherige, steht erst mit der nächsten Ablesung sicher fest, welcher Wert falsch war. Bis dahin entscheidet die Regel oben (kleinerer Verbrauch).
   - Ein zu hoher Endstand des alten Zählers direkt vor einem markierten Zählerwechsel fällt nicht auf. Danach kommt kein Stand mehr, der ihn als Ausreißer zeigt. Die Warnung beim Eintragen hilft hier.
   - Ein nicht markierter Zählerwechsel mit einem Tippfehler gleich danach wird nicht sicher erkannt.
 - **Home Assistant**: Liefert ein Sensor mehrmals hintereinander zu hohe Werte (z. B. falsche Skalierung), lehnt die API danach jeden richtigen Wert ab. Abhilfe: die falschen Ablesungen in der App löschen.
-- **Zwei Stände mit exakt gleichem Zeitpunkt**: Es zählt der zuletzt eingetragene.
+- **Zwei Stände gleicher Art mit exakt gleichem Zeitpunkt**: Es zählt der zuletzt eingetragene. Endstand des alten Zählers und Zählerwechsel bekommen absichtlich denselben Zeitpunkt – beide zählen, der Endstand kommt zuerst.

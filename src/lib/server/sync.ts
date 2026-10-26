@@ -12,7 +12,7 @@ import {
     type ParsedSyncOp,
 } from "@/lib/sync/schemas";
 import type { Household, Meter, Note, OpResult, Reading, SyncChanges, TodoItem, TodoList } from "@/lib/sync/types";
-import { resolveMeterName } from "@/lib/meter/names";
+import { resolveMeterName, STANDARD_METER_NAMES } from "@/lib/meter/names";
 import { getDb } from "./db";
 
 /*
@@ -190,15 +190,34 @@ function scopeCondition(ctx: SyncContext, entity: ParsedSyncOp["entity"], id: st
 
 const tables = { meter: meters, reading: readings, list: todoLists, item: todoItems, note: notes } as const;
 
+/** Standardname passend zum (gespeicherten) Typ – in SQL, falls der Typ nicht mitgeschickt wurde */
+const defaultNameSql = (type: SQL | string) =>
+    sql`case ${type} when 'ELECTRICITY' then 'Strom' when 'GAS' then 'Gas' when 'WATER' then 'Wasser' else 'Zähler' end`;
+
+/**
+ * Zählername beim Ändern:
+ * - mitgeschickt: übernehmen; leer → Standardname des (neuen oder gespeicherten) Typs
+ * - nicht mitgeschickt, aber Typ (ältere App-Versionen schicken ihn bei jedem Speichern): ein
+ *   eigener Name bleibt, ein Standardname folgt dem Typ
+ */
+function meterNameUpdate(fields: Record<string, unknown>): Record<string, unknown> {
+    const type = typeof fields.type === "string" ? fields.type : null;
+    if (typeof fields.name === "string") {
+        const name = fields.name.trim();
+        return { ...fields, name: name ? resolveMeterName(name, type ?? "") : type ? resolveMeterName("", type) : defaultNameSql(sql`${meters.type}`) };
+    }
+    if (type) {
+        const standard = sql.join(STANDARD_METER_NAMES.map((n) => sql`${n}`), sql`, `);
+        return { ...fields, name: sql`case when ${meters.name} in (${standard}) then ${resolveMeterName("", type)} else ${meters.name} end` };
+    }
+    return fields;
+}
+
 async function applyUpdate(ctx: SyncContext, op: ParsedSyncOp): Promise<OpResult> {
     const parsed = updateSchemas[op.entity].safeParse(op.fields ?? {});
     if (!parsed.success) return rejected(op.opId, "invalid");
     let fields: Record<string, unknown> = op.entity === "reading" ? withDates(parsed.data as { date?: string }) : parsed.data;
-    // Der Name ändert sich nur, wenn er mitgeschickt wird – ältere App-Versionen schicken bei
-    // jedem Speichern den Typ mit und dürfen damit keinen eigenen Namen überschreiben.
-    if (op.entity === "meter" && typeof fields.name === "string") {
-        fields = { ...fields, name: resolveMeterName(fields.name, typeof fields.type === "string" ? fields.type : "") };
-    }
+    if (op.entity === "meter") fields = meterNameUpdate(fields);
     if (!hasKeys(fields)) return ok(op.opId);
     const table = tables[op.entity];
     const updated = await getDb()

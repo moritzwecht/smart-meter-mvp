@@ -36,6 +36,9 @@ const icons = { info: Info, success: CheckCircle2, error: AlertCircle };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
     const [toasts, setToasts] = useState<ToastEntry[]>([]);
+    // Oben, solange beim Erscheinen ein Dialog offen ist – sonst würde der Toast Knöpfe im Sheet
+    // verdecken. Festgelegt beim Erscheinen, damit er nicht springt, wenn der Dialog schließt.
+    const [atTop, setAtTop] = useState(false);
     const nextId = useRef(1);
 
     const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
@@ -44,6 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         (options: ToastOptions | string) => {
             const opts = typeof options === "string" ? { message: options } : options;
             const id = nextId.current++;
+            setAtTop(!!document.querySelector('[role="dialog"]'));
             setToasts((t) => [...t.filter((x) => x.message !== opts.message), { ...opts, id }].slice(-3));
             const duration = opts.duration ?? (opts.variant === "error" ? 6000 : 3500);
             if (duration > 0) setTimeout(() => dismiss(id), duration);
@@ -58,6 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {children}
             <div
                 aria-live="polite"
+                data-position={atTop ? "top" : "bottom"}
                 className="toast-region fixed inset-x-0 z-[200] flex flex-col items-center gap-2 px-4 pointer-events-none bottom-[calc(6.5rem+env(safe-area-inset-bottom))]"
             >
                 <AnimatePresence initial={false}>

@@ -467,3 +467,21 @@ describe("UX U5: geschätzter Anteil der Prognose", () => {
         expect(new Date(p.knownUntil).toDateString()).toBe(new Date(2025, 6, 1).toDateString());
     });
 });
+
+describe("Nachbesserung UX: Formate und Namen", () => {
+    it("Stellenzahl nach dem Runden, Differenzen wie abgelesen", async () => {
+        const { formatConsumption, formatDelta } = await import("@/lib/meter/format");
+        expect(formatConsumption(9.9996)).toBe("10,0");
+        expect(formatConsumption(4.4)).toBe("4,40");
+        expect(formatConsumption(99.96)).toBe("100");
+        expect(formatDelta(8.2)).toBe("+8,2");
+        expect(formatDelta(-584.9)).toBe("−584,9");
+    });
+    it("„Gas“ als Name eines Stromzählers ist ein eigener Name", async () => {
+        const { customMeterName, meterTitle } = await import("@/lib/meter/names");
+        expect(customMeterName({ name: "Gas", type: "ELECTRICITY" })).toBe("Gas");
+        expect(customMeterName({ name: "Strom", type: "ELECTRICITY" })).toBeNull();
+        expect(meterTitle({ name: "Wärmepumpe", type: "ELECTRICITY" })).toBe("Strom · Wärmepumpe");
+        expect(meterTitle({ name: "Zähler", type: "GAS" })).toBe("Gas");
+    });
+});

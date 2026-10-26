@@ -23,14 +23,20 @@ export function formatReading(value: number): string {
 
 /** Verbrauch je nach Größe sinnvoll gerundet – mit fester Stellenzahl, damit Werte vergleichbar aussehen (4,40 neben 4,08). */
 export function formatConsumption(value: number): string {
-    const abs = Math.abs(value);
-    const decimals = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+    const digits = (n: number) => (n >= 100 ? 0 : n >= 10 ? 1 : 2);
+    // Stellenzahl nach dem Runden bestimmen: 9,9996 → „10,0“, nicht „10,00“
+    const decimals = digits(Math.abs(Number(value.toFixed(digits(Math.abs(value))))));
     return formatNumber(value, decimals, decimals);
 }
 
-/** Differenz mit Vorzeichen: „+8,20“ bzw. „−585“ (echtes Minuszeichen wie überall in der App). */
+/** Verbrauch zwischen zwei Ständen: genau wie abgelesen, höchstens eine Nachkommastelle ab 100, sonst zwei. */
+export function formatAmount(value: number): string {
+    return formatNumber(value, Math.abs(value) >= 100 ? 1 : 2, 0);
+}
+
+/** Differenz mit Vorzeichen: „+8,2“ bzw. „−584,9“ (echtes Minuszeichen wie überall in der App). */
 export function formatDelta(value: number): string {
-    const text = formatConsumption(Math.abs(value));
+    const text = formatAmount(Math.abs(value));
     return value < 0 ? `−${text}` : `+${text}`;
 }
 

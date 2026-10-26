@@ -7,7 +7,7 @@
  */
 
 const DEFAULT_NAMES: Record<string, string> = { ELECTRICITY: "Strom", WATER: "Wasser", GAS: "Gas" };
-const STANDARD = new Set([...Object.values(DEFAULT_NAMES), "Zähler"]);
+export const STANDARD_METER_NAMES = [...Object.values(DEFAULT_NAMES), "Zähler"];
 
 export const MAX_METER_NAME = 40;
 
@@ -16,10 +16,12 @@ export const defaultMeterName = (type: string) => DEFAULT_NAMES[type] ?? "Zähle
 /** Name zum Speichern: leer → Standardname des Typs. */
 export const resolveMeterName = (name: string | null | undefined, type: string) => name?.trim().slice(0, MAX_METER_NAME) || defaultMeterName(type);
 
-/** Eigener Name, falls vergeben – sonst `null`. */
-export function customMeterName(meter: { name?: string | null }): string | null {
+/** Eigener Name, falls vergeben – sonst `null`. („Gas“ als Name eines Stromzählers ist ein eigener Name.) */
+export function customMeterName(meter: { name?: string | null; type?: string }): string | null {
     const name = meter.name?.trim();
-    return name && !STANDARD.has(name) ? name : null;
+    if (!name || name === "Zähler") return null;
+    if (meter.type) return name === defaultMeterName(meter.type) ? null : name;
+    return STANDARD_METER_NAMES.includes(name) ? null : name;
 }
 
 /** „Strom“ bzw. „Strom · Wärmepumpe“ */
