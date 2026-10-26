@@ -1,27 +1,46 @@
 {
+    "id": "/",
     "name": "My Home",
     "short_name": "My Home",
-    "description": "Smart Meter and Home Management",
+    "description": "Zählerstände, Listen und Notizen für deinen Haushalt – auch offline.",
+    "lang": "de",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
-    "background_color": "#0a0a0a",
-    "theme_color": "#0a0a0a",
+    "orientation": "portrait",
+    "background_color": "#f8fafc",
+    "theme_color": "#f8fafc",
+    "categories": ["utilities", "lifestyle", "productivity"],
     "icons": [
         {
             "src": "/icon-192.png",
             "sizes": "192x192",
-            "type": "image/png"
-        },
-        {
-            "src": "/icon-512.png",
-            "sizes": "512x512",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any"
         },
         {
             "src": "/icon-512.png",
             "sizes": "512x512",
             "type": "image/png",
-            "purpose": "any maskable"
+            "purpose": "any"
+        },
+        {
+            "src": "/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Zählerstände",
+            "short_name": "Zähler",
+            "url": "/?tab=meters"
+        },
+        {
+            "name": "Listen",
+            "short_name": "Listen",
+            "url": "/?tab=lists"
         }
     ]
 }

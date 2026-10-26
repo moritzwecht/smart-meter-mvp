@@ -37,7 +37,7 @@
 
 "use client";
 
-import { InputHTMLAttributes, forwardRef, useState } from "react";
+import { InputHTMLAttributes, forwardRef, useId, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,10 +80,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       error,
       className,
       containerClassName,
+      id: idProp,
       ...props
     },
     ref
   ) => {
+    /* Label und Fehlermeldung werden per ID mit dem Feld verknüpft (Screenreader) */
+    const generatedId = useId();
+    const id = idProp ?? generatedId;
+    const errorId = `${id}-error`;
     /* ========================================================================
        STATE MANAGEMENT
        ========================================================================
@@ -108,7 +113,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ====================================================================
             Nur angezeigt wenn label-Prop übergeben wurde */}
         {label && (
-          <label className="text-xs font-medium text-muted-foreground">
+          <label htmlFor={id} className="text-xs font-medium text-muted-foreground">
             {label}
           </label>
         )}
@@ -131,7 +136,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               Haupt-Eingabefeld mit allen nativen HTML-Input-Funktionen */}
           <input
             ref={ref}
+            id={id}
             type={inputType}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
             className={cn(
               "input-field w-full", // Basis-Klasse aus globals.css
               icon && "pl-10", // Mehr Padding wenn Icon vorhanden
@@ -149,7 +157,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              className="absolute right-0.5 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
               aria-label={showPassword ? "Passwort verstecken" : "Passwort anzeigen"}
             >
               {showPassword ? (
@@ -165,7 +173,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ====================================================================
             Zeigt Fehlermeldung unter dem Input */}
         {error && (
-          <p className="text-xs font-medium text-red-600 dark:text-red-400">
+          <p id={errorId} className="text-xs font-medium text-red-600 dark:text-red-400">
             {error}
           </p>
         )}

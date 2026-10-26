@@ -88,10 +88,10 @@ export function Section({
 }: SectionProps) {
   /* CSS-Klassen basierend auf Variante
      ==========================================================================
-     default: Neutrale Farben (opacity-40 für subtilen Look)
+     default: Gedämpfte Schrift (ausreichender Kontrast, WCAG AA)
      danger: Rote Farben für destruktive Bereiche */
   const variantClasses = {
-    default: "opacity-40",
+    default: "text-muted-foreground",
     danger: "text-red-600 dark:text-red-400",
   };
 

@@ -1,223 +1,274 @@
 "use client";
 
-import { useOptimistic, useTransition, useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Check, Trash2, Plus } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
+import { AnimatePresence, motion } from "framer-motion";
+import { Check, Eraser, Plus, Trash2 } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { BaseDialog } from "@/components/ui/BaseDialog";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
+import { useToast } from "@/components/ui/Toast";
+import type { ListWithItems } from "@/lib/offline/hooks";
+import {
+    addItems,
+    clearCompletedItems,
+    deleteItem,
+    deleteList,
+    discardListIfUntouched,
+    restoreItems,
+    splitItemLines,
+    updateItem,
+    updateList,
+    type AddItemsResult,
+} from "@/lib/offline/repo";
+import type { TodoItem } from "@/lib/sync/types";
+import { useFinalUnmount } from "@/lib/use-final-unmount";
+import { cn } from "@/lib/utils";
 
-interface ListEditDialogProps {
-    isOpen: boolean;
-    list: any;
-    setList: (list: any) => void;
-    onClose: () => void;
-    onUpdateList: (id: number, name: string) => void;
-    onAddItem: (content: string) => void;
-    onToggleItem: (id: number, status: "true" | "false") => void;
-    onDeleteItem: (id: number) => void;
-    onDeleteList: (id: number) => void;
-    newItemValue: string;
-    setNewItemValue: (val: string) => void;
-    isPending?: boolean;
+export const NEW_LIST_NAME = "Neue Liste";
+
+/** Kurze Rückmeldung nach dem Hinzufügen – nur, wenn es etwas zu sagen gibt. */
+function describeAdd(result: AddItemsResult, contents: string[], before: TodoItem[]): string {
+    const name = (id: string) => before.find((i) => i.id === id)?.content ?? "";
+    if (contents.length === 1) {
+        if (result.existing.length) return `„${name(result.existing[0])}“ steht schon auf der Liste.`;
+        if (result.revived.length) return `„${name(result.revived[0])}“ ist wieder auf der Liste.`;
+        return "";
+    }
+    const parts = [
+        result.added.length && `${result.added.length} ${result.added.length === 1 ? "Punkt" : "Punkte"} hinzugefügt`,
+        result.revived.length && `${result.revived.length} wieder auf der Liste`,
+        result.existing.length && `${result.existing.length} schon vorhanden`,
+    ].filter(Boolean);
+    return parts.length ? `${parts.join(", ")}.` : "";
 }
 
-export function ListEditDialog({
-    isOpen,
-    list,
-    setList,
-    onClose,
-    onUpdateList,
-    onAddItem,
-    onToggleItem,
-    onDeleteItem,
-    onDeleteList,
-    newItemValue,
-    setNewItemValue,
-    isPending: parentIsPending,
-}: ListEditDialogProps) {
-    const [isTransitionPending, startTransition] = useTransition();
-    const isPending = parentIsPending || isTransitionPending;
+function ListEditor({ list, created }: { list: ListWithItems; created: boolean }) {
+    const [name, setName] = useState(list.name);
+    const [newItem, setNewItem] = useState("");
+    const inputRef = useRef<HTMLInputElement>(null);
+    const nameRef = useRef<HTMLInputElement>(null);
 
-    // Preserve list for exit animations
-    const [lastList, setLastList] = useState(list);
-    useEffect(() => {
-        if (list) setLastList(list);
-    }, [list]);
+    // Gerade eben hier angelegt (nicht nur zufällig leer – die Liste könnte sonst
+    // jemand anderem gehören, dessen Punkte nur noch nicht angekommen sind)
+    const [isNew] = useState(created);
+    // Namen direkt fokussieren und markieren, damit man sofort lostippen kann
+    useLayoutEffect(() => {
+        if (isNew) nameRef.current?.select();
+    }, [isNew]);
 
-    const activeList = list || lastList;
+    // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund);
+    // eine neue, unberührte Liste wird wieder verworfen.
+    const pendingName = useRef<string | null>(null);
+    const listId = list.id;
+    useFinalUnmount(() => {
+        const value = pendingName.current?.trim();
+        void (async () => {
+            if (value) await updateList(listId, { name: value });
+            if (isNew) await discardListIfUntouched(listId, NEW_LIST_NAME);
+        })();
+    });
 
-    const [optimisticList, addOptimisticAction] = useOptimistic(
-        activeList || { name: "", items: [] },
-        (state, action: { type: "toggle" | "add" | "delete"; payload: any }) => {
-            if (!state) return state;
-            switch (action.type) {
-                case "toggle":
-                    return {
-                        ...state,
-                        items: state.items?.map((item: any) =>
-                            item.id === action.payload.id
-                                ? { ...item, completed: action.payload.status }
-                                : item
-                        ),
-                    };
-                case "add":
-                    return {
-                        ...state,
-                        items: [
-                            ...(state.items || []),
-                            {
-                                id: `temp-${Date.now()}`,
-                                content: action.payload.content,
-                                completed: "false",
-                                isOptimistic: true,
-                            },
-                        ],
-                    };
-                case "delete":
-                    return {
-                        ...state,
-                        items: state.items?.filter((item: any) => item.id !== action.payload.id),
-                    };
-                default:
-                    return state;
-            }
-        }
-    );
-
-    const handleClose = () => {
-        if (activeList) {
-            onUpdateList(activeList.id, activeList.name);
-        }
-        onClose();
+    const saveName = () => {
+        const trimmed = name.trim();
+        pendingName.current = null;
+        if (trimmed && trimmed !== list.name) void updateList(list.id, { name: trimmed });
+        else if (!trimmed) setName(list.name);
     };
 
-    if (!activeList) return null;
+    // Rückmeldung, wenn ein Punkt schon draufstand oder wieder aktiviert wurde
+    const [hint, setHint] = useState("");
+    const [highlight, setHighlight] = useState<Set<string>>(() => new Set());
+    const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    useEffect(() => () => clearTimeout(feedbackTimer.current), []);
+
+    const addContents = async (contents: string[]) => {
+        if (!contents.length) return;
+        const result = await addItems(list.id, contents);
+        const message = describeAdd(result, contents, list.items);
+        setHint(message);
+        setHighlight(new Set([...result.revived, ...result.existing]));
+        clearTimeout(feedbackTimer.current);
+        feedbackTimer.current = setTimeout(() => {
+            setHint("");
+            setHighlight(new Set());
+        }, 2500);
+    };
+
+    const add = async (e: FormEvent) => {
+        e.preventDefault();
+        const content = newItem.trim();
+        if (!content) return;
+        setNewItem("");
+        inputRef.current?.focus();
+        await addContents([content]);
+    };
+
+    // Löschen ohne Rückfrage, aber mit "Rückgängig" – ein versehentlicher Tipp kostet nichts
+    const toast = useToast();
+    const removeItems = async (targets: TodoItem[], completedOnly = false) => {
+        if (!targets.length) return;
+        if (completedOnly) await clearCompletedItems(list.id);
+        else await Promise.all(targets.map((t) => deleteItem(t.id)));
+        toast({
+            message: targets.length === 1 ? `„${targets[0].content}“ gelöscht` : `${targets.length} erledigte Punkte entfernt`,
+            action: { label: "Rückgängig", onClick: () => void restoreItems(targets) },
+            duration: 6000,
+        });
+    };
+
+    // Mehrzeiligen Text (z. B. aus einer Nachricht oder Notiz) als einzelne Punkte übernehmen
+    const paste = (e: ClipboardEvent<HTMLInputElement>) => {
+        const lines = splitItemLines(e.clipboardData.getData("text"));
+        if (lines.length < 2) return;
+        e.preventDefault();
+        void addContents(lines);
+    };
+
+    const items = [...list.items].sort((a, b) => Number(a.completed) - Number(b.completed));
+    const doneCount = list.items.filter((i) => i.completed).length;
 
     return (
+        <div className="space-y-6">
+            <input
+                ref={nameRef}
+                autoFocus={isNew}
+                type="text"
+                aria-label="Name der Liste"
+                value={name}
+                maxLength={200}
+                onChange={(e) => {
+                    setName(e.target.value);
+                    pendingName.current = e.target.value;
+                }}
+                onBlur={saveName}
+                onKeyDown={(e) => e.key === "Enter" && (e.currentTarget.blur(), e.preventDefault())}
+                className="w-full text-lg font-black input-field"
+            />
+
+            <form onSubmit={add} className="relative flex gap-2">
+                <input
+                    ref={inputRef}
+                    type="text"
+                    placeholder="Neuer Punkt …"
+                    aria-label="Neuer Punkt"
+                    maxLength={500}
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    onPaste={paste}
+                    enterKeyHint="done"
+                    className="flex-1 input-field"
+                />
+                <button type="submit" disabled={!newItem.trim()} className="btn btn-primary px-5" aria-label="Punkt hinzufügen">
+                    <Plus className="w-5 h-5" />
+                </button>
+                {/* Im Abstand unter dem Feld – verschiebt die Liste nicht */}
+                <p role="status" className={cn("absolute left-1 top-full mt-1 text-xs text-muted-foreground transition-opacity", !hint && "opacity-0")}>
+                    {hint}
+                </p>
+            </form>
+
+            <ul className="space-y-2">
+                <AnimatePresence mode="popLayout" initial={false}>
+                    {items.map((item) => (
+                        <motion.li
+                            key={item.id}
+                            layout
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ layout: { type: "spring", stiffness: 300, damping: 30 }, opacity: { duration: 0.15 } }}
+                            className={cn(
+                                "flex items-center gap-1 pl-3 pr-1 bg-accent/30 rounded-xl group hover:bg-accent/50 transition-[background-color,box-shadow]",
+                                highlight.has(item.id) && "ring-2 ring-primary/40 bg-primary/5",
+                            )}
+                        >
+                            {/* Die ganze Zeile hakt ab – nicht nur das kleine Kästchen */}
+                            <button
+                                type="button"
+                                onClick={() => updateItem(item.id, { completed: !item.completed })}
+                                aria-pressed={item.completed}
+                                className="flex-1 min-w-0 min-h-12 py-2 flex items-center gap-3 text-left"
+                            >
+                                <span
+                                    className={cn(
+                                        "w-6 h-6 shrink-0 rounded-lg border-2 border-border flex items-center justify-center transition-all",
+                                        item.completed ? "bg-primary border-primary text-primary-foreground" : "group-hover:border-primary",
+                                    )}
+                                    aria-hidden
+                                >
+                                    {item.completed && <Check className="w-4 h-4" />}
+                                </span>
+                                <span className={cn("flex-1 text-base sm:text-sm font-medium break-words min-w-0", item.completed ? "line-through text-muted-foreground" : "text-foreground")}>
+                                    {item.content}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => removeItems([item])}
+                                className="hover-reveal w-11 h-11 shrink-0 flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors"
+                                aria-label={`${item.content} löschen`}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </motion.li>
+                    ))}
+                </AnimatePresence>
+            </ul>
+            {items.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Noch keine Punkte – leg los!</p>}
+
+            {doneCount > 0 && (
+                <button
+                    type="button"
+                    onClick={() => removeItems(list.items.filter((i) => i.completed), true)}
+                    className="w-full min-h-11 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center justify-center gap-2"
+                >
+                    <Eraser className="w-3.5 h-3.5" />
+                    {doneCount} erledigte entfernen
+                </button>
+            )}
+        </div>
+    );
+}
+
+interface ListEditDialogProps {
+    list: ListWithItems | undefined;
+    instance?: number;
+    /** Liste wurde gerade über "Liste hinzufügen" angelegt */
+    created?: boolean;
+    onClose: () => void;
+}
+
+export function ListEditDialog({ list, instance, created = false, onClose }: ListEditDialogProps) {
+    const confirm = useConfirm();
+    return (
         <BaseDialog
-            isOpen={isOpen}
-            onClose={handleClose}
-            title="Liste bearbeiten"
+            isOpen={!!list}
+            onClose={onClose}
+            title="Liste"
             className="sm:max-w-2xl"
             headerAction={
-                <button
-                    onClick={() => {
-                        if (window.confirm("Liste wirklich löschen?")) {
-                            onDeleteList(activeList.id);
-                            onClose();
-                        }
-                    }}
-                    className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
-                >
-                    <Trash2 className="w-5 h-5" />
-                </button>
+                list && (
+                    <button
+                        type="button"
+                        onClick={async () => {
+                            if (await confirm({ title: `„${list.name}“ löschen?`, message: "Die Liste und alle Punkte werden für alle Mitglieder gelöscht.", confirmLabel: "Löschen", danger: true })) {
+                                onClose();
+                                await deleteList(list.id);
+                            }
+                        }}
+                        className="p-2 text-muted-foreground hover:text-red-500 transition-colors"
+                        aria-label="Liste löschen"
+                    >
+                        <Trash2 className="w-5 h-5" />
+                    </button>
+                )
             }
             footer={
-                <button onClick={handleClose} className="w-full btn btn-primary py-3">
+                <button type="button" onClick={onClose} className="w-full btn btn-primary py-3">
                     Fertig
                 </button>
             }
         >
-            <div className="space-y-8">
-                <div className="space-y-2">
-                    <input
-                        type="text"
-                        value={activeList?.name || ""}
-                        onChange={(e) => setList({ ...activeList, name: e.target.value })}
-                        onBlur={() => activeList && onUpdateList(activeList.id, activeList.name)}
-                        className="w-full text-lg font-black input-field"
-                    />
-                </div>
-
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <AnimatePresence mode="popLayout" initial={false}>
-                            {[...(optimisticList.items || [])]
-                                .filter((item, index, self) => {
-                                    if (!item.isOptimistic) return true;
-                                    // Only show optimistic item if no real item with same content exists yet
-                                    return !self.some(other => !other.isOptimistic && other.content === item.content);
-                                })
-                                .sort((a, b) => {
-                                    if (a.completed === b.completed) return 0;
-                                    return a.completed === "true" ? 1 : -1;
-                                })
-                                .map((item: any) => (
-                                    <motion.div
-                                        key={item.id}
-                                        layout
-                                        initial={{ opacity: 0, scale: 0.9 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.9 }}
-                                        transition={{
-                                            layout: { duration: 0.3, type: "spring", stiffness: 300, damping: 30 },
-                                            opacity: { duration: 0.2 }
-                                        }}
-                                        className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group transition-colors hover:bg-accent/50"
-                                    >
-                                        <button
-                                            onClick={() => {
-                                                const newStatus = item.completed === "true" ? "false" : "true";
-                                                startTransition(async () => {
-                                                    addOptimisticAction({ type: "toggle", payload: { id: item.id, status: newStatus } });
-                                                    await onToggleItem(item.id, newStatus);
-                                                });
-                                            }}
-                                            className={`w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center transition-all ${item.completed === "true"
-                                                ? "bg-primary border-primary text-primary-foreground transform scale-105"
-                                                : "hover:border-primary"
-                                                } `}
-                                        >
-                                            {item.completed === "true" && <Check className="w-4 h-4" />}
-                                        </button>
-                                        <span
-                                            className={`flex-1 text-sm font-medium ${item.completed === "true" ? "line-through opacity-40" : "text-foreground"
-                                                } `}
-                                        >
-                                            {item.content}
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                startTransition(async () => {
-                                                    addOptimisticAction({ type: "delete", payload: { id: item.id } });
-                                                    await onDeleteItem(item.id);
-                                                });
-                                            }}
-                                            className="p-2 text-muted-foreground hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </motion.div>
-                                ))}
-                        </AnimatePresence>
-
-                        <form
-                            onSubmit={(e) => {
-                                e.preventDefault();
-                                const content = newItemValue.trim();
-                                if (!content) return;
-                                setNewItemValue(""); // Instant clear
-                                startTransition(async () => {
-                                    addOptimisticAction({ type: "add", payload: { content } });
-                                    await onAddItem(content);
-                                });
-                            }}
-                            className="flex gap-2 mt-4"
-                        >
-                            <input
-                                type="text"
-                                placeholder="Neuer Punkt..."
-                                value={newItemValue}
-                                onChange={(e) => setNewItemValue(e.target.value)}
-                                className="flex-1 bg-accent/20 border-2 border-border/50 rounded-xl px-4 py-3 text-sm outline-none focus:bg-accent/40 focus:border-primary/30 transition-colors"
-                            />
-                            <button type="submit" disabled={!newItemValue.trim()} className="btn btn-primary px-6 disabled:opacity-50">
-                                <Plus className="w-5 h-5" />
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+            {list && <ListEditor key={`${list.id}:${instance}`} list={list} created={created} />}
         </BaseDialog>
     );
 }

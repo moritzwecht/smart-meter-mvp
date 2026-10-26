@@ -40,9 +40,8 @@ import { cn } from "@/lib/utils";
    TYPE DEFINITIONS
 ============================================================================ */
 
-interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
-    /** className für Größe, Form und Position (z.B. "h-4 w-32 rounded-md") */
-}
+/** className bestimmt Größe, Form und Position (z.B. "h-4 w-32 rounded-md") */
+type SkeletonProps = React.HTMLAttributes<HTMLDivElement>;
 
 /* ============================================================================
    COMPONENT

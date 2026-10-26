@@ -1,87 +1,48 @@
+"use client";
+
 import { motion } from "framer-motion";
-import { ChevronDown, Moon, Sun, User, CloudOff, CloudSync, RefreshCcw } from "lucide-react";
-import { ReactNode, useEffect, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/offline/db";
+import { ChevronDown, Moon, Sun } from "lucide-react";
+import type { ReactNode } from "react";
+import { useTheme } from "@/lib/theme";
+import { SyncIndicator } from "./SyncIndicator";
 
 interface DashboardHeaderProps {
-    selectedHouseholdName: string;
-    isHouseholdMenuOpen: boolean;
-    setIsHouseholdMenuOpen: (open: boolean) => void;
-    theme: "light" | "dark";
-    onToggleTheme: () => void;
-    userName?: string;
-    onOpenProfile: () => void;
-    children?: ReactNode; // For the HouseholdMenu dropdown
+    title: string;
+    menuOpen: boolean;
+    onToggleMenu: () => void;
+    /** Haushaltsmenü (Dropdown) */
+    children?: ReactNode;
 }
 
-export function DashboardHeader({
-    selectedHouseholdName,
-    isHouseholdMenuOpen,
-    setIsHouseholdMenuOpen,
-    theme,
-    onToggleTheme,
-    userName,
-    onOpenProfile,
-    children,
-}: DashboardHeaderProps) {
-    const [isOnline, setIsOnline] = useState(true);
-    const pendingCount = useLiveQuery(() => db.syncQueue.count()) || 0;
-
-    useEffect(() => {
-        setIsOnline(navigator.onLine);
-        const handleOnline = () => setIsOnline(true);
-        const handleOffline = () => setIsOnline(false);
-
-        window.addEventListener("online", handleOnline);
-        window.addEventListener("offline", handleOffline);
-
-        return () => {
-            window.removeEventListener("online", handleOnline);
-            window.removeEventListener("offline", handleOffline);
-        };
-    }, []);
-
+export function DashboardHeader({ title, menuOpen, onToggleMenu, children }: DashboardHeaderProps) {
+    const { theme, toggle } = useTheme();
     return (
-        <header className="fixed bg-background top-0 left-0 right-0 z-50 flex justify-between items-center px-4 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top))] border-b border-border">
-            <div className="relative">
+        <header className="fixed bg-background/95 backdrop-blur top-0 inset-x-0 z-50 border-b border-border pt-[env(safe-area-inset-top)]">
+            <div className="max-w-7xl mx-auto flex justify-between items-center px-4 py-2 md:px-8">
+                <div className="relative min-w-0">
+                    <button
+                        type="button"
+                        data-household-toggle
+                        onClick={onToggleMenu}
+                        aria-expanded={menuOpen}
+                        aria-haspopup="true"
+                        className="group text-left min-w-0 block"
+                    >
+                        <span className="flex items-center gap-2 text-2xl font-black tracking-tighter hover:text-muted-foreground transition-colors">
+                            <span className="truncate">{title}</span>
+                            <motion.span animate={{ rotate: menuOpen ? 180 : 0 }} transition={{ type: "spring", stiffness: 300, damping: 20 }} className="shrink-0">
+                                <ChevronDown className="w-5 h-5 opacity-50" />
+                            </motion.span>
+                        </span>
+                    </button>
+                    <SyncIndicator />
+                    {children}
+                </div>
                 <button
-                    onClick={() => setIsHouseholdMenuOpen(!isHouseholdMenuOpen)}
-                    className="group text-left"
-                >
-                    <div className="flex items-center gap-2 text-2xl font-black tracking-tighter hover:text-muted-foreground transition-colors">
-                        {selectedHouseholdName}
-                        <motion.div
-                            animate={{ rotate: isHouseholdMenuOpen ? 180 : 0 }}
-                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                        >
-                            <ChevronDown className="w-5 h-5 opacity-50" />
-                        </motion.div>
-                    </div>
-
-                    {!isOnline && (
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-red-500 animate-pulse">
-                            <CloudOff className="w-3 h-3" />
-                            <span>Offline</span>
-                        </div>
-                    )}
-
-                    {isOnline && pendingCount > 0 && (
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-500">
-                            <RefreshCcw className="w-3 h-3 animate-spin" />
-                            <span>Synchronisiere... ({pendingCount})</span>
-                        </div>
-                    )}
-                </button>
-
-                {children}
-            </div>
-
-            <div className="flex items-center gap-1">
-                <button
-                    onClick={onToggleTheme}
+                    type="button"
+                    onClick={toggle}
                     className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-foreground"
-                    title={theme === "light" ? "Dunkelmodus aktivieren" : "Hellmodus aktivieren"}
+                    aria-label={theme === "light" ? "Dunkelmodus aktivieren" : "Hellmodus aktivieren"}
                 >
                     {theme === "light" ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
                 </button>
