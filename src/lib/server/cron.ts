@@ -5,9 +5,9 @@ import { purgeExpiredTokens } from "./auth-tokens";
 import { getDb } from "./db";
 import { sendPushToUser } from "./push";
 import { purgeOldAttempts } from "./rate-limit";
+import { meterShortName } from "@/lib/meter/names";
 import { FULL_SYNC_AFTER_DAYS } from "./sync";
 
-const TYPE_LABELS: Record<string, string> = { ELECTRICITY: "Strom", GAS: "Gas", WATER: "Wasser" };
 
 /** Tag im Monat in deutscher Zeit (Cron läuft in UTC). */
 export function berlinDayOfMonth(now = new Date()): number {
@@ -30,15 +30,15 @@ export async function sendReadingReminders(now = new Date()) {
     for (const user of due) {
         const staleSince = new Date(now.getTime() - 5 * 86_400_000);
         const meterRows = await db
-            .select({ id: meters.id, type: meters.type, last: max(readings.date) })
+            .select({ id: meters.id, type: meters.type, name: meters.name, last: max(readings.date) })
             .from(meters)
             .innerJoin(householdUsers, and(eq(householdUsers.householdId, meters.householdId), eq(householdUsers.userId, user.id)))
             .leftJoin(readings, and(eq(readings.meterId, meters.id), isNull(readings.deletedAt)))
             .where(isNull(meters.deletedAt))
-            .groupBy(meters.id, meters.type);
+            .groupBy(meters.id, meters.type, meters.name);
         const stale = meterRows.filter((m) => !m.last || new Date(m.last) < staleSince);
         if (!stale.length) continue;
-        const names = [...new Set(stale.map((m) => TYPE_LABELS[m.type] ?? "Zähler"))].join(", ");
+        const names = [...new Set(stale.map((m) => meterShortName(m)))].join(", ");
         const result = await sendPushToUser(user.id, {
             title: "Zeit zum Ablesen 📟",
             body: `${names} ${stale.length === 1 ? "wartet" : "warten"} auf einen neuen Stand.`,

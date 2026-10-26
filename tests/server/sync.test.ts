@@ -41,6 +41,34 @@ describe("Sync-Push", () => {
         expect(Number(m.price_per_unit)).toBe(0.12);
     });
 
+    it("Zählernamen (UX U2): eigener Name bleibt, auch wenn eine ältere App-Version nur den Typ schickt", async () => {
+        const meterId = randomUUID();
+        const name = async () => (await server.client.query<{ name: string }>("select name from meters")).rows[0].name;
+        await applyOps(moritz, [
+            op({ entity: "meter", action: "create", id: meterId, householdId: server.households.zuhause.id, fields: { type: "ELECTRICITY", unit: "kWh", name: "  Wärmepumpe " } }),
+        ]);
+        expect(await name()).toBe("Wärmepumpe");
+        // ältere App-Version: Einstellungen speichern schickt den Typ, aber keinen Namen
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "ELECTRICITY", unit: "kWh", pricePerUnit: 0.3 } })]);
+        expect(await name()).toBe("Wärmepumpe");
+        // leerer Name → Standardname des Typs
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "GAS", name: "" } })]);
+        expect(await name()).toBe("Gas");
+        // leerer Name ohne Typ → Standardname des gespeicherten Typs (Gas)
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { name: "" } })]);
+        expect(await name()).toBe("Gas");
+        // ältere App-Version wechselt den Typ: ein Standardname folgt dem Typ …
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "WATER", unit: "m³" } })]);
+        expect(await name()).toBe("Wasser");
+        // … ein eigener Name bleibt
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { name: "Garten" } })]);
+        await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { type: "GAS", unit: "m³" } })]);
+        expect(await name()).toBe("Garten");
+        // zu lang wird abgelehnt
+        const [tooLong] = await applyOps(moritz, [op({ entity: "meter", action: "update", id: meterId, fields: { name: "x".repeat(41) } })]);
+        expect(tooLong.status).toBe("rejected");
+    });
+
     it("lehnt Zugriffe auf fremde Haushalte ab – ohne die übrigen Operationen zu blockieren", async () => {
         const fremdeListe = randomUUID();
         await applyOps(fremd, [op({ entity: "list", action: "create", id: fremdeListe, householdId: server.households.fremd.id, fields: { name: "Geheim" } })]);

@@ -44,11 +44,12 @@ describe("Verbrauch", () => {
         expect(dailyAverage(segments)).toBeCloseTo(10);
     });
 
-    it("wertet niedrigere Stände ohne Zählerwechsel als Anomalie statt als negativen Verbrauch", () => {
-        const { segments, anomalies } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 900), r("2025-01-21", 1100)]);
+    it("wertet einen zu niedrigen Stand als Tippfehler statt als negativen Verbrauch", () => {
+        const { segments, anomalies, ignored } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 900), r("2025-01-21", 1100)]);
         expect(anomalies).toBe(1);
+        expect(ignored.map((x) => x.value)).toEqual([900]);
         expect(segments).toHaveLength(1);
-        expect(segments[0].consumption).toBe(200);
+        expect(segments[0].consumption).toBe(100);
     });
 
     it("interpoliert Verbrauch auf beliebige Zeiträume", () => {
@@ -155,9 +156,9 @@ describe("CSV-Export", () => {
         });
         const csv = readingsToCsv([reading("2025-02-01T09:00:00", 12400.25), reading("2025-01-01T09:00:00", 12345.5)], "kWh");
         const lines = csv.replace("﻿", "").split("\r\n");
-        expect(lines[0]).toBe("Datum;Uhrzeit;Stand (kWh);Verbrauch seit vorheriger (kWh);Zählerwechsel;Quelle");
-        expect(lines[1]).toBe("1.1.2025;09:00;12345,5;;;App");
-        expect(lines[2]).toBe("1.2.2025;09:00;12400,25;54,75;;App");
+        expect(lines[0]).toBe("Datum;Uhrzeit;Stand (kWh);Verbrauch seit vorheriger (kWh);Zählerwechsel;Quelle;Hinweis");
+        expect(lines[1]).toBe("1.1.2025;09:00;12345,5;;;App;");
+        expect(lines[2]).toBe("1.2.2025;09:00;12400,25;54,75;;App;");
     });
 });
 

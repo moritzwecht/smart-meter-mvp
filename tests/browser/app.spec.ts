@@ -71,39 +71,63 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await page.locator("#new-meter-fee").fill("15");
         await page.locator("#new-meter-z").fill("0,9512");
         await page.locator("#new-meter-cv").fill("11,2");
-        await page.getByRole("button", { name: "Erstellen" }).click();
+        await page.getByRole("button", { name: "Zähler anlegen" }).click();
 
         await page.getByLabel(/Zählerstand/).fill("2000,5");
         await page.locator("#reading-date").fill(isoDaysAgo(60));
         await page.getByRole("button", { name: "Speichern" }).click();
-        await expect(page.getByText("Zweite Ablesung nötig")).toBeVisible();
+        await expect(page.getByText("Nächste Ablesung zeigt den Verbrauch")).toBeVisible();
 
         // absichtlich sofort, während der vorige Dialog noch ausblendet
-        await page.getByRole("button", { name: "Eintragen", exact: true }).click();
+        await page.getByRole("button", { name: "Gas: Ablesung eintragen" }).click();
         await page.getByLabel(/Zählerstand/).fill("2180");
         // Live-Vorschau: Verbrauch, Tagesschnitt und Kosten seit der letzten Ablesung
         await expect(page.getByText(/\+179,5 m³ in \d+ Tagen · ≈ 2,9\d m³\/Tag · ≈ 210,\d\d\s€/)).toBeVisible();
         await page.screenshot({ path: test.info().outputPath("ablesen-vorschau.png") });
         await page.getByRole("button", { name: "Speichern" }).click();
-        await expect(page.getByText("m³/Tag")).toBeVisible();
+        await expect(page.locator("main").getByText("m³/Tag")).toBeVisible();
         await expect.poll(() => count("readings")).toBe(2);
     });
 
     await test.step("Tippfehler wird vor dem Speichern bemerkt", async () => {
-        await page.getByRole("button", { name: "Eintragen", exact: true }).click();
+        await page.getByRole("button", { name: "Gas: Ablesung eintragen" }).click();
         await page.getByLabel(/Zählerstand/).fill("21800");
         await page.getByRole("button", { name: "Speichern" }).click();
-        await expect(page.getByText("Stimmt der Wert?")).toBeVisible();
+        await expect(page.getByRole("alert").getByText(/Komma verrutscht\?/)).toBeVisible();
+        await expectAccessible(page, "Ablesen mit Warnung");
+        await page.getByLabel("Zählerwechsel: neuer Zähler eingebaut").check();
+        await expect(page.getByLabel("Endstand alter Zähler (empfohlen)")).toBeFocused();
+        await expectAccessible(page, "Ablesen mit Zählerwechsel");
         await page.keyboard.press("Escape");
         expect(await count("readings")).toBe(2);
     });
 
     await test.step("Statistik zeigt Verbrauch und Prognose", async () => {
-        await page.getByRole("button", { name: "Statistik & Einstellungen" }).click();
-        await expect(page.getByText("Ø pro Tag (30 Tage)")).toBeVisible();
-        await expect(page.getByText("Kosten (Prognose)")).toBeVisible();
+        await page.getByRole("button", { name: "Gas: Statistik & Einstellungen" }).click();
+        await expect(page.getByText(/pro Tag \(letzte 30 Tage\)/)).toBeVisible();
+        await expect(page.getByText("Kosten Abrechnungsjahr (geschätzt)")).toBeVisible();
         await expectAccessible(page, "Zähler-Details");
+
+        // Ablesung bearbeiten (Esc bricht nur das Bearbeiten ab)
+        await page.getByRole("button", { name: /^Ablesung vom .* bearbeiten$/ }).first().click();
+        await expect(page.getByLabel("Stand", { exact: true })).toBeFocused();
+        await expectAccessible(page, "Ablesung bearbeiten");
         await page.keyboard.press("Escape");
+        await expect(page.getByLabel("Stand", { exact: true })).toBeHidden();
+
+        // Einstellungen als eigene Ansicht; ungespeicherte Änderung → Rückfrage
+        await page.getByRole("button", { name: "Einstellungen & Kosten" }).click();
+        await page.getByLabel("Name (optional)").fill("Heizung");
+        await expectAccessible(page, "Zähler-Einstellungen");
+        await page.keyboard.press("Escape");
+        await expect(page.getByText("Änderungen verwerfen?")).toBeVisible();
+        await expectAccessible(page, "Änderungen verwerfen");
+        await page.getByRole("button", { name: "Abbrechen" }).click();
+        await page.getByRole("button", { name: "Einstellungen speichern" }).click();
+        await expect(page.getByRole("heading", { name: "Gaszähler · Heizung" })).toBeVisible();
+        await expect.poll(async () => (await q<{ name: string }>("select name from meters"))[0]?.name).toBe("Heizung");
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("button", { name: "Gas · Heizung: Ablesung eintragen" })).toBeVisible();
     });
 
     await test.step("Einkaufsliste anlegen und abhaken", async () => {
@@ -138,7 +162,7 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         // Versehentlich gelöscht? Rückgängig.
         await dialog.getByRole("button", { name: "Butter löschen" }).click();
         await expect(dialog.locator("li")).toHaveCount(4);
-        await page.getByRole("button", { name: "Rückgängig" }).click();
+        await page.getByRole("status").filter({ hasText: "Butter" }).getByRole("button", { name: "Rückgängig" }).click();
         await expect(dialog.getByRole("button", { name: "Butter", exact: true })).toBeVisible();
         await expect(dialog.locator("li")).toHaveCount(5);
 
@@ -184,6 +208,9 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await nav(page, "Profil");
         await expect(page.getByText("Ablese-Erinnerung")).toBeVisible();
         await expectAccessible(page, "Profil");
+        await page.getByRole("button", { name: "Zähler-IDs & Beispiel für Home Assistant anzeigen" }).click();
+        await expect(page.getByText("So speichert die App deine Werte")).toBeVisible();
+        await expectAccessible(page, "Profil mit Home-Assistant-Beispiel");
     });
 
     let inviteLink = "";

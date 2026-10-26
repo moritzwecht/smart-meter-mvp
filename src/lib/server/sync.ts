@@ -12,6 +12,7 @@ import {
     type ParsedSyncOp,
 } from "@/lib/sync/schemas";
 import type { Household, Meter, Note, OpResult, Reading, SyncChanges, TodoItem, TodoList } from "@/lib/sync/types";
+import { resolveMeterName, STANDARD_METER_NAMES } from "@/lib/meter/names";
 import { getDb } from "./db";
 
 /*
@@ -31,7 +32,6 @@ export interface SyncContext {
     householdIds: number[];
 }
 
-export const METER_NAMES: Record<string, string> = { ELECTRICITY: "Strom", WATER: "Wasser", GAS: "Gas" };
 
 /** Nach dieser Zeit ohne Sync gibt es statt eines Deltas den vollen Bestand (Tombstones werden aufgeräumt). */
 export const FULL_SYNC_AFTER_DAYS = 30;
@@ -115,7 +115,11 @@ async function applyCreate(ctx: SyncContext, op: ParsedSyncOp): Promise<OpResult
             const base = { id: op.id, householdId: op.householdId, createdAt, updatedAt: now };
             const values =
                 op.entity === "meter"
-                    ? { ...base, ...(parsed.data as z.infer<typeof createSchemas.meter>), name: METER_NAMES[(parsed.data as { type: string }).type] ?? "Zähler" }
+                    ? {
+                          ...base,
+                          ...(parsed.data as z.infer<typeof createSchemas.meter>),
+                          name: resolveMeterName((parsed.data as { name?: string }).name, (parsed.data as { type: string }).type),
+                      }
                     : op.entity === "note"
                       ? { title: "", ...base, ...(parsed.data as z.infer<typeof createSchemas.note>) }
                       : { ...base, ...(parsed.data as z.infer<typeof createSchemas.list>) };
@@ -186,13 +190,34 @@ function scopeCondition(ctx: SyncContext, entity: ParsedSyncOp["entity"], id: st
 
 const tables = { meter: meters, reading: readings, list: todoLists, item: todoItems, note: notes } as const;
 
+/** Standardname passend zum (gespeicherten) Typ – in SQL, falls der Typ nicht mitgeschickt wurde */
+const defaultNameSql = (type: SQL | string) =>
+    sql`case ${type} when 'ELECTRICITY' then 'Strom' when 'GAS' then 'Gas' when 'WATER' then 'Wasser' else 'Zähler' end`;
+
+/**
+ * Zählername beim Ändern:
+ * - mitgeschickt: übernehmen; leer → Standardname des (neuen oder gespeicherten) Typs
+ * - nicht mitgeschickt, aber Typ (ältere App-Versionen schicken ihn bei jedem Speichern): ein
+ *   eigener Name bleibt, ein Standardname folgt dem Typ
+ */
+function meterNameUpdate(fields: Record<string, unknown>): Record<string, unknown> {
+    const type = typeof fields.type === "string" ? fields.type : null;
+    if (typeof fields.name === "string") {
+        const name = fields.name.trim();
+        return { ...fields, name: name ? resolveMeterName(name, type ?? "") : type ? resolveMeterName("", type) : defaultNameSql(sql`${meters.type}`) };
+    }
+    if (type) {
+        const standard = sql.join(STANDARD_METER_NAMES.map((n) => sql`${n}`), sql`, `);
+        return { ...fields, name: sql`case when ${meters.name} in (${standard}) then ${resolveMeterName("", type)} else ${meters.name} end` };
+    }
+    return fields;
+}
+
 async function applyUpdate(ctx: SyncContext, op: ParsedSyncOp): Promise<OpResult> {
     const parsed = updateSchemas[op.entity].safeParse(op.fields ?? {});
     if (!parsed.success) return rejected(op.opId, "invalid");
     let fields: Record<string, unknown> = op.entity === "reading" ? withDates(parsed.data as { date?: string }) : parsed.data;
-    if (op.entity === "meter" && "type" in fields && typeof fields.type === "string") {
-        fields = { ...fields, name: METER_NAMES[fields.type] ?? "Zähler" };
-    }
+    if (op.entity === "meter") fields = meterNameUpdate(fields);
     if (!hasKeys(fields)) return ok(op.opId);
     const table = tables[op.entity];
     const updated = await getDb()

@@ -242,9 +242,16 @@ export function Dashboard({ user }: { user: SessionUser }) {
         );
     } else {
         content = (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {meters.map(meterWidget)}
-                <AddTile label="Zähler hinzufügen" onClick={() => setDialog({ kind: "add-meter" })} />
+            <div className="space-y-3">
+                {meters.length === 0 && (
+                    <p className="text-sm text-muted-foreground">
+                        Erfasse Strom, Gas oder Wasser: Du siehst deinen Verbrauch pro Tag und ob dein Abschlag fürs Jahr reicht.
+                    </p>
+                )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {meters.map(meterWidget)}
+                    <AddTile label="Zähler hinzufügen" onClick={() => setDialog({ kind: "add-meter" })} />
+                </div>
             </div>
         );
     }

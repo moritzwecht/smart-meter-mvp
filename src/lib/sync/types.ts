@@ -34,6 +34,8 @@ export interface MeterFields {
     calorificValue: number | null;
     /** Beginn des Abrechnungsjahres, YYYY-MM-DD. */
     billingStart: string | null;
+    /** Eigener Name (z. B. „Wärmepumpe“); leer = Typ. Nur beim Anlegen/Ändern mitgeschickt. */
+    name?: string;
 }
 
 export interface Meter extends SyncedRow, MeterFields {
