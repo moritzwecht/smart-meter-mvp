@@ -108,7 +108,7 @@ export function ProfileTab({ user }: { user: SessionUser }) {
             pending > 0
                 ? {
                       title: "Trotzdem abmelden?",
-                      message: `${pending} Änderung${pending === 1 ? " ist" : "en sind"} noch nicht synchronisiert und ginge${pending === 1 ? "" : "n"} verloren. Am besten erst wieder online gehen.`,
+                      message: `${pending} Änderung${pending === 1 ? " ist" : "en sind"} noch nicht synchronisiert und ${pending === 1 ? "würde" : "würden"} verloren gehen.`,
                       confirmLabel: "Abmelden",
                       danger: true,
                   }
@@ -116,7 +116,13 @@ export function ProfileTab({ user }: { user: SessionUser }) {
         );
         if (!ok) return;
         setBusy(true);
-        await runAction(logout);
+        const result = await runAction(logout);
+        if (!result.ok) {
+            // Ohne Server bliebe das Login-Cookie gültig – beim nächsten Online-Gehen wäre man wieder angemeldet
+            setBusy(false);
+            toast({ message: "Abmelden geht nur mit Internetverbindung.", variant: "error" });
+            return;
+        }
         await signedOut();
     };
 
@@ -127,7 +133,7 @@ export function ProfileTab({ user }: { user: SessionUser }) {
     };
 
     return (
-        <div className="space-y-8 pb-28 max-w-2xl mx-auto">
+        <div className="space-y-8 max-w-2xl mx-auto">
             <div className="flex items-center gap-4 pt-2">
                 <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                     <User className="w-10 h-10 text-primary" />
@@ -141,7 +147,7 @@ export function ProfileTab({ user }: { user: SessionUser }) {
                 </div>
             </div>
 
-            <Section title="Account" icon={<User className="w-3.5 h-3.5" />}>
+            <Section title="Konto" icon={<User className="w-3.5 h-3.5" />}>
                 <NameForm user={user} />
             </Section>
 
@@ -159,7 +165,7 @@ export function ProfileTab({ user }: { user: SessionUser }) {
                     <Toggle
                         checked={theme === "dark"}
                         onChange={(checked) => setTheme(checked ? "dark" : "light")}
-                        label={theme === "dark" ? "Dunkler Modus" : "Heller Modus"}
+                        label="Dunkler Modus"
                         icon={theme === "dark" ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
                     />
                 </div>

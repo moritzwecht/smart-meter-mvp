@@ -11,7 +11,8 @@ export const metadata: Metadata = {
     manifest: "/manifest.json",
     appleWebApp: {
         capable: true,
-        statusBarStyle: "black-translucent",
+        // "default": iOS färbt die Statusleiste passend zu theme-color (lesbar in Hell und Dunkel)
+        statusBarStyle: "default",
         title: "My Home",
     },
     formatDetection: { telephone: false },
@@ -19,12 +20,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-    themeColor: "#f8fafc",
+    themeColor: [
+        { media: "(prefers-color-scheme: light)", color: "#f8fafc" },
+        { media: "(prefers-color-scheme: dark)", color: "#020617" },
+    ],
     width: "device-width",
     initialScale: 1,
-    // Verhindert das automatische Hineinzoomen in Eingabefelder auf iOS
-    // (Pinch-Zoom bleibt in Safari trotzdem möglich).
-    maximumScale: 1,
+    // Kein maximumScale: Zoomen bleibt möglich (Barrierefreiheit). Das automatische
+    // Hineinzoomen von iOS in Eingabefelder verhindern 16px große Eingabefelder.
     viewportFit: "cover",
 };
 

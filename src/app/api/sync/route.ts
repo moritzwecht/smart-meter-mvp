@@ -1,5 +1,5 @@
 import { getUserHouseholds } from "@/lib/server/access";
-import { errorResponse, isSameOrigin, json, parseJson } from "@/lib/server/http";
+import { errorResponse, isSameOrigin, isUserMismatch, json, parseJson, userMismatchResponse } from "@/lib/server/http";
 import { getCurrentUser } from "@/lib/server/session";
 import { applyOps, pullChanges } from "@/lib/server/sync";
 import { syncRequestSchema } from "@/lib/sync/schemas";
@@ -15,6 +15,7 @@ export async function POST(request: Request) {
     if (!isSameOrigin(request)) return errorResponse(403, "Ungültiger Origin");
     const user = await getCurrentUser({ refresh: true });
     if (!user) return errorResponse(401, "Nicht angemeldet");
+    if (isUserMismatch(request, user.id)) return userMismatchResponse();
 
     const body = await parseJson(request, syncRequestSchema);
     if ("error" in body) return body.error;

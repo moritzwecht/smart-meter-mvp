@@ -206,7 +206,7 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
                 </div>
             </div>
             <div className="flex">
-                <button type="button" onClick={startEdit} className="hover-reveal p-2 text-muted-foreground hover:text-primary" aria-label="Ablesung bearbeiten">
+                <button type="button" onClick={startEdit} className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-primary" aria-label="Ablesung bearbeiten">
                     <Pencil className="w-4 h-4" />
                 </button>
                 <button
@@ -215,7 +215,7 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
                         if (await confirm({ title: "Ablesung löschen?", message: `${formatReading(reading.value)} ${unit} vom ${formatDate(reading.date)}`, confirmLabel: "Löschen", danger: true }))
                             await deleteReading(reading.id);
                     }}
-                    className="hover-reveal p-2 text-muted-foreground hover:text-red-500"
+                    className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-red-500"
                     aria-label="Ablesung löschen"
                 >
                     <Trash2 className="w-4 h-4" />

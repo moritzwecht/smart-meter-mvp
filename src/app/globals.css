@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* `dark:` folgt der Klasse `.dark` (manueller Umschalter), nicht nur der Systemeinstellung.
+   Ohne diese Zeile blieben z. B. rote Buttons im manuell gewählten Dunkelmodus hell. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ============================================================================
    DESIGN TOKENS & CSS VARIABLES
    ============================================================================
@@ -274,7 +278,8 @@ body {
 
 .input-field {
   /* Layout & Spacing */
-  @apply px-4 py-3 rounded-xl text-sm;
+  /* 16px auf Mobilgeräten: sonst zoomt iOS beim Antippen ins Feld */
+  @apply px-4 py-3 rounded-xl text-base sm:text-sm;
 
   /* Hintergrund & Border
      accent/20: 20% Opacity der accent-Farbe für subtilen Hintergrund

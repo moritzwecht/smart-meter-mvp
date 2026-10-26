@@ -1,6 +1,6 @@
 import type { SessionUser } from "@/lib/sync/types";
 import { clearLocalData, getMeta, setMeta } from "./db";
-import { stopSync } from "./sync-engine";
+import { startSync, stopSync } from "./sync-engine";
 
 /*
  * Session auf dem Client – offline-first:
@@ -76,10 +76,47 @@ export function sessionExpired() {
     setState({ status: "anonymous", reason: "expired" });
 }
 
+/** Startet den Sync für den angemeldeten Nutzer (vom Dashboard aufgerufen). */
+export function startUserSync(userId: number) {
+    void startSync({ userId, onUnauthenticated: () => void revalidateSession() });
+}
+
+/**
+ * Der Server hat die Session abgelehnt (401) oder gehört zu einem anderen Konto
+ * (409): beim Server nachfragen, wer angemeldet ist, und entsprechend umschalten.
+ */
+export async function revalidateSession() {
+    stopSync();
+    let user: SessionUser | null = null;
+    try {
+        const res = await fetch("/api/auth/me", { cache: "no-store", credentials: "same-origin" });
+        if (res.ok) user = ((await res.json()) as { user: SessionUser | null }).user;
+    } catch {
+        // offline o. Ä. → wie abgelaufen behandeln
+    }
+    if (!user) return sessionExpired();
+    const before = state.status === "authenticated" ? state.user.id : undefined;
+    await signedIn(user);
+    // Gleicher Nutzer → das Dashboard bleibt stehen, also Sync selbst neu starten
+    if (before === user.id) startUserSync(user.id);
+}
+
 export async function signedOut() {
     stopSync();
     await clearLocalData();
+    await clearRuntimeCaches();
     setState({ status: "anonymous" });
+}
+
+/** Laufzeit-Caches des Service Workers leeren (Precache der App-Shell bleibt). */
+async function clearRuntimeCaches() {
+    try {
+        if (typeof caches === "undefined") return;
+        const names = await caches.keys();
+        await Promise.all(names.filter((n) => !n.includes("precache")).map((n) => caches.delete(n)));
+    } catch {
+        // nicht kritisch
+    }
 }
 
 export async function updateCachedUser(patch: Partial<SessionUser>) {

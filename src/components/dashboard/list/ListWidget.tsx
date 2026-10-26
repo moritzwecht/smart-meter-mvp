@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, ListTodo, Pin } from "lucide-react";
+import { Check, ListTodo } from "lucide-react";
 import { memo } from "react";
+import { PinButton } from "@/components/ui/PinButton";
 import type { ListWithItems } from "@/lib/offline/hooks";
 import { cn } from "@/lib/utils";
 
@@ -33,18 +34,7 @@ export const ListWidget = memo(function ListWidget({ list, onOpen, onTogglePin, 
                         </p>
                     </div>
                 </button>
-                <button
-                    type="button"
-                    onClick={() => onTogglePin(list.id, !list.isPinned)}
-                    aria-pressed={list.isPinned}
-                    aria-label={list.isPinned ? "Vom Dashboard lösen" : "Ans Dashboard heften"}
-                    className={cn(
-                        "p-1.5 rounded-lg shrink-0",
-                        list.isPinned ? "text-primary bg-primary/10" : "text-muted-foreground/40 hover:text-primary hover:bg-primary/5",
-                    )}
-                >
-                    <Pin className={cn("w-3.5 h-3.5", list.isPinned && "fill-current")} />
-                </button>
+                <PinButton pinned={list.isPinned} name={list.name || "Liste"} onToggle={() => onTogglePin(list.id, !list.isPinned)} />
             </div>
 
             {preview.length > 0 && (
@@ -55,15 +45,15 @@ export const ListWidget = memo(function ListWidget({ list, onOpen, onTogglePin, 
                                 type="button"
                                 onClick={() => onToggleItem(item.id, !item.completed)}
                                 aria-pressed={item.completed}
-                                className="text-xs flex items-center gap-3 w-full text-left p-1 -mx-1 rounded-md hover:bg-accent/40 transition-colors"
+                                className="text-sm flex items-center gap-3 w-full min-h-10 text-left px-1 -mx-1 rounded-md hover:bg-accent/40 transition-colors"
                             >
                                 <span
                                     className={cn(
-                                        "w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors",
+                                        "w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors",
                                         item.completed ? "bg-primary text-primary-foreground border-primary" : "border-border",
                                     )}
                                 >
-                                    {item.completed && <Check className="w-2.5 h-2.5" />}
+                                    {item.completed && <Check className="w-3 h-3" />}
                                 </span>
                                 <span className={cn("line-clamp-1", item.completed ? "line-through opacity-40" : "text-foreground/80")}>{item.content}</span>
                             </button>
@@ -72,7 +62,7 @@ export const ListWidget = memo(function ListWidget({ list, onOpen, onTogglePin, 
                 </ul>
             )}
             {list.items.length > PREVIEW && (
-                <button type="button" onClick={() => onOpen(list.id)} className="text-[10px] text-muted-foreground font-medium text-left hover:text-primary">
+                <button type="button" onClick={() => onOpen(list.id)} className="text-xs text-muted-foreground font-medium text-left py-1 hover:text-primary">
                     +{list.items.length - PREVIEW} weitere
                 </button>
             )}

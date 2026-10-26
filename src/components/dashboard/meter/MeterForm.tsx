@@ -195,20 +195,20 @@ export function MeterCostFields({ form, onChange, idPrefix }: { form: MeterFormS
                 <div className="space-y-2">
                     <div className="flex justify-between items-center gap-2">
                         <FieldLabel htmlFor={`${idPrefix}-price`}>Verbrauchspreis</FieldLabel>
-                        {form.type === "GAS" && (
-                            <div className="flex gap-1" role="radiogroup" aria-label="Preiseinheit">
+                        {form.type === "GAS" && form.unit !== "kWh" && (
+                            <div className="flex gap-1 -my-2" role="radiogroup" aria-label="Preiseinheit">
                                 {[
                                     { value: null, label: `€/${form.unit || "m³"}` },
                                     { value: "kwh", label: "€/kWh" },
                                 ].map((o) => (
                                     <button
-                                        key={o.label}
+                                        key={o.value ?? "unit"}
                                         type="button"
                                         role="radio"
                                         aria-checked={(form.priceUnit ?? null) === o.value}
                                         onClick={() => onChange({ ...form, priceUnit: o.value })}
                                         className={cn(
-                                            "text-[9px] font-bold px-1.5 py-0.5 rounded",
+                                            "text-[11px] font-bold px-3 min-h-9 rounded-lg",
                                             (form.priceUnit ?? null) === o.value ? "bg-primary text-primary-foreground" : "bg-accent text-muted-foreground",
                                         )}
                                     >

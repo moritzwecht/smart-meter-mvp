@@ -7,8 +7,10 @@
 
    - Mobil: Bottom-Sheet, das von unten einfährt und über der Tastatur bleibt
    - Desktop: zentriert mit Blur-Hintergrund
-   - Barrierearm: role="dialog", Fokus wandert in den Dialog und zurück,
-     ESC schließt nur den obersten Dialog, Hintergrund scrollt nicht mit
+   - Barrierearm: role="dialog", Fokus wandert in den Dialog (auf ein Element mit
+     autoFocus/data-autofocus, sonst auf den Dialog selbst – so springt mobil nicht
+     ungefragt die Tastatur auf) und zurück, Tab bleibt im Dialog, ESC schließt
+     nur den obersten Dialog, Hintergrund scrollt nicht mit
    - Rendert per Portal in <body> (keine z-index-/overflow-Probleme)
 ============================================================================ */
 
@@ -47,26 +49,31 @@ function useIsMobile() {
     );
 }
 
-/** Höhe der Bildschirmtastatur (iOS/Android), damit das Sheet darüber bleibt. */
-function useKeyboardHeight(active: boolean) {
-    const [height, setHeight] = useState(0);
+/**
+ * Bildschirmtastatur (iOS/Android): wie weit das Sheet nach oben muss und wie viel
+ * Platz darüber bleibt – sonst rutschen Kopfzeile und Schließen-Knopf aus dem Bild.
+ */
+function useKeyboard(active: boolean) {
+    const [kb, setKb] = useState({ offset: 0, available: 0 });
     useEffect(() => {
         const vv = window.visualViewport;
         if (!active || !vv) return;
         const update = () => {
             const diff = window.innerHeight - vv.height - vv.offsetTop;
-            setHeight(diff > 100 ? diff : 0);
+            setKb(diff > 100 ? { offset: diff, available: vv.height } : { offset: 0, available: 0 });
         };
         vv.addEventListener("resize", update);
         vv.addEventListener("scroll", update);
         return () => {
             vv.removeEventListener("resize", update);
             vv.removeEventListener("scroll", update);
-            setHeight(0);
+            setKb({ offset: 0, available: 0 });
         };
     }, [active]);
-    return height;
+    return kb;
 }
+
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 const noopSubscribe = () => () => {};
 
@@ -82,6 +89,9 @@ function DialogLayer({ children, zIndex }: { children: ReactNode; zIndex: number
 
 // Stapel offener Dialoge: ESC und Fokus gehören immer dem obersten.
 const openStack: string[] = [];
+// Scroll-Sperre nur beim ersten öffnenden / letzten schließenden Dialog anfassen –
+// sonst stellt ein gleichzeitig geschlossener Dialog evtl. "hidden" wieder her.
+let savedOverflow = "";
 
 export function BaseDialog({
     isOpen,
@@ -99,7 +109,7 @@ export function BaseDialog({
     const isMobile = useIsMobile();
     // Portal erst nach der Hydration rendern (Server kennt kein document)
     const isClient = useSyncExternalStore(noopSubscribe, () => true, () => false);
-    const keyboardHeight = useKeyboardHeight(isOpen && isMobile);
+    const keyboard = useKeyboard(isOpen && isMobile);
     const panelRef = useRef<HTMLDivElement>(null);
     const onCloseRef = useRef(onClose);
     useEffect(() => {
@@ -109,22 +119,43 @@ export function BaseDialog({
     useEffect(() => {
         if (!isOpen) return;
         openStack.push(id);
+        if (openStack.length === 1) {
+            savedOverflow = document.body.style.overflow;
+            document.body.style.overflow = "hidden";
+        }
         const previouslyFocused = document.activeElement as HTMLElement | null;
-        const { overflow } = document.body.style;
-        document.body.style.overflow = "hidden";
 
-        // Fokus in den Dialog (Elemente mit autoFocus haben Vorrang)
+        // Fokus in den Dialog (Elemente mit autoFocus fokussiert React schon selbst)
         const focusTimer = setTimeout(() => {
             const panel = panelRef.current;
             if (!panel || panel.contains(document.activeElement)) return;
-            const target = panel.querySelector<HTMLElement>("[autofocus], input, textarea, select, button:not([data-dialog-close])");
-            (target ?? panel).focus({ preventScroll: true });
+            (panel.querySelector<HTMLElement>("[data-autofocus]") ?? panel).focus({ preventScroll: true });
         }, 50);
 
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && openStack[openStack.length - 1] === id) {
+            if (openStack[openStack.length - 1] !== id) return;
+            if (e.key === "Escape") {
                 e.stopPropagation();
                 onCloseRef.current();
+                return;
+            }
+            const panel = panelRef.current;
+            if (e.key !== "Tab" || !panel) return;
+            // Fokusfalle: Tab wandert nicht in die Seite hinter dem Dialog
+            const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.getClientRects().length > 0);
+            const active = document.activeElement;
+            if (!items.length) {
+                e.preventDefault();
+                panel.focus();
+            } else if (!panel.contains(active)) {
+                e.preventDefault();
+                items[0].focus();
+            } else if (e.shiftKey && (active === items[0] || active === panel)) {
+                e.preventDefault();
+                items[items.length - 1].focus();
+            } else if (!e.shiftKey && active === items[items.length - 1]) {
+                e.preventDefault();
+                items[0].focus();
             }
         };
         window.addEventListener("keydown", onKey);
@@ -133,7 +164,7 @@ export function BaseDialog({
             window.removeEventListener("keydown", onKey);
             const idx = openStack.lastIndexOf(id);
             if (idx >= 0) openStack.splice(idx, 1);
-            if (openStack.length === 0) document.body.style.overflow = overflow;
+            if (openStack.length === 0) document.body.style.overflow = savedOverflow;
             previouslyFocused?.focus?.({ preventScroll: true });
         };
     }, [isOpen, id]);
@@ -161,9 +192,10 @@ export function BaseDialog({
                         initial={isMobile ? { y: "100%" } : { opacity: 0, scale: 0.96, y: 16 }}
                         animate={
                             isMobile
-                                ? { y: -keyboardHeight, transition: { type: "spring", damping: 28, stiffness: 260 } }
+                                ? { y: -keyboard.offset, transition: { type: "spring", damping: 28, stiffness: 260 } }
                                 : { opacity: 1, scale: 1, y: 0 }
                         }
+                        style={keyboard.offset ? { maxHeight: keyboard.available - 12, paddingBottom: 0 } : undefined}
                         exit={isMobile ? { y: "100%" } : { opacity: 0, scale: 0.96, y: 16 }}
                         className={cn(
                             "w-full bg-card text-card-foreground border-border shadow-2xl flex flex-col overflow-hidden outline-none",
@@ -187,9 +219,10 @@ export function BaseDialog({
                                     {headerAction}
                                     {showCloseButton && (
                                         <button
+                                            type="button"
                                             data-dialog-close
                                             onClick={onClose}
-                                            className="p-2 hover:bg-accent rounded-full transition-colors"
+                                            className="p-2.5 -m-0.5 hover:bg-accent rounded-full transition-colors"
                                             aria-label="Schließen"
                                         >
                                             <X className="w-5 h-5" />

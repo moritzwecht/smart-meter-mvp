@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FieldLabel } from "@/components/ui/AddTile";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
-import { deleteNote, updateNote } from "@/lib/offline/repo";
+import { deleteNote, discardNoteIfEmpty, updateNote } from "@/lib/offline/repo";
 import type { Note } from "@/lib/sync/types";
 
 const AUTOSAVE_MS = 600;
@@ -23,21 +23,27 @@ function NoteEditor({ note }: { note: Note }) {
     const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const dirty = useRef<{ title: string; content: string } | null>(null);
 
-    const flush = useCallback(() => {
+    const flush = useCallback(async () => {
         clearTimeout(timer.current);
         const pending = dirty.current;
         dirty.current = null;
-        if (pending) void updateNote(note.id, { title: pending.title, content: pending.content || null });
+        if (pending) await updateNote(note.id, { title: pending.title, content: pending.content || null });
     }, [note.id]);
 
-    useEffect(() => flush, [flush]); // beim Schließen speichern
+    // Beim Schließen speichern – eine neue, leer gebliebene Notiz wieder verwerfen
+    useEffect(
+        () => () => {
+            void flush().then(() => (isNew ? discardNoteIfEmpty(note.id) : undefined));
+        },
+        [flush, isNew, note.id],
+    );
 
     const change = (next: { title: string; content: string }) => {
         setTitle(next.title);
         setContent(next.content);
         dirty.current = next;
         clearTimeout(timer.current);
-        timer.current = setTimeout(flush, AUTOSAVE_MS);
+        timer.current = setTimeout(() => void flush(), AUTOSAVE_MS);
     };
 
     return (

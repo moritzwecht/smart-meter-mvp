@@ -95,6 +95,7 @@ export async function updateMeter(id: string, fields: Partial<MeterFields>) {
 
 export async function deleteMeter(id: string) {
     await write(async () => {
+        if (!(await db.meters.get(id))) return; // schon weg (z. B. doppelt getippt)
         await db.readings.where("meterId").equals(id).delete();
         await db.meters.delete(id);
         await op({ opId: opId(), entity: "meter", action: "delete", id });
@@ -123,6 +124,7 @@ export async function updateReading(id: string, fields: Partial<ReadingFields>) 
 
 export async function deleteReading(id: string) {
     await write(async () => {
+        if (!(await db.readings.get(id))) return;
         await db.readings.delete(id);
         await op({ opId: opId(), entity: "reading", action: "delete", id });
     });
@@ -130,13 +132,14 @@ export async function deleteReading(id: string) {
 
 // Listen -------------------------------------------------------------------------------
 
-export async function addList(householdId: number, name: string) {
+export async function addList(householdId: number, name: string, options: { isPinned?: boolean } = {}) {
     const id = newId();
     const createdAt = nowIso();
-    const list: TodoList = { id, householdId, name, isPinned: false, createdAt, updatedAt: createdAt, deletedAt: null };
+    const isPinned = options.isPinned ?? false;
+    const list: TodoList = { id, householdId, name, isPinned, createdAt, updatedAt: createdAt, deletedAt: null };
     await write(async () => {
         await db.todoLists.add(list);
-        await op({ opId: opId(), entity: "list", action: "create", id, householdId, fields: { name, isPinned: false }, createdAt });
+        await op({ opId: opId(), entity: "list", action: "create", id, householdId, fields: { name, isPinned }, createdAt });
     });
     return id;
 }
@@ -150,6 +153,7 @@ export async function updateList(id: string, fields: Partial<Pick<TodoList, "nam
 
 export async function deleteList(id: string) {
     await write(async () => {
+        if (!(await db.todoLists.get(id))) return;
         await db.todoItems.where("listId").equals(id).delete();
         await db.todoLists.delete(id);
         await op({ opId: opId(), entity: "list", action: "delete", id });
@@ -176,6 +180,7 @@ export async function updateItem(id: string, fields: Partial<Pick<TodoItem, "con
 
 export async function deleteItem(id: string) {
     await write(async () => {
+        if (!(await db.todoItems.get(id))) return;
         await db.todoItems.delete(id);
         await op({ opId: opId(), entity: "item", action: "delete", id });
     });
@@ -230,7 +235,28 @@ export async function updateNote(id: string, fields: Partial<NoteFields>) {
 
 export async function deleteNote(id: string) {
     await write(async () => {
+        if (!(await db.notes.get(id))) return;
         await db.notes.delete(id);
         await op({ opId: opId(), entity: "note", action: "delete", id });
     });
+}
+
+/**
+ * Unverändert wieder geschlossen? Dann die frisch angelegte Liste/Notiz verwerfen,
+ * statt "Neue Liste" / "Ohne Titel" bei allen Mitgliedern liegen zu lassen.
+ * Prüft in der Transaktion – also nach evtl. noch laufenden Schreibvorgängen.
+ */
+export async function discardListIfUntouched(id: string, defaultName: string) {
+    const untouched = await db.transaction("r", [db.todoLists, db.todoItems], async () => {
+        const list = await db.todoLists.get(id);
+        if (!list) return false;
+        const name = list.name.trim();
+        return (name === "" || name === defaultName) && (await db.todoItems.where("listId").equals(id).count()) === 0;
+    });
+    if (untouched) await deleteList(id);
+}
+
+export async function discardNoteIfEmpty(id: string) {
+    const note = await db.notes.get(id);
+    if (note && !note.title.trim() && !note.content?.trim()) await deleteNote(id);
 }

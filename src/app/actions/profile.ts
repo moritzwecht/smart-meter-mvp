@@ -10,6 +10,8 @@ import { createApiToken, deleteApiToken, listApiTokens } from "@/lib/server/api-
 import { getDb } from "@/lib/server/db";
 import { isPushConfigured, sendPushToUser } from "@/lib/server/push";
 import { publicUser, requireUser, startSession } from "@/lib/server/session";
+import { invalidateResetTokens } from "@/lib/server/auth-tokens";
+import { takeAttempt } from "@/lib/server/rate-limit";
 
 const nameSchema = z.object({ name: z.string().trim().min(1, { error: "Bitte gib einen Namen ein." }).max(80) });
 
@@ -35,7 +37,10 @@ const changePasswordAction = action(passwordChangeSchema, async ({ currentPasswo
     if (!row) throw new UserError("Konto nicht gefunden.");
     if (row.password) {
         if (!currentPassword) throw new UserError("Bitte gib zur Bestätigung dein aktuelles Passwort ein.");
+        const attempt = await takeAttempt([`password-change:${user.id}`], 10, 15);
+        if (attempt.limited) throw new UserError("Zu viele Fehlversuche. Bitte warte 15 Minuten.");
         if (!(await compare(currentPassword, row.password))) throw new UserError("Das aktuelle Passwort ist nicht korrekt.");
+        await attempt.release();
     }
     // Neues Passwort beendet alle anderen Sessions; dieses Gerät bleibt angemeldet.
     const [updated] = await db
@@ -43,6 +48,7 @@ const changePasswordAction = action(passwordChangeSchema, async ({ currentPasswo
         .set({ password: await hash(newPassword, 11), sessionVersion: sql`${users.sessionVersion} + 1` })
         .where(eq(users.id, user.id))
         .returning();
+    await invalidateResetTokens(row.email);
     await startSession(updated);
     return null;
 });
@@ -75,12 +81,8 @@ const createTokenSchema = z.object({ name: z.string().trim().min(1, { error: "Bi
 
 const createTokenAction = action(createTokenSchema, async ({ name }) => {
     const user = await requireUser();
-    try {
-        const created = await createApiToken(user.id, name);
-        return { token: created.token, id: created.id };
-    } catch (error) {
-        throw new UserError(error instanceof Error ? error.message : "Token konnte nicht erstellt werden.");
-    }
+    const created = await createApiToken(user.id, name);
+    return { token: created.token, id: created.id };
 });
 
 /** Der Klartext-Token wird nur in dieser Antwort zurückgegeben. */

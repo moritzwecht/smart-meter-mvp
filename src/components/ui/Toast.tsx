@@ -95,7 +95,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                                         {t.action.label}
                                     </button>
                                 )}
-                                <button onClick={() => dismiss(t.id)} aria-label="Hinweis schließen" className="shrink-0 p-1 -m-1 text-muted-foreground hover:text-foreground">
+                                <button type="button" onClick={() => dismiss(t.id)} aria-label="Hinweis schließen" className="shrink-0 w-11 h-11 -m-3 flex items-center justify-center text-muted-foreground hover:text-foreground">
                                     <X className="w-4 h-4" />
                                 </button>
                             </motion.div>

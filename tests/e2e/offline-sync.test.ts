@@ -10,6 +10,10 @@ import { setupServer, type TestServer } from "../support/server";
 
 let activeUserId: number | null = null;
 let failNextRequests = 0;
+/** Server wendet an, aber die Antwort geht verloren (Verbindungsabbruch). */
+let dropNextResponses = 0;
+/** Hält Requests an, bis das Promise erfüllt ist (für "während eines laufenden Syncs"). */
+let gate: Promise<void> | null = null;
 let offline = false;
 
 vi.mock("@/lib/server/session", async (importOriginal) => {
@@ -28,30 +32,37 @@ const routes = {
 };
 
 globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (gate) await gate;
     if (offline) throw new TypeError("Failed to fetch");
     if (failNextRequests > 0) {
         failNextRequests--;
         return new Response("boom", { status: 500 });
     }
     const url = String(input);
-    const request = new Request(`http://localhost${url}`, init);
-    if (url === "/api/sync") return routes.sync.POST(request);
-    if (url === "/api/sync/legacy") return routes.legacy.POST(request);
-    return new Response("not found", { status: 404 });
+    const request = new Request(`http://localhost${url}`, { ...init, signal: undefined });
+    let res: Response;
+    if (url === "/api/sync") res = await routes.sync.POST(request);
+    else if (url === "/api/sync/legacy") res = await routes.legacy.POST(request);
+    else res = new Response("not found", { status: 404 });
+    if (dropNextResponses > 0) {
+        dropNextResponses--;
+        throw new TypeError("The network connection was lost.");
+    }
+    return res;
 }) as typeof fetch;
 
 type Device = Awaited<ReturnType<typeof createDevice>>;
 
-/** Ein Gerät = eigene IndexedDB + eigene Instanz von Repo/Engine. */
-async function createDevice(userId: number) {
+/** Ein Gerät = eigene IndexedDB + eigene Instanz von Repo/Engine (gleiche `factory` = zweiter Tab). */
+async function createDevice(userId: number, factory = new IDBFactory()) {
     vi.resetModules();
-    const factory = new IDBFactory();
     globalThis.indexedDB = factory;
     globalThis.IDBKeyRange = IDBKeyRange;
     const offlineDb = await import("@/lib/offline/db");
     const repo = await import("@/lib/offline/repo");
     const engine = await import("@/lib/offline/sync-engine");
     return {
+        factory,
         db: offlineDb.db,
         repo,
         engine,
@@ -76,6 +87,8 @@ beforeEach(async () => {
     householdId = server.households.zuhause.id;
     offline = false;
     failNextRequests = 0;
+    dropNextResponses = 0;
+    gate = null;
     phone = await createDevice(server.users.moritz.id);
     laptop = await createDevice(server.users.moritz.id);
     annasPhone = await createDevice(server.users.anna.id);
@@ -240,6 +253,110 @@ describe("Offline-Sync", () => {
     });
 });
 
+const serverNote = async (id: string) =>
+    (await server.client.query<{ content: string | null; deleted_at: Date | null }>(`select content, deleted_at from notes where id = $1`, [id])).rows[0];
+
+function hold() {
+    let release!: () => void;
+    gate = new Promise((r) => (release = r));
+    return () => {
+        gate = null;
+        release();
+    };
+}
+
+describe("Robustheit bei Verbindungsabbrüchen", () => {
+    it("Antwort verloren nach dem Anlegen: spätere Änderung kommt trotzdem an", async () => {
+        const noteId = await phone.repo.addNote(householdId, { title: "n" });
+        dropNextResponses = 1;
+        await phone.sync(); // Server hat angelegt, Client weiß es nicht
+        await phone.repo.updateNote(noteId, { content: "wichtig" });
+        await phone.sync();
+        expect((await serverNote(noteId)).content).toBe("wichtig");
+        expect((await phone.db.notes.get(noteId))?.content).toBe("wichtig");
+    });
+
+    it("Antwort verloren nach dem Anlegen: Löschen wird trotzdem übertragen", async () => {
+        const noteId = await phone.repo.addNote(householdId, { title: "weg" });
+        dropNextResponses = 1;
+        await phone.sync();
+        await phone.repo.deleteNote(noteId);
+        await phone.sync();
+        expect(await phone.db.notes.get(noteId)).toBeUndefined();
+        expect((await serverNote(noteId)).deleted_at).not.toBeNull();
+    });
+
+    it("nach einem Fehler gewinnt immer die letzte Eingabe", async () => {
+        const noteId = await phone.repo.addNote(householdId, { title: "n" });
+        await phone.sync();
+        await phone.repo.updateNote(noteId, { content: "a" });
+        const release = hold();
+        failNextRequests = 1;
+        const running = phone.sync();
+        await new Promise((r) => setTimeout(r, 20));
+        await phone.repo.updateNote(noteId, { content: "ab" });
+        release();
+        await running;
+        await phone.repo.updateNote(noteId, { content: "abc" });
+        await phone.sync();
+        expect((await serverNote(noteId)).content).toBe("abc");
+        expect((await phone.db.notes.get(noteId))?.content).toBe("abc");
+    });
+
+    it("ein zweiter Tab stört einen laufenden Sync nicht", async () => {
+        const noteId = await phone.repo.addNote(householdId, { title: "n" });
+        await phone.sync();
+        await phone.repo.updateNote(noteId, { content: "a" });
+        const release = hold();
+        const running = phone.sync();
+        await new Promise((r) => setTimeout(r, 20));
+        // Zweiter Tab (gleiche IndexedDB) setzt beim Start nur nicht laufende Operationen zurück
+        const tab = await createDevice(server.users.moritz.id, phone.factory);
+        await tab.repo.updateNote(noteId, { content: "ab" });
+        release();
+        await running;
+        await phone.sync();
+        expect((await serverNote(noteId)).content).toBe("ab");
+    });
+
+    it("Vollabgleich nach Haushaltsbeitritt wird auch nach Abbruch + Neustart nachgeholt", async () => {
+        const fremd = await createDevice(server.users.fremd.id);
+        await fremd.sync();
+        await fremd.repo.addNote(server.households.fremd.id, { title: "Alt" });
+        await fremd.sync();
+        await server.client.exec(
+            `alter table notes disable trigger notes_set_updated_at; update notes set updated_at = now() - interval '1 hour'; alter table notes enable trigger notes_set_updated_at;`,
+        );
+        await server.client.query(`insert into household_users (household_id, user_id, role) values ($1, $2, 'MEMBER')`, [
+            server.households.fremd.id,
+            server.users.anna.id,
+        ]);
+        // 1. Durchlauf sieht den neuen Haushalt, der 2. (Vollabgleich) scheitert
+        const original = globalThis.fetch;
+        let n = 0;
+        globalThis.fetch = (async (i: RequestInfo | URL, init?: RequestInit) => {
+            if (++n === 2) throw new TypeError("offline");
+            return original(i, init);
+        }) as typeof fetch;
+        await annasPhone.sync();
+        globalThis.fetch = original;
+        // App neu gestartet (gleiche IndexedDB, frischer Speicher)
+        const restarted = await createDevice(server.users.anna.id, annasPhone.factory);
+        await restarted.sync();
+        expect((await restarted.db.notes.toArray()).map((x) => x.title)).toContain("Alt");
+    });
+
+    it("sendet nichts, wenn im Browser inzwischen ein anderes Konto angemeldet ist", async () => {
+        const noteId = await phone.repo.addNote(householdId, { title: "Moritz privat" });
+        phone.engine.setSyncUserForTests(server.users.moritz.id);
+        activeUserId = server.users.anna.id; // Cookie gehört Anna
+        await phone.engine.runSync();
+        expect(phone.engine.getSyncState().status).toBe("unauthenticated");
+        expect(await server.count("notes", `id = '${noteId}'`)).toBe(0);
+        expect((await phone.outbox()).length).toBe(1); // bleibt für Moritz erhalten
+    });
+});
+
 describe("Upgrade von Version 1", () => {
     it("übernimmt hängengebliebene Offline-Änderungen aus der alten Queue", async () => {
         // Altes Gerät: Datenbank im Format von Version 1 mit ausstehenden Änderungen
@@ -276,5 +393,70 @@ describe("Upgrade von Version 1", () => {
         const notes = await offlineDb.db.notes.toArray();
         expect(notes).toHaveLength(1);
         expect(notes[0]).toMatchObject({ title: "Offline geschrieben", isPinned: true });
+    });
+});
+
+describe("Upgrade von Version 1 – große Queue", () => {
+    async function legacyDevice(entries: Record<string, unknown>[]) {
+        vi.resetModules();
+        globalThis.indexedDB = new IDBFactory();
+        const { default: Dexie } = await import("dexie");
+        const v1 = new Dexie("MyHomeDB", { indexedDB: globalThis.indexedDB, IDBKeyRange });
+        v1.version(1).stores({
+            households: "id, name, userId",
+            meters: "id, name, type, householdId",
+            readings: "id, meterId, date",
+            todoLists: "id, name, householdId",
+            todoItems: "id, listId, content",
+            notes: "id, title, householdId",
+            syncQueue: "++id, type, entity, status, timestamp",
+        });
+        await v1.table("syncQueue").bulkAdd(entries);
+        v1.close();
+        const offlineDb = await import("@/lib/offline/db");
+        const engine = await import("@/lib/offline/sync-engine");
+        return { db: offlineDb.db, engine };
+    }
+
+    it("überträgt in Teilen, löst temporäre IDs über Teilgrenzen auf und legt bei Wiederholung nichts doppelt an", async () => {
+        const ts = Date.now();
+        const entries = [
+            { type: "CREATE", entity: "LIST", data: { householdId, name: "Groß", tempId: -1 }, timestamp: ts, status: "PENDING" },
+            ...Array.from({ length: 250 }, (_, i) => ({
+                type: "CREATE",
+                entity: "ITEM",
+                data: { listId: -1, content: `Punkt ${i}`, tempId: -(i + 2) },
+                timestamp: ts,
+                status: "PENDING",
+            })),
+            { type: "UPDATE", entity: "ITEM", data: { id: -251, completed: true }, timestamp: ts, status: "PENDING" },
+            { type: "CREATE", entity: "NOTE", data: { householdId, title: "kaputt" }, timestamp: 1e20, status: "PENDING" },
+        ];
+        const device = await legacyDevice(entries);
+
+        activeUserId = server.users.moritz.id;
+        dropNextResponses = 1; // erster Teil kommt an, Antwort geht verloren
+        await device.engine.runSync();
+        await device.engine.runSync();
+        activeUserId = null;
+
+        expect(await device.db.legacyQueue.count()).toBe(0);
+        expect(await server.count("todo_lists")).toBe(1);
+        expect(await server.count("todo_items")).toBe(250);
+        expect(await server.count("todo_items", "completed")).toBe(1);
+        expect(await server.count("notes")).toBe(1); // unplausibler Zeitstempel ignoriert, Notiz trotzdem übernommen
+        expect(await device.db.todoItems.count()).toBe(250);
+    });
+
+    it("eine unlesbare alte Queue blockiert den normalen Sync nicht", async () => {
+        const device = await legacyDevice([{ type: "CREATE", entity: "NOTE", data: "kaputt", status: "PENDING" }]);
+        const repo = await import("@/lib/offline/repo");
+        await repo.addNote(householdId, { title: "Neu" });
+        activeUserId = server.users.moritz.id;
+        await device.engine.runSync();
+        activeUserId = null;
+        expect(device.engine.getSyncState().status).toBe("idle");
+        expect(await server.count("notes")).toBe(1);
+        expect(await device.db.legacyQueue.count()).toBe(0);
     });
 });

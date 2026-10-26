@@ -26,9 +26,16 @@ export function setTheme(theme: Theme) {
     } catch {
         /* privater Modus o. Ä. */
     }
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-    if (meta) meta.content = theme === "dark" ? "#020617" : "#f8fafc";
+    syncThemeColor();
     listeners.forEach((l) => l());
+}
+
+/** Statusleiste/Browser-UI an das gewählte Theme anpassen (überschreibt die Systemvorgabe). */
+export function syncThemeColor() {
+    const color = current() === "dark" ? "#020617" : "#f8fafc";
+    document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((meta) => {
+        meta.content = color;
+    });
 }
 
 export function useTheme() {

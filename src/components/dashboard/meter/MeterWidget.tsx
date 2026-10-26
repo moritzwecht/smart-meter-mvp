@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, Droplets, Flame, Pin, Plus, Zap } from "lucide-react";
+import { BarChart3, Droplets, Flame, Plus, Zap } from "lucide-react";
 import { memo, useMemo } from "react";
 import { formatConsumption, formatReading, formatRelativeDay, METER_TYPE_LABELS } from "@/lib/meter/format";
 import { dailyAverage, projectBillingPeriod, recentDailyAverage, toSegments } from "@/lib/meter/stats";
 import { formatCurrency } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
+import { PinButton } from "@/components/ui/PinButton";
 import { cn } from "@/lib/utils";
 
 export const METER_ICONS = {
@@ -47,8 +48,8 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                     type="button"
                     onClick={() => onOpen(meter.id)}
                     className="flex gap-3 flex-1 min-w-0 text-left"
-                    aria-label={`${METER_TYPE_LABELS[meter.type]}: Details anzeigen`}
                 >
+                    <span className="sr-only">{METER_TYPE_LABELS[meter.type]}:</span>
                     <div className={cn("w-10 h-10 shrink-0 rounded-xl flex items-center justify-center", config.bg)}>
                         <Icon className={cn("w-5 h-5", config.color)} />
                     </div>
@@ -79,18 +80,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                     </div>
                 </button>
 
-                <button
-                    type="button"
-                    onClick={() => onTogglePin(meter.id, !meter.isPinned)}
-                    aria-pressed={meter.isPinned}
-                    aria-label={meter.isPinned ? "Vom Dashboard lösen" : "Ans Dashboard heften"}
-                    className={cn(
-                        "p-2 w-8 h-8 shrink-0 flex items-center justify-center rounded-xl",
-                        meter.isPinned ? "text-primary bg-primary/10" : "text-muted-foreground/40 hover:text-primary hover:bg-primary/5",
-                    )}
-                >
-                    <Pin className={cn("w-4 h-4", meter.isPinned && "fill-current")} />
-                </button>
+                <PinButton large pinned={meter.isPinned} name={METER_TYPE_LABELS[meter.type]} onToggle={() => onTogglePin(meter.id, !meter.isPinned)} />
             </div>
 
             {budgetRatio !== null && projection?.balance != null && (
@@ -123,7 +113,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                 <button
                     type="button"
                     onClick={() => onAddReading(meter.id)}
-                    className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
+                    className="flex-1 min-h-11 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-1 shadow-lg shadow-emerald-500/20"
                 >
                     <Plus className="w-3 h-3" />
                     Eintragen
@@ -131,7 +121,7 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                 <button
                     type="button"
                     onClick={() => onOpen(meter.id)}
-                    className="p-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-primary"
+                    className="w-11 h-11 flex items-center justify-center hover:bg-accent rounded-xl text-muted-foreground hover:text-primary"
                     aria-label="Statistik & Einstellungen"
                 >
                     <BarChart3 className="w-4 h-4" />

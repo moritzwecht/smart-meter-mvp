@@ -43,6 +43,44 @@ export interface HouseholdData {
 
 const byCreatedDesc = (a: { createdAt: string }, b: { createdAt: string }) => b.createdAt.localeCompare(a.createdAt);
 
+/*
+ * Strukturelles Teilen: Dexie liefert bei jeder Änderung frische Objekte. Unveränderte
+ * Datensätze bekommen hier ihr bisheriges Objekt zurück – so rendern die (memoisierten)
+ * Widgets nur neu, wenn sich *ihre* Daten geändert haben, und z. B. die Verbrauchs-
+ * berechnung läuft nicht bei jedem Tastendruck in einer Notiz für alle Zähler neu.
+ */
+function shallowEqual(a: object, b: object, skip?: string): boolean {
+    const ka = Object.keys(a);
+    if (ka.length !== Object.keys(b).length) return false;
+    for (const k of ka) {
+        if (k !== skip && (a as Record<string, unknown>)[k] !== (b as Record<string, unknown>)[k]) return false;
+    }
+    return true;
+}
+
+function sameChildren<T extends object>(a: T[], b: T[]): boolean {
+    return a.length === b.length && a.every((x, i) => x === b[i] || shallowEqual(x, b[i]));
+}
+
+const shared = {
+    meters: new Map<string, MeterWithReadings>(),
+    lists: new Map<string, ListWithItems>(),
+    notes: new Map<string, Note>(),
+};
+
+function reuse<T extends { id: string }>(cache: Map<string, T>, next: T[], equal: (a: T, b: T) => boolean): T[] {
+    const result = next.map((item) => {
+        const prev = cache.get(item.id);
+        return prev && equal(prev, item) ? prev : item;
+    });
+    for (const item of result) cache.set(item.id, item);
+    if (cache.size > result.length * 2 + 50) {
+        const keep = new Set(result.map((r) => r.id));
+        for (const id of cache.keys()) if (!keep.has(id)) cache.delete(id);
+    }
+    return result;
+}
+
 /** Alle Daten eines Haushalts – aktualisiert sich automatisch bei jeder Änderung. */
 export function useHouseholdData(householdId: number | null): HouseholdData | undefined {
     return useLiveQuery(async () => {
@@ -71,13 +109,21 @@ export function useHouseholdData(householdId: number | null): HouseholdData | un
         }
 
         return {
-            meters: meters
-                .map((m) => ({ ...m, readings: (readingsByMeter.get(m.id) ?? []).sort((a, b) => a.date.localeCompare(b.date)) }))
-                .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-            lists: lists
-                .map((l) => ({ ...l, items: (itemsByList.get(l.id) ?? []).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) }))
-                .sort(byCreatedDesc),
-            notes: notes.sort(byCreatedDesc),
+            meters: reuse(
+                shared.meters,
+                meters
+                    .map((m) => ({ ...m, readings: (readingsByMeter.get(m.id) ?? []).sort((a, b) => a.date.localeCompare(b.date)) }))
+                    .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+                (a, b) => shallowEqual(a, b, "readings") && sameChildren(a.readings, b.readings),
+            ),
+            lists: reuse(
+                shared.lists,
+                lists
+                    .map((l) => ({ ...l, items: (itemsByList.get(l.id) ?? []).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) }))
+                    .sort(byCreatedDesc),
+                (a, b) => shallowEqual(a, b, "items") && sameChildren(a.items, b.items),
+            ),
+            notes: reuse(shared.notes, notes.sort(byCreatedDesc), (a, b) => shallowEqual(a, b)),
         };
     }, [householdId]);
 }

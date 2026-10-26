@@ -13,15 +13,22 @@ interface AddMeterDialogProps {
     isOpen: boolean;
     onClose: () => void;
     onCreated: (meterId: string) => void;
+    /** Neue Zähler direkt ans Dashboard heften (solange dort noch nichts ist) */
+    pinByDefault?: boolean;
 }
 
-export function AddMeterDialog({ householdId, isOpen, onClose, onCreated }: AddMeterDialogProps) {
+export function AddMeterDialog({ householdId, isOpen, onClose, onCreated, pinByDefault = false }: AddMeterDialogProps) {
     const [form, setForm] = useState<MeterFormState>(() => emptyMeterForm());
     const [showCosts, setShowCosts] = useState(false);
     const [error, setError] = useState("");
 
+    // Schließen (auch versehentlich per Tipp daneben) verwirft die Eingaben nicht
     const close = () => {
         onClose();
+        setError("");
+    };
+
+    const reset = () => {
         setForm(emptyMeterForm());
         setShowCosts(false);
         setError("");
@@ -34,8 +41,9 @@ export function AddMeterDialog({ householdId, isOpen, onClose, onCreated }: AddM
             setShowCosts(true);
             return;
         }
-        const id = await addMeter(householdId, result.fields);
-        close();
+        const id = await addMeter(householdId, { ...result.fields, isPinned: pinByDefault });
+        onClose();
+        reset();
         onCreated(id);
     };
 
@@ -46,7 +54,7 @@ export function AddMeterDialog({ householdId, isOpen, onClose, onCreated }: AddM
             title="Neuer Zähler"
             className="sm:max-w-md"
             footer={
-                <button onClick={create} className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
+                <button type="button" onClick={create} className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
                     Erstellen
                 </button>
             }

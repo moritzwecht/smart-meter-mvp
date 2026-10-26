@@ -13,6 +13,12 @@ export interface OutboxEntry {
     op: SyncOp;
     /** 1 = wird gerade gesendet (darf nicht mehr zusammengeführt werden) */
     sending: 0 | 1;
+    /**
+     * 1 = wurde schon mindestens einmal gesendet. Der Server hat sie dann evtl. schon
+     * angewendet (Antwort verloren) – so eine Operation wird nie mehr verändert,
+     * spätere Änderungen werden als eigene Operation angehängt.
+     */
+    attempted?: 0 | 1;
     queuedAt: number;
 }
 
@@ -28,6 +34,8 @@ export interface LegacyQueueEntry {
     entity: "METER" | "READING" | "LIST" | "ITEM" | "NOTE" | "HOUSEHOLD";
     data: Record<string, unknown>;
     timestamp?: number;
+    /** Vom Client vergebene UUID – macht die Übertragung wiederholbar (idempotent). */
+    uid?: string;
 }
 
 export type MetaKey = "user" | "cursor" | "knownHouseholds" | "selectedHouseholdId" | "lastSyncedAt";

@@ -8,6 +8,7 @@ import { acceptInvite, logout } from "@/app/actions/auth";
 import { Alert } from "@/components/ui/Alert";
 import { Spinner } from "@/components/ui/Spinner";
 import { runAction } from "@/lib/client-actions";
+import { signedOut } from "@/lib/offline/session";
 import type { SessionUser } from "@/lib/sync/types";
 import { AuthForm } from "./AuthForm";
 import { AuthShell } from "./AuthScreen";
@@ -77,6 +78,7 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
                             type="button"
                             onClick={async () => {
                                 await runAction(logout);
+                                await signedOut(); // lokale Daten des bisherigen Kontos verwerfen
                                 window.location.reload();
                             }}
                             className="w-full py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-primary"
@@ -94,6 +96,7 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
                             initialMode={invite.accountExists ? "login" : "register"}
                             initialEmail={invite.email}
                             inviteToken={token}
+                            // Nach der Registrierung ist man schon Mitglied – acceptInvite bestätigt das nur
                             onSuccess={() => void join()}
                         />
                     </div>

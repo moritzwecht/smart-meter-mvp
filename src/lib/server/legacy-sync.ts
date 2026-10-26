@@ -7,7 +7,10 @@ import { parseDecimal } from "@/lib/numbers";
 import type { ParsedSyncOp } from "@/lib/sync/schemas";
 import type { OpResult } from "@/lib/sync/types";
 import { getDb } from "./db";
+import { logError } from "./log";
 import { applyOp, type SyncContext } from "./sync";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /*
  * Einmalige Übernahme von Offline-Änderungen aus Version 1
@@ -19,11 +22,17 @@ import { applyOp, type SyncContext } from "./sync";
  * und mit derselben Logik wie der normale Sync angewendet.
  */
 
+const MIN_TS = Date.UTC(2000, 0, 1);
+const MAX_TS = Date.UTC(2100, 0, 1);
+
 export const legacyOpSchema = z.object({
     type: z.enum(["CREATE", "UPDATE", "DELETE"]),
     entity: z.enum(["METER", "READING", "LIST", "ITEM", "NOTE", "HOUSEHOLD"]),
     data: z.record(z.string(), z.unknown()),
-    timestamp: z.number().optional(),
+    // Unplausible Zeitstempel ignorieren statt die ganze Übertragung abzulehnen
+    timestamp: z.number().min(MIN_TS).max(MAX_TS).optional().catch(undefined),
+    /** Vom Client vergebene UUID → Wiederholungen legen nichts doppelt an */
+    uid: z.uuid().optional().catch(undefined),
 });
 
 export type LegacyOp = z.infer<typeof legacyOpSchema>;
@@ -43,6 +52,8 @@ export async function applyLegacyOps(ctx: SyncContext, ops: LegacyOp[]): Promise
     let rejectedCount = 0;
 
     async function resolve(entity: keyof typeof tables, legacy: unknown): Promise<string | undefined> {
+        // Vom Client bereits übersetzt (temporäre ID → UUID der Anlage)
+        if (typeof legacy === "string" && UUID_RE.test(legacy)) return legacy.toLowerCase();
         const n = Number(legacy);
         if (!Number.isInteger(n) || n === 0) return undefined;
         if (n < 0) return tempIds.get(`${entity}:${n}`);
@@ -63,7 +74,7 @@ export async function applyLegacyOps(ctx: SyncContext, ops: LegacyOp[]): Promise
         const opId = randomUUID();
 
         if (legacy.type === "CREATE") {
-            const id = randomUUID();
+            const id = legacy.uid ?? randomUUID();
             if (d.tempId !== undefined) tempIds.set(`${entity}:${Number(d.tempId)}`, id);
             const createdAt = legacy.timestamp ? new Date(legacy.timestamp).toISOString() : undefined;
             switch (entity) {
@@ -71,7 +82,8 @@ export async function applyLegacyOps(ctx: SyncContext, ops: LegacyOp[]): Promise
                     const parentId = await resolve("meter", d.meterId);
                     const value = num(d.value);
                     const date = d.date ? new Date(String(d.date)) : new Date(legacy.timestamp ?? Date.now());
-                    if (parentId && value !== null && !Number.isNaN(date.getTime())) {
+                    const time = date.getTime();
+                    if (parentId && value !== null && time >= MIN_TS && time <= MAX_TS) {
                         op = { opId, entity, action: "create", id, parentId, createdAt, fields: { value, date: date.toISOString(), isReplacement: false } };
                     }
                     break;
@@ -133,7 +145,14 @@ export async function applyLegacyOps(ctx: SyncContext, ops: LegacyOp[]): Promise
             }
         }
 
-        const result: OpResult = op ? await applyOp(ctx, op) : { opId, status: "rejected", reason: "unresolvable" };
+        let result: OpResult;
+        try {
+            result = op ? await applyOp(ctx, op) : { opId, status: "rejected", reason: "unresolvable" };
+        } catch (error) {
+            // Ein kaputter Eintrag darf die Übernahme der übrigen nicht verhindern
+            logError("legacy-sync", error);
+            result = { opId, status: "rejected", reason: "error" };
+        }
         if (result.status === "ok") applied++;
         else rejectedCount++;
     }

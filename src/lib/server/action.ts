@@ -2,6 +2,7 @@ import "server-only";
 import { ZodError, type ZodType } from "zod";
 import type { ActionResult } from "@/lib/action-result";
 import { ForbiddenError } from "./access";
+import { logError } from "./log";
 import { UnauthorizedError } from "./session";
 
 /** Fachlicher Fehler mit Meldung für den Nutzer. */
@@ -20,7 +21,7 @@ export function action<I, O>(schema: ZodType<I>, handler: (input: I) => Promise<
             if (error instanceof ZodError) return { ok: false, error: error.issues[0]?.message ?? "Ungültige Eingabe." };
             if (error instanceof UnauthorizedError) return { ok: false, error: "Bitte melde dich erneut an." };
             if (error instanceof ForbiddenError || error instanceof UserError) return { ok: false, error: error.message };
-            console.error("[action] Unerwarteter Fehler:", error);
+            logError("action", error);
             return { ok: false, error: "Da ist etwas schiefgelaufen. Bitte versuche es erneut." };
         }
     };

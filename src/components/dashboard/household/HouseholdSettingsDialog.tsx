@@ -144,7 +144,11 @@ function HouseholdSettings({ household, onClose }: { household: Household; onClo
             <section className="space-y-3">
                 <div className="flex justify-between items-center">
                     <FieldLabel>Mitglieder</FieldLabel>
-                    {details && <span className="text-[10px] font-mono text-muted-foreground">{details.members.length} Person(en)</span>}
+                    {details && (
+                        <span className="text-[11px] text-muted-foreground">
+                            {details.members.length} {details.members.length === 1 ? "Person" : "Personen"}
+                        </span>
+                    )}
                 </div>
                 {!details && !loadError && (
                     <div className="flex justify-center py-6">
@@ -164,7 +168,7 @@ function HouseholdSettings({ household, onClose }: { household: Household; onClo
                                             <span className="truncate">{m.name}</span>
                                             {m.isYou && <span className="text-[9px] font-bold text-muted-foreground uppercase">Du</span>}
                                             {m.role === "OWNER" && (
-                                                <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-black uppercase tracking-widest rounded leading-none">Inhaber</span>
+                                                <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded leading-none">Inhaber</span>
                                             )}
                                         </div>
                                         <div className="text-xs text-muted-foreground truncate">{m.email}</div>
@@ -250,7 +254,7 @@ function HouseholdSettings({ household, onClose }: { household: Household; onClo
                                         onClick={async () => {
                                             if ((await run("revoke", () => revokeInvite({ householdId: household.id, inviteId: inv.id }))) !== undefined) await load();
                                         }}
-                                        className="p-1 text-muted-foreground hover:text-red-500"
+                                        className="w-11 h-11 -my-2 -mr-2 shrink-0 flex items-center justify-center text-muted-foreground hover:text-red-500"
                                         aria-label={`Einladung an ${inv.email} zurückziehen`}
                                     >
                                         <X className="w-4 h-4" />

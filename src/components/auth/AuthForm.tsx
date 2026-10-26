@@ -18,7 +18,7 @@ interface AuthFormProps {
     initialEmail?: string;
     /** Bei Registrierung über eine Einladung: wird mitgeschickt, damit man direkt beitritt. */
     inviteToken?: string;
-    /** Abschluss überschreiben (Standard: Session setzen → App erscheint). */
+    /** Zusätzlich nach erfolgreicher Anmeldung (die Session wird immer gesetzt). */
     onSuccess?: (user: SessionUser) => void;
 }
 
@@ -60,8 +60,8 @@ export function AuthForm({ initialMode = "login", initialEmail = "", inviteToken
                 setError(result.error);
                 return;
             }
-            if (onSuccess) onSuccess(result.data);
-            else await signedIn(result.data);
+            await signedIn(result.data);
+            onSuccess?.(result.data);
         } finally {
             setLoading(false);
         }

@@ -1,4 +1,5 @@
 import "server-only";
+import { UserError } from "./action";
 import { and, eq, lt, or, isNull, sql } from "drizzle-orm";
 import { apiTokens } from "@/lib/db/schema";
 import { getDb } from "./db";
@@ -17,7 +18,7 @@ export async function createApiToken(userId: number, name: string) {
     const db = getDb();
     const existing = await db.select({ id: apiTokens.id }).from(apiTokens).where(eq(apiTokens.userId, userId));
     if (existing.length >= MAX_TOKENS_PER_USER) {
-        throw new Error(`Maximal ${MAX_TOKENS_PER_USER} Tokens – bitte erst einen löschen.`);
+        throw new UserError(`Maximal ${MAX_TOKENS_PER_USER} Tokens – bitte erst einen löschen.`);
     }
     const token = `${API_TOKEN_PREFIX}${randomToken()}`;
     const [row] = await db

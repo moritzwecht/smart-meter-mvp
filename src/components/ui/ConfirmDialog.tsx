@@ -54,14 +54,15 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 zIndex={150}
                 footer={
                     <div className="flex gap-2">
-                        <Button variant="ghost" className="flex-1 py-3" onClick={() => close(false)}>
+                        {/* Bei gefährlichen Aktionen liegt der Fokus auf "Abbrechen" (Enter löscht nicht versehentlich) */}
+                        <Button variant="ghost" className="flex-1 py-3" onClick={() => close(false)} autoFocus={!!options?.danger}>
                             {options?.cancelLabel ?? "Abbrechen"}
                         </Button>
                         <Button
                             variant={options?.danger ? "danger" : "primary"}
                             className="flex-1 py-3"
                             onClick={() => close(true)}
-                            autoFocus
+                            autoFocus={!options?.danger}
                         >
                             {options?.confirmLabel ?? "OK"}
                         </Button>

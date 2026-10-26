@@ -16,5 +16,6 @@ export function HomeApp() {
 
     if (session.status === "loading") return <DashboardSkeleton />;
     if (session.status === "anonymous") return <AuthScreen expired={session.reason === "expired"} />;
-    return <Dashboard user={session.user} />;
+    // key: Bei einem Kontowechsel startet das Dashboard (und damit der Sync) komplett neu
+    return <Dashboard key={session.user.id} user={session.user} />;
 }

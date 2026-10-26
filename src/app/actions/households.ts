@@ -11,7 +11,7 @@ import { createAuthToken } from "@/lib/server/auth-tokens";
 import { getDb } from "@/lib/server/db";
 import { sendMail } from "@/lib/server/email";
 import { appUrl } from "@/lib/server/env";
-import { isRateLimited, recordAttempt } from "@/lib/server/rate-limit";
+import { clientIp, takeAttempt } from "@/lib/server/rate-limit";
 import { requireUser } from "@/lib/server/session";
 
 const nameSchema = z.string().trim().min(1, { error: "Bitte gib einen Namen ein." }).max(80, { error: "Der Name ist zu lang." });
@@ -131,15 +131,19 @@ const inviteAction = action(inviteSchema, async ({ householdId, email }) => {
     await requireOwner(user.id, householdId);
     const db = getDb();
 
-    const rateKey = `invite:${user.id}`;
-    if (await isRateLimited([rateKey], 30, 24 * 60)) throw new UserError("Zu viele Einladungen heute. Bitte morgen erneut versuchen.");
+    // Begrenzt pro Nutzer und pro IP – Einladungs-E-Mails sollen nicht als Spam-Schleuder taugen
+    const attempt = await takeAttempt([`invite:${user.id}`, `invite-ip:${await clientIp()}`], 20, 24 * 60);
+    if (attempt.limited) throw new UserError("Zu viele Einladungen heute. Bitte morgen erneut versuchen.");
 
     const [alreadyMember] = await db
         .select({ n: count() })
         .from(householdUsers)
         .innerJoin(users, eq(users.id, householdUsers.userId))
         .where(and(eq(householdUsers.householdId, householdId), eq(users.email, email)));
-    if (alreadyMember.n > 0) throw new UserError("Diese Person ist bereits Mitglied.");
+    if (alreadyMember.n > 0) {
+        await attempt.release();
+        throw new UserError("Diese Person ist bereits Mitglied.");
+    }
 
     // Ältere offene Einladungen an dieselbe Adresse ersetzen
     await db
@@ -147,7 +151,6 @@ const inviteAction = action(inviteSchema, async ({ householdId, email }) => {
         .where(and(eq(authTokens.householdId, householdId), eq(authTokens.email, email), eq(authTokens.purpose, "INVITE"), isNull(authTokens.usedAt)));
 
     const token = await createAuthToken({ purpose: "INVITE", email, householdId, createdBy: user.id });
-    await recordAttempt([rateKey]);
     const [household] = await db.select({ name: households.name }).from(households).where(eq(households.id, householdId));
     const link = `${appUrl()}/invite/${token}`;
     const emailSent = await sendMail({

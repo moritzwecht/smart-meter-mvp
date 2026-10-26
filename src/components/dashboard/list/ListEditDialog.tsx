@@ -6,8 +6,10 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "re
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import type { ListWithItems } from "@/lib/offline/hooks";
-import { addItem, clearCompletedItems, deleteItem, deleteList, updateItem, updateList } from "@/lib/offline/repo";
+import { addItem, clearCompletedItems, deleteItem, deleteList, discardListIfUntouched, updateItem, updateList } from "@/lib/offline/repo";
 import { cn } from "@/lib/utils";
+
+export const NEW_LIST_NAME = "Neue Liste";
 
 function ListEditor({ list }: { list: ListWithItems }) {
     const [name, setName] = useState(list.name);
@@ -16,20 +18,24 @@ function ListEditor({ list }: { list: ListWithItems }) {
     const nameRef = useRef<HTMLInputElement>(null);
 
     // Frisch angelegte Liste: Namen direkt fokussieren und markieren, damit man sofort lostippen kann
-    const [isNew] = useState(() => list.items.length === 0 && list.name === "Neue Liste");
+    const [isNew] = useState(() => list.items.length === 0 && list.name === NEW_LIST_NAME);
     useLayoutEffect(() => {
         if (isNew) nameRef.current?.select();
     }, [isNew]);
 
-    // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund)
+    // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund);
+    // eine neue, unberührte Liste wird wieder verworfen.
     const pendingName = useRef<string | null>(null);
     useEffect(() => {
         const id = list.id;
         return () => {
             const value = pendingName.current?.trim();
-            if (value) void updateList(id, { name: value });
+            void (async () => {
+                if (value) await updateList(id, { name: value });
+                if (isNew) await discardListIfUntouched(id, NEW_LIST_NAME);
+            })();
         };
-    }, [list.id]);
+    }, [list.id, isNew]);
 
     const saveName = () => {
         const trimmed = name.trim();
@@ -72,7 +78,7 @@ function ListEditor({ list }: { list: ListWithItems }) {
                 <input
                     ref={inputRef}
                     type="text"
-                    placeholder="Neuer Punkt…"
+                    placeholder="Neuer Punkt …"
                     aria-label="Neuer Punkt"
                     maxLength={500}
                     value={newItem}
@@ -95,27 +101,32 @@ function ListEditor({ list }: { list: ListWithItems }) {
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                             transition={{ layout: { type: "spring", stiffness: 300, damping: 30 }, opacity: { duration: 0.15 } }}
-                            className="flex items-center gap-3 p-3 bg-accent/30 rounded-xl group hover:bg-accent/50 transition-colors"
+                            className="flex items-center gap-1 pl-3 pr-1 bg-accent/30 rounded-xl group hover:bg-accent/50 transition-colors"
                         >
+                            {/* Die ganze Zeile hakt ab – nicht nur das kleine Kästchen */}
                             <button
                                 type="button"
                                 onClick={() => updateItem(item.id, { completed: !item.completed })}
                                 aria-pressed={item.completed}
-                                aria-label={item.completed ? `${item.content}: als offen markieren` : `${item.content}: abhaken`}
-                                className={cn(
-                                    "w-6 h-6 shrink-0 rounded-lg border-2 border-border flex items-center justify-center transition-all",
-                                    item.completed ? "bg-primary border-primary text-primary-foreground" : "hover:border-primary",
-                                )}
+                                className="flex-1 min-w-0 min-h-12 py-2 flex items-center gap-3 text-left"
                             >
-                                {item.completed && <Check className="w-4 h-4" />}
+                                <span
+                                    className={cn(
+                                        "w-6 h-6 shrink-0 rounded-lg border-2 border-border flex items-center justify-center transition-all",
+                                        item.completed ? "bg-primary border-primary text-primary-foreground" : "group-hover:border-primary",
+                                    )}
+                                    aria-hidden
+                                >
+                                    {item.completed && <Check className="w-4 h-4" />}
+                                </span>
+                                <span className={cn("flex-1 text-base sm:text-sm font-medium break-words min-w-0", item.completed ? "line-through opacity-40" : "text-foreground")}>
+                                    {item.content}
+                                </span>
                             </button>
-                            <span className={cn("flex-1 text-sm font-medium break-words min-w-0", item.completed ? "line-through opacity-40" : "text-foreground")}>
-                                {item.content}
-                            </span>
                             <button
                                 type="button"
                                 onClick={() => deleteItem(item.id)}
-                                className="hover-reveal p-2 -m-1 text-muted-foreground hover:text-red-500 transition-colors"
+                                className="hover-reveal w-11 h-11 shrink-0 flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors"
                                 aria-label={`${item.content} löschen`}
                             >
                                 <Trash2 className="w-4 h-4" />
@@ -130,7 +141,7 @@ function ListEditor({ list }: { list: ListWithItems }) {
                 <button
                     type="button"
                     onClick={() => clearCompletedItems(list.id)}
-                    className="w-full py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center justify-center gap-2"
+                    className="w-full min-h-11 py-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center justify-center gap-2"
                 >
                     <Eraser className="w-3.5 h-3.5" />
                     {doneCount} erledigte entfernen

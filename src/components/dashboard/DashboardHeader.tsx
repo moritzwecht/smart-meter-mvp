@@ -25,7 +25,7 @@ export function DashboardHeader({ title, menuOpen, onToggleMenu, children }: Das
                         data-household-toggle
                         onClick={onToggleMenu}
                         aria-expanded={menuOpen}
-                        aria-haspopup="listbox"
+                        aria-haspopup="true"
                         className="group text-left min-w-0 block"
                     >
                         <span className="flex items-center gap-2 text-2xl font-black tracking-tighter hover:text-muted-foreground transition-colors">

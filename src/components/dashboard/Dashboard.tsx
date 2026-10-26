@@ -1,6 +1,6 @@
 "use client";
 
-import { Home } from "lucide-react";
+import { Gauge, Home, ListTodo, StickyNote } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { createHousehold } from "@/app/actions/households";
 import { BottomNav, type TabId } from "@/components/navigation/BottomNav";
@@ -11,14 +11,14 @@ import { runAction } from "@/lib/client-actions";
 import { db } from "@/lib/offline/db";
 import { useHouseholdData, useHouseholds, useSyncState } from "@/lib/offline/hooks";
 import { addList, addNote, updateItem, updateList, updateMeter, updateNote } from "@/lib/offline/repo";
-import { sessionExpired } from "@/lib/offline/session";
-import { requestSync, startSync } from "@/lib/offline/sync-engine";
+import { startUserSync } from "@/lib/offline/session";
+import { requestSync } from "@/lib/offline/sync-engine";
 import type { SessionUser } from "@/lib/sync/types";
 import { DashboardHeader } from "./DashboardHeader";
 import { DashboardSkeleton } from "./DashboardSkeleton";
 import { HouseholdMenu } from "./household/HouseholdMenu";
 import { HouseholdSettingsDialog } from "./household/HouseholdSettingsDialog";
-import { ListEditDialog } from "./list/ListEditDialog";
+import { ListEditDialog, NEW_LIST_NAME } from "./list/ListEditDialog";
 import { ListWidget } from "./list/ListWidget";
 import { AddMeterDialog } from "./meter/AddMeterDialog";
 import { MeterDetailDialog } from "./meter/MeterDetailDialog";
@@ -97,16 +97,17 @@ export function Dashboard({ user }: { user: SessionUser }) {
         const fromUrl = new URLSearchParams(window.location.search).get("tab");
         const valid: TabId[] = ["dashboard", "lists", "notes", "meters", "profile"];
         if (fromUrl && valid.includes(fromUrl as TabId)) return fromUrl as TabId;
-        return (readStorage(TAB_KEY) as TabId) || "dashboard";
+        const stored = readStorage(TAB_KEY) as TabId;
+        return valid.includes(stored) ? stored : "dashboard";
     });
     const [menuOpen, setMenuOpen] = useState(false);
     const [dialog, setDialogState] = useState<DialogState>(null);
     const setDialog = useCallback((next: DialogKind | null) => setDialogState(next && { ...next, n: ++dialogCounter }), []);
 
     useEffect(() => {
-        void startSync({ onUnauthenticated: sessionExpired });
+        startUserSync(user.id);
         if (window.location.search) window.history.replaceState(null, "", window.location.pathname);
-    }, []);
+    }, [user.id]);
 
     const householdId = households?.some((h) => h.id === preferredHousehold) ? preferredHousehold : (households?.[0]?.id ?? null);
     const household = households?.find((h) => h.id === householdId);
@@ -153,6 +154,20 @@ export function Dashboard({ user }: { user: SessionUser }) {
     const noteWidget = (n: (typeof notes)[number]) => <NoteWidget key={n.id} note={n} onOpen={openNote} onTogglePin={pinNote} />;
 
     const pinned = [...meters.filter((m) => m.isPinned).map(meterWidget), ...lists.filter((l) => l.isPinned).map(listWidget), ...notes.filter((n) => n.isPinned).map(noteWidget)];
+    // Solange das Dashboard leer ist, landen neue Elemente direkt dort
+    const autoPin = pinned.length === 0;
+
+    const createList = async () => {
+        if (!household) return;
+        const id = await addList(household.id, NEW_LIST_NAME, { isPinned: autoPin });
+        setDialog({ kind: "list", id });
+    };
+    const createNote = async () => {
+        if (!household) return;
+        const id = await addNote(household.id, { isPinned: autoPin });
+        setDialog({ kind: "note", id });
+    };
+    const isEmpty = meters.length + lists.length + notes.length === 0;
 
     let content: React.ReactNode;
     if (tab === "profile") {
@@ -172,33 +187,57 @@ export function Dashboard({ user }: { user: SessionUser }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">{pinned}</div>
             ) : (
                 <EmptyState>
-                    <p>Hefte Zähler, Listen oder Notizen mit der Pinnnadel an, um sie hier zu sehen.</p>
+                    <p>
+                        {isEmpty
+                            ? "Willkommen! Leg los mit deinem ersten Zähler, einer Einkaufsliste oder einer Notiz."
+                            : "Hefte Zähler, Listen oder Notizen mit der Pinnnadel an, um sie hier zu sehen."}
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2 pt-2">
+                        <button
+                            type="button"
+                            className="btn btn-secondary px-4 py-2.5 text-xs"
+                            onClick={() => {
+                                changeTab("meters");
+                                setDialog({ kind: "add-meter" });
+                            }}
+                        >
+                            <Gauge className="w-4 h-4" /> Zähler
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-secondary px-4 py-2.5 text-xs"
+                            onClick={() => {
+                                changeTab("lists");
+                                void createList();
+                            }}
+                        >
+                            <ListTodo className="w-4 h-4" /> Liste
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-secondary px-4 py-2.5 text-xs"
+                            onClick={() => {
+                                changeTab("notes");
+                                void createNote();
+                            }}
+                        >
+                            <StickyNote className="w-4 h-4" /> Notiz
+                        </button>
+                    </div>
                 </EmptyState>
             );
     } else if (tab === "lists") {
         content = (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {lists.map(listWidget)}
-                <AddTile
-                    label="Liste hinzufügen"
-                    onClick={async () => {
-                        const id = await addList(household.id, "Neue Liste");
-                        setDialog({ kind: "list", id });
-                    }}
-                />
+                <AddTile label="Liste hinzufügen" onClick={() => void createList()} />
             </div>
         );
     } else if (tab === "notes") {
         content = (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {notes.map(noteWidget)}
-                <AddTile
-                    label="Notiz hinzufügen"
-                    onClick={async () => {
-                        const id = await addNote(household.id);
-                        setDialog({ kind: "note", id });
-                    }}
-                />
+                <AddTile label="Notiz hinzufügen" onClick={() => void createNote()} />
             </div>
         );
     } else {
@@ -228,7 +267,7 @@ export function Dashboard({ user }: { user: SessionUser }) {
                 />
             </DashboardHeader>
 
-            <main className="min-h-[100dvh] px-4 md:px-8 pt-[calc(5.5rem+env(safe-area-inset-top))] pb-32 max-w-7xl mx-auto bg-background text-foreground">
+            <main className="min-h-[100dvh] px-4 md:px-8 pt-[calc(5.5rem+env(safe-area-inset-top))] pb-[calc(9rem+env(safe-area-inset-bottom))] max-w-7xl mx-auto bg-background text-foreground">
                 {content}
             </main>
 
@@ -240,6 +279,7 @@ export function Dashboard({ user }: { user: SessionUser }) {
                     isOpen={dialog?.kind === "add-meter"}
                     onClose={closeDialog}
                     onCreated={(id) => setDialog({ kind: "reading", id })}
+                    pinByDefault={autoPin}
                 />
             )}
             <MeterReadingDialog meter={find(meters, "reading")} instance={dialog?.n} onClose={closeDialog} onOpenDetails={openMeter} />

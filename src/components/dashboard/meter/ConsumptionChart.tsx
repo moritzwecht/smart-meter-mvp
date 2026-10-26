@@ -35,8 +35,9 @@ export function ConsumptionChart({ buckets, unit, colorClass }: { buckets: Month
                         key={b.month}
                         type="button"
                         tabIndex={-1}
-                        onMouseEnter={() => setActive(i)}
-                        onMouseLeave={() => setActive(null)}
+                        // Hover nur mit Maus – auf Touch-Geräten würde er das Antippen überlagern
+                        onPointerEnter={(e) => e.pointerType === "mouse" && setActive(i)}
+                        onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}
                         onClick={() => setActive(i === active ? null : i)}
                         className="flex-1 h-full flex flex-col justify-end group"
                         aria-hidden

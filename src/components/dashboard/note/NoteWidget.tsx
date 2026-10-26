@@ -1,7 +1,8 @@
 "use client";
 
-import { FileText, Pin } from "lucide-react";
+import { FileText } from "lucide-react";
 import { memo } from "react";
+import { PinButton } from "@/components/ui/PinButton";
 import type { Note } from "@/lib/sync/types";
 import { cn } from "@/lib/utils";
 
@@ -23,18 +24,7 @@ export const NoteWidget = memo(function NoteWidget({ note, onOpen, onTogglePin }
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-3 leading-relaxed whitespace-pre-line break-words">{note.content || "Kein Inhalt …"}</p>
                 </div>
             </button>
-            <button
-                type="button"
-                onClick={() => onTogglePin(note.id, !note.isPinned)}
-                aria-pressed={note.isPinned}
-                aria-label={note.isPinned ? "Vom Dashboard lösen" : "Ans Dashboard heften"}
-                className={cn(
-                    "p-1.5 h-fit rounded-lg shrink-0",
-                    note.isPinned ? "text-primary bg-primary/10" : "text-muted-foreground/40 hover:text-primary hover:bg-primary/5",
-                )}
-            >
-                <Pin className={cn("w-3.5 h-3.5", note.isPinned && "fill-current")} />
-            </button>
+            <PinButton pinned={note.isPinned} name={note.title || "Notiz"} onToggle={() => onTogglePin(note.id, !note.isPinned)} />
         </div>
     );
 });

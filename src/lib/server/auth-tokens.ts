@@ -53,6 +53,14 @@ export async function consumeToken(id: number): Promise<boolean> {
     return rows.length > 0;
 }
 
+/** Macht offene Reset-Links einer Adresse ungültig (nach Reset oder Passwortänderung). */
+export async function invalidateResetTokens(email: string) {
+    await getDb()
+        .update(authTokens)
+        .set({ usedAt: new Date() })
+        .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "RESET"), isNull(authTokens.usedAt)));
+}
+
 export async function getInviteInfo(token: string) {
     const invite = await findValidToken(token, "INVITE");
     if (!invite?.householdId) return null;

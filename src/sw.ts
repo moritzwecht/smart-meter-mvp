@@ -27,7 +27,8 @@ const serwist = new Serwist({
     navigationPreload: true,
     runtimeCaching: [
         {
-            matcher: ({ sameOrigin, url }) => sameOrigin && url.pathname.startsWith("/api/"),
+            // Einladungs- und Reset-Seiten enthalten persönliche Daten und Einmal-Tokens → nie cachen
+            matcher: ({ sameOrigin, url }) => sameOrigin && /^\/(api|invite|reset)\//.test(url.pathname),
             handler: new NetworkOnly(),
         },
         ...defaultCache,

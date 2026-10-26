@@ -70,14 +70,15 @@ export function HouseholdMenu({ isOpen, onClose, households, selectedHouseholdId
                     className="absolute top-full left-0 mt-3 w-72 bg-card border border-border shadow-2xl rounded-xl z-50 p-2 space-y-2"
                 >
                     <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-3 py-2 border-b border-border/50">Deine Haushalte</div>
-                    <ul className="max-h-[300px] overflow-y-auto custom-scrollbar" role="listbox" aria-label="Haushalt wählen">
+                    <ul className="max-h-[300px] overflow-y-auto custom-scrollbar" aria-label="Haushalt wählen">
                         {households.map((h) => (
-                            <li key={h.id} className="flex items-center px-1" role="option" aria-selected={h.id === selectedHouseholdId}>
+                            <li key={h.id} className="flex items-center px-1">
                                 <button
                                     type="button"
                                     onClick={() => onSelect(h.id)}
+                                    aria-current={h.id === selectedHouseholdId ? "true" : undefined}
                                     className={cn(
-                                        "flex-1 flex items-center gap-2 text-left px-3 py-2 rounded-lg font-medium text-sm transition-colors min-w-0",
+                                        "flex-1 flex items-center gap-2 text-left px-3 min-h-11 rounded-lg font-medium text-sm transition-colors min-w-0",
                                         h.id === selectedHouseholdId ? "bg-accent text-accent-foreground" : "hover:bg-accent/50",
                                     )}
                                 >
@@ -87,7 +88,7 @@ export function HouseholdMenu({ isOpen, onClose, households, selectedHouseholdId
                                 <button
                                     type="button"
                                     onClick={() => onOpenSettings(h.id)}
-                                    className="p-2 text-muted-foreground hover:text-primary transition-colors"
+                                    className="w-11 h-11 shrink-0 flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
                                     aria-label={`${h.name}: Mitglieder & Einstellungen`}
                                 >
                                     <Settings2 className="w-4 h-4" />
@@ -103,9 +104,9 @@ export function HouseholdMenu({ isOpen, onClose, households, selectedHouseholdId
                             maxLength={80}
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            className="flex-1 min-w-0 text-sm bg-transparent px-2 py-2 outline-none"
+                            className="flex-1 min-w-0 text-base sm:text-sm bg-transparent px-2 py-2 outline-none"
                         />
-                        <button type="submit" disabled={!name.trim() || creating} className="btn btn-primary px-3 py-2" aria-label="Haushalt anlegen">
+                        <button type="submit" disabled={!name.trim() || creating} className="btn btn-primary w-11 h-11 p-0" aria-label="Haushalt anlegen">
                             {creating ? <Spinner className="text-primary-foreground" /> : <Plus className="w-4 h-4" />}
                         </button>
                     </form>

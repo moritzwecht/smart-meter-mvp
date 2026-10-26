@@ -23,6 +23,8 @@ export interface SyncState {
 }
 
 const BATCH_SIZE = 100;
+const LEGACY_CHUNK_SIZE = 200;
+const REQUEST_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 30_000;
 const DEBOUNCE_MS = 250;
 const RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000];
@@ -41,6 +43,8 @@ let started = false;
 /** Wird bei stopSync erhöht: Antworten laufender Requests (z. B. nach Logout) werden verworfen. */
 let generation = 0;
 let onUnauthenticated: (() => void) | undefined;
+/** Nutzer, dem die lokalen Daten gehören (wird mitgeschickt, s. isUserMismatch) */
+let currentUserId: number | undefined;
 
 function setState(patch: Partial<SyncState>) {
     state = { ...state, ...patch };
@@ -57,6 +61,18 @@ export function subscribeSyncState(listener: () => void): () => void {
 }
 
 class UnauthenticatedError extends Error {}
+
+class HttpError extends Error {
+    constructor(readonly status: number) {
+        super(`Sync fehlgeschlagen (${status})`);
+    }
+}
+
+/** Netzwerk nicht erreichbar oder Request hängt – wie offline behandeln. */
+function isNetworkError(error: unknown): boolean {
+    if (error instanceof TypeError) return true;
+    return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+}
 
 const isOnline = () => typeof navigator === "undefined" || navigator.onLine !== false;
 
@@ -90,7 +106,11 @@ export async function runSync(): Promise<void> {
         do {
             rerunRequested = false;
             await withLock(async () => {
-                await uploadLegacyQueue();
+                await uploadLegacyQueue().catch((error) => {
+                    // Darf den normalen Sync nie blockieren
+                    if (error instanceof UnauthenticatedError || isNetworkError(error)) throw error;
+                    console.warn("[sync] Übernahme aus Version 1 fehlgeschlagen", error);
+                });
                 let rounds = 0;
                 while ((await syncRound()) && rounds++ < 50) {
                     /* weiter, bis die Outbox leer ist */
@@ -102,11 +122,11 @@ export async function runSync(): Promise<void> {
     } catch (error) {
         if (error instanceof UnauthenticatedError) {
             setState({ status: "unauthenticated", error: null });
-            onUnauthenticated?.();
+            if (started) onUnauthenticated?.(); // nach einem Logout nicht mehr reagieren
         } else {
-            // TypeError = Netzwerk nicht erreichbar (auch wenn navigator.onLine "true" meldet,
+            // Netzwerk nicht erreichbar (auch wenn navigator.onLine "true" meldet,
             // z. B. im Funkloch oder WLAN ohne Internet) → wie offline behandeln.
-            const unreachable = !isOnline() || error instanceof TypeError;
+            const unreachable = !isOnline() || isNetworkError(error);
             setState(
                 unreachable
                     ? { status: "offline", error: null }
@@ -125,23 +145,76 @@ export async function runSync(): Promise<void> {
 async function postJson(url: string, body: unknown): Promise<Response> {
     const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            ...(currentUserId !== undefined ? { "X-MyHome-User": String(currentUserId) } : {}),
+        },
         body: JSON.stringify(body),
         credentials: "same-origin",
         cache: "no-store",
+        // Ein hängender Request (Funkloch, App im Hintergrund) darf den Sync nicht ewig blockieren
+        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined,
     });
-    if (res.status === 401) throw new UnauthenticatedError();
-    if (!res.ok) throw new Error(`Sync fehlgeschlagen (${res.status})`);
+    // 409 = anderes Konto im Browser angemeldet → wie abgelaufene Session behandeln
+    if (res.status === 401 || res.status === 409) throw new UnauthenticatedError();
+    if (!res.ok) throw new HttpError(res.status);
     return res;
+}
+
+const newUid = () => crypto.randomUUID();
+
+/**
+ * Bereitet die alte Queue einmalig vor: Jede Operation bekommt eine feste UUID und
+ * Verweise auf temporäre (negative) IDs werden durch diese UUIDs ersetzt. Danach
+ * ist jeder Eintrag für sich verständlich – die Übertragung kann in Teilen erfolgen
+ * und nach einem Abbruch gefahrlos wiederholt werden.
+ */
+async function prepareLegacyQueue() {
+    await db.transaction("rw", db.legacyQueue, async () => {
+        const entries = await db.legacyQueue.orderBy("id").toArray();
+        if (entries.every((e) => e.uid)) return;
+        const temp = new Map<string, string>();
+        const ref = (entity: string, value: unknown) => {
+            const n = Number(value);
+            return Number.isInteger(n) && n < 0 ? (temp.get(`${entity}:${n}`) ?? value) : value;
+        };
+        for (const entry of entries) {
+            const uid = entry.uid ?? newUid();
+            const data = { ...entry.data };
+            if (!entry.uid) {
+                if (entry.type === "CREATE") {
+                    if (data.tempId !== undefined) temp.set(`${entry.entity}:${Number(data.tempId)}`, uid);
+                    if (entry.entity === "READING") data.meterId = ref("METER", data.meterId);
+                    if (entry.entity === "ITEM") data.listId = ref("LIST", data.listId);
+                } else {
+                    data.id = ref(entry.entity, data.id);
+                }
+            }
+            await db.legacyQueue.update(entry.id!, { uid, data });
+        }
+    });
 }
 
 /** Einmalige Übernahme hängengebliebener Offline-Änderungen aus Version 1. */
 async function uploadLegacyQueue() {
-    const legacy = await db.legacyQueue.toArray();
-    if (!legacy.length) return;
-    await postJson("/api/sync/legacy", { ops: legacy.map(({ type, entity, data, timestamp }) => ({ type, entity, data, timestamp })) });
-    await db.legacyQueue.bulkDelete(legacy.map((l) => l.id!));
-    fullSyncRequested = true;
+    if ((await db.legacyQueue.count()) === 0) return;
+    await prepareLegacyQueue();
+    for (;;) {
+        const chunk = await db.legacyQueue.orderBy("id").limit(LEGACY_CHUNK_SIZE).toArray();
+        if (!chunk.length) break;
+        try {
+            await postJson("/api/sync/legacy", { ops: chunk.map(({ type, entity, data, timestamp, uid }) => ({ type, entity, data, timestamp, uid })) });
+        } catch (error) {
+            // Vom Server abgelehnt (z. B. unlesbare Daten): Wiederholen hilft nicht → verwerfen
+            if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+                await db.legacyQueue.bulkDelete(chunk.map((l) => l.id!));
+                continue;
+            }
+            throw error;
+        }
+        await db.legacyQueue.bulkDelete(chunk.map((l) => l.id!));
+    }
+    await db.meta.delete("cursor"); // danach einmal alles neu laden
 }
 
 /** Ein Push/Pull-Durchlauf. Gibt `true` zurück, wenn direkt noch einer nötig ist. */
@@ -149,7 +222,7 @@ async function syncRound(): Promise<boolean> {
     const gen = generation;
     const batch = await db.transaction("rw", db.outbox, async () => {
         const entries = await db.outbox.orderBy("seq").limit(BATCH_SIZE).toArray();
-        await Promise.all(entries.map((e) => db.outbox.update(e.seq!, { sending: 1 })));
+        await Promise.all(entries.map((e) => db.outbox.update(e.seq!, { sending: 1, attempted: 1 })));
         return entries;
     });
 
@@ -169,8 +242,7 @@ async function syncRound(): Promise<boolean> {
     if (gen !== generation) return false; // inzwischen abgemeldet → nichts mehr schreiben
     if (full) fullSyncRequested = false;
     const needsFull = await applyResponse(batch, response);
-    if (needsFull) fullSyncRequested = true;
-    return fullSyncRequested || (await db.outbox.count()) > 0;
+    return needsFull || fullSyncRequested || (await db.outbox.count()) > 0;
 }
 
 type Row = { id: string | number; deletedAt?: string | null };
@@ -215,7 +287,11 @@ async function applyResponse(batch: OutboxEntry[], res: SyncResponse): Promise<b
                 await mergeDelta(db.todoItems, res.items, pendingIds);
                 await mergeDelta(db.notes, res.notes, pendingIds);
             }
-            await setMeta("cursor", res.cursor);
+            // Vollabgleich nötig → Cursor verwerfen statt nur ein Flag im Speicher zu setzen:
+            // So holt auch ein Neustart der App (oder ein Fehler im nächsten Durchlauf)
+            // garantiert alles nach.
+            if (needsFull) await db.meta.delete("cursor");
+            else await setMeta("cursor", res.cursor);
             await setMeta("lastSyncedAt", new Date().toISOString());
         },
     );
@@ -284,15 +360,17 @@ function handleVisibility() {
 }
 
 /** Startet den Hintergrund-Sync für den angemeldeten Nutzer. */
-export async function startSync(options: { onUnauthenticated?: () => void } = {}) {
+export async function startSync(options: { userId?: number; onUnauthenticated?: () => void } = {}) {
     onUnauthenticated = options.onUnauthenticated;
+    currentUserId = options.userId;
     if (started) {
         requestSync({ immediate: true });
         return;
     }
     started = true;
     // Absturz während des Sendens? Operationen wieder freigeben (der Server ist idempotent).
-    await db.outbox.where("seq").above(0).modify({ sending: 0 });
+    // Unter dem Lock, damit ein anderer Tab nicht mitten in seinem Sync gestört wird.
+    await withLock(() => db.outbox.where("seq").above(0).modify({ sending: 0 }));
     setState({ lastSyncedAt: (await getMeta<string>("lastSyncedAt")) ?? null });
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
@@ -314,6 +392,11 @@ export function stopSync() {
     window.removeEventListener("offline", handleOffline);
     document.removeEventListener("visibilitychange", handleVisibility);
     setState({ status: "idle", error: null });
+}
+
+/** Nur für Tests: Nutzer setzen, ohne die Browser-Listener zu starten */
+export function setSyncUserForTests(userId: number | undefined) {
+    currentUserId = userId;
 }
 
 /** Nur für Tests */

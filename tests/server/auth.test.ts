@@ -54,7 +54,22 @@ describe("Login & Registrierung", () => {
     });
 
     it("gibt bei falschem Passwort eine verständliche Fehlermeldung zurück (kein throw)", async () => {
-        expect(await auth.login({ email: "moritz@example.com", password: "falsch" })).toEqual({ ok: false, error: "E-Mail oder Passwort ist falsch." });
+        const result = await auth.login({ email: "moritz@example.com", password: "falsch" });
+        expect(result.ok).toBe(false);
+        expect(!result.ok && result.error).toMatch(/^E-Mail oder Passwort ist falsch/);
+    });
+
+    it("verrät nicht, ob ein Konto (noch) kein Passwort hat", async () => {
+        await server.db.insert(users).values({ email: "alt@example.com" });
+        const ohnePasswort = await auth.login({ email: "alt@example.com", password: "irgendwas" });
+        const gibtsNicht = await auth.login({ email: "niemand@example.com", password: "irgendwas" });
+        expect(ohnePasswort).toEqual(gibtsNicht);
+    });
+
+    it("SICHERHEIT: parallele Fehlversuche umgehen das Limit nicht", async () => {
+        await Promise.all(Array.from({ length: 20 }, (_, i) => auth.login({ email: "moritz@example.com", password: `falsch${i}` })));
+        const result = await auth.login({ email: "moritz@example.com", password: "richtig-gut-123" });
+        expect(!result.ok && result.error).toMatch(/Zu viele Fehlversuche/);
     });
 
     it("bremst Brute-Force nach 10 Fehlversuchen", async () => {
@@ -95,6 +110,18 @@ describe("Passwort vergessen", () => {
         expect((await auth.resetPassword({ token, password: "nochmal-1234" })).ok).toBe(false);
     });
 
+    it("beendet beim Zurücksetzen auch andere Reset-Links und API-Tokens", async () => {
+        const { createApiToken } = await import("@/lib/server/api-tokens");
+        await createApiToken(server.users.moritz.id, "Home Assistant");
+        await auth.requestPasswordReset({ email: "moritz@example.com" });
+        await auth.requestPasswordReset({ email: "moritz@example.com" });
+        expect(sentMails).toHaveLength(2);
+        expect((await auth.resetPassword({ token: tokenFrom(sentMails[0].url), password: "ganz-neu-123" })).ok).toBe(true);
+        expect(await server.count("api_tokens")).toBe(0);
+        // Der zweite Link gilt nicht mehr
+        expect((await auth.resetPassword({ token: tokenFrom(sentMails[1].url), password: "noch-neuer-123" })).ok).toBe(false);
+    });
+
     it("verrät nicht, ob es ein Konto gibt", async () => {
         expect(await auth.requestPasswordReset({ email: "gibtsnicht@example.com" })).toEqual({ ok: true, data: null });
         expect(sentMails).toHaveLength(0);
@@ -127,6 +154,27 @@ describe("Einladungen", () => {
         // Token verbraucht
         const [t] = await server.db.select().from(authTokens);
         expect(t.usedAt).not.toBeNull();
+    });
+
+    it("nach der Registrierung über die Einladung meldet acceptInvite keinen Fehler", async () => {
+        const token = await inviteAnna();
+        await auth.register({ email: "neu@example.com", password: "lang-genug", inviteToken: token });
+        expect(await auth.acceptInvite({ token })).toEqual({ ok: true, data: { householdId: server.households.zuhause.id } });
+    });
+
+    it("SICHERHEIT: ein Einladungslink taugt nicht zur Übernahme eines Kontos ohne Passwort", async () => {
+        // Angreifer lädt die Adresse eines alten Kontos (ohne Passwort) in seinen Haushalt ein …
+        await server.db.insert(users).values({ email: "opfer@example.com" });
+        await auth.login({ email: "moritz@example.com", password: "richtig-gut-123" });
+        const invite = await householdActions.inviteMember({ householdId: server.households.zuhause.id, email: "opfer@example.com" });
+        jar.clear();
+        const token = tokenFrom(invite.ok ? invite.data.link : undefined);
+        // … und versucht, damit ein Passwort für das Konto zu setzen
+        const result = await auth.register({ email: "opfer@example.com", password: "angreifer-123", inviteToken: token });
+        expect(result.ok).toBe(false);
+        expect(await getCurrentUser()).toBeNull();
+        const opfer = await server.db.query.users.findFirst({ where: eq(users.email, "opfer@example.com") });
+        expect(opfer?.password).toBeNull();
     });
 
     it("ein Einladungslink kann nur einmal verwendet werden", async () => {

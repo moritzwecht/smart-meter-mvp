@@ -175,7 +175,7 @@ ALTER TABLE "readings" ADD COLUMN "meter_uid" uuid;
 --> statement-breakpoint
 UPDATE "readings" r SET "meter_uid" = m."uid" FROM "meters" m WHERE m."id" = r."meter_id";
 --> statement-breakpoint
-DELETE FROM "readings" WHERE "meter_uid" IS NULL OR "__v1_parse_decimal"("value") IS NULL;
+DELETE FROM "readings" WHERE "meter_uid" IS NULL OR "__v1_parse_decimal"("value") IS NULL OR abs("__v1_parse_decimal"("value")) >= 1e12;
 --> statement-breakpoint
 ALTER TABLE "todo_items" ADD COLUMN "uid" uuid DEFAULT gen_random_uuid() NOT NULL;
 --> statement-breakpoint

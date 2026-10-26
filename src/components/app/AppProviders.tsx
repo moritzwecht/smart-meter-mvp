@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { syncThemeColor } from "@/lib/theme";
 
 /**
  * Registriert den Service Worker (nur im Produktions-Build) und meldet,
@@ -31,6 +32,7 @@ function ServiceWorker() {
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
+    useEffect(syncThemeColor, []);
     return (
         <ToastProvider>
             <ConfirmProvider>

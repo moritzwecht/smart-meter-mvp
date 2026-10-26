@@ -39,3 +39,15 @@ export async function parseJson<T>(request: Request, schema: ZodType<T>): Promis
     if (!parsed.success) return { error: errorResponse(400, parsed.error.issues[0]?.message ?? "Ungültige Daten") };
     return { data: parsed.data };
 }
+
+/**
+ * Der Client schickt mit, für welchen Nutzer seine lokalen Daten sind. Passt das
+ * nicht zum Cookie (anderes Konto im selben Browser angemeldet), wird nichts
+ * angewendet – sonst landeten Änderungen von Konto A bei Konto B.
+ */
+export function isUserMismatch(request: Request, userId: number): boolean {
+    const claimed = request.headers.get("x-myhome-user");
+    return claimed !== null && claimed !== String(userId);
+}
+
+export const userMismatchResponse = () => errorResponse(409, "Auf diesem Gerät ist ein anderes Konto angemeldet.");

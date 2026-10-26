@@ -16,7 +16,14 @@ import { authSecret, isProduction } from "./env";
  * (Passwortänderung, "Überall abmelden").
  */
 
-export const SESSION_COOKIE = "session";
+/**
+ * In Produktion mit `__Host-`-Präfix: Der Browser akzeptiert das Cookie dann nur
+ * von genau dieser Domain (secure, ohne Domain-Attribut) – eine andere Subdomain
+ * kann es weder setzen noch überschreiben.
+ */
+export const SESSION_COOKIE = isProduction ? "__Host-session" : "session";
+/** Name aus Version 1 – wird beim nächsten Request umgestellt. */
+const LEGACY_COOKIE = "session";
 const SESSION_DAYS = 90;
 const REFRESH_AFTER_SECONDS = 24 * 60 * 60;
 
@@ -63,11 +70,13 @@ function cookieOptions() {
 export async function startSession(user: { id: number; sessionVersion: number }) {
     const store = await cookies();
     store.set(SESSION_COOKIE, await sign(user.id, user.sessionVersion), cookieOptions());
+    if (LEGACY_COOKIE !== SESSION_COOKIE && store.get(LEGACY_COOKIE)) store.set(LEGACY_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
 }
 
 export async function endSession() {
     const store = await cookies();
     store.set(SESSION_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
+    if (LEGACY_COOKIE !== SESSION_COOKIE) store.set(LEGACY_COOKIE, "", { ...cookieOptions(), maxAge: 0 });
 }
 
 function toAuthUser(row: typeof users.$inferSelect): AuthUser {
@@ -87,8 +96,10 @@ function toAuthUser(row: typeof users.$inferSelect): AuthUser {
  */
 export async function getCurrentUser(options: { refresh?: boolean } = {}): Promise<AuthUser | null> {
     const store = await cookies();
-    const token = store.get(SESSION_COOKIE)?.value;
+    const current = store.get(SESSION_COOKIE)?.value;
+    const token = current ?? store.get(LEGACY_COOKIE)?.value;
     if (!token) return null;
+    const needsRename = !current;
     const claims = await verify(token);
     if (!claims) return null;
 
@@ -102,7 +113,8 @@ export async function getCurrentUser(options: { refresh?: boolean } = {}): Promi
     } else if (claims.email) {
         // Cookie aus Version 1 → einmalig auf das neue Format umstellen
         row = await db.query.users.findFirst({ where: eq(users.email, String(claims.email).toLowerCase()) });
-        if (!row) return null;
+        // Nach "Überall abmelden" / Passwortänderung gilt auch das alte Cookie nicht mehr
+        if (!row || row.sessionVersion !== 0) return null;
         if (options.refresh) await startSession(row);
         return toAuthUser(row);
     } else {
@@ -110,7 +122,7 @@ export async function getCurrentUser(options: { refresh?: boolean } = {}): Promi
     }
 
     const age = Date.now() / 1000 - (claims.iat ?? 0);
-    if (options.refresh && age > REFRESH_AFTER_SECONDS) {
+    if (options.refresh && (age > REFRESH_AFTER_SECONDS || needsRename)) {
         await startSession(row);
     }
     return toAuthUser(row);
