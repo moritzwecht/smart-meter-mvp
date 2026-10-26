@@ -44,11 +44,12 @@ describe("Verbrauch", () => {
         expect(dailyAverage(segments)).toBeCloseTo(10);
     });
 
-    it("wertet niedrigere Stände ohne Zählerwechsel als Anomalie statt als negativen Verbrauch", () => {
-        const { segments, anomalies } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 900), r("2025-01-21", 1100)]);
+    it("wertet einen zu niedrigen Stand als Tippfehler statt als negativen Verbrauch", () => {
+        const { segments, anomalies, ignored } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 900), r("2025-01-21", 1100)]);
         expect(anomalies).toBe(1);
+        expect(ignored.map((x) => x.value)).toEqual([900]);
         expect(segments).toHaveLength(1);
-        expect(segments[0].consumption).toBe(200);
+        expect(segments[0].consumption).toBe(100);
     });
 
     it("interpoliert Verbrauch auf beliebige Zeiträume", () => {

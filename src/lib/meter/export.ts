@@ -1,11 +1,12 @@
 import { formatNumber } from "@/lib/numbers";
 import type { Reading } from "@/lib/sync/types";
 import { METER_TYPE_LABELS } from "./format";
+import { sortReadings } from "./stats";
 import type { MeterType } from "@/lib/sync/types";
 
 /** CSV im deutschen Excel-Format (Semikolon, Dezimalkomma, UTF-8 mit BOM). */
 export function readingsToCsv(readings: Reading[], unit: string): string {
-    const sorted = [...readings].sort((a, b) => a.date.localeCompare(b.date));
+    const sorted = sortReadings(readings);
     const rows = [["Datum", "Uhrzeit", `Stand (${unit})`, `Verbrauch seit vorheriger (${unit})`, "Zählerwechsel", "Quelle"]];
     sorted.forEach((r, i) => {
         const d = new Date(r.date);

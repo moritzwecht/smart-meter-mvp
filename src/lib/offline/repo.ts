@@ -9,6 +9,7 @@ import type {
     TodoItem,
     TodoList,
 } from "@/lib/sync/types";
+import { roundReading } from "@/lib/numbers";
 import { db } from "./db";
 import { newId } from "./ids";
 import { enqueue } from "./outbox";
@@ -96,7 +97,9 @@ export async function deleteMeter(id: string) {
 
 // Ablesungen -------------------------------------------------------------------------
 
-export async function addReading(meterId: string, fields: ReadingFields) {
+export async function addReading(meterId: string, input: ReadingFields) {
+    // Wie die Datenbank auf 4 Nachkommastellen runden – sonst ändert sich der Wert nach dem Sync
+    const fields = { ...input, value: roundReading(input.value) };
     const id = newId();
     const createdAt = nowIso();
     const reading: Reading = { ...fields, id, meterId, source: "app", createdAt, updatedAt: createdAt, deletedAt: null };
@@ -107,7 +110,8 @@ export async function addReading(meterId: string, fields: ReadingFields) {
     return id;
 }
 
-export async function updateReading(id: string, fields: Partial<ReadingFields>) {
+export async function updateReading(id: string, input: Partial<ReadingFields>) {
+    const fields = input.value === undefined ? input : { ...input, value: roundReading(input.value) };
     await write(async () => {
         if (!(await db.readings.update(id, { ...fields, updatedAt: nowIso() }))) return;
         await op({ opId: opId(), entity: "reading", action: "update", id, fields });

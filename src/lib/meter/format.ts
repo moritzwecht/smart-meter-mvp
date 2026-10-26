@@ -1,5 +1,6 @@
 import { formatNumber } from "@/lib/numbers";
 import type { MeterType } from "@/lib/sync/types";
+import type { PlausibilityIssue } from "./stats";
 
 export const METER_TYPE_LABELS: Record<MeterType, string> = {
     ELECTRICITY: "Strom",
@@ -55,4 +56,22 @@ export function toDateInputValue(date: Date): string {
     const m = String(date.getMonth() + 1).padStart(2, "0");
     const d = String(date.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
+}
+
+/** Warnung zu einer Ablesung, wie sie im Formular erscheint. */
+export function plausibilityText(issue: PlausibilityIssue, unit: string): string {
+    switch (issue.kind) {
+        case "future-date":
+            return "Das Datum liegt in der Zukunft.";
+        case "lower-than-previous":
+            return issue.previousSuspicious
+                ? `Der Stand ist niedriger als die vorherige Ablesung (${formatReading(issue.previous)} ${unit}). Stimmt der neue Wert, war die vorherige vermutlich ein Tippfehler – sie wird dann nicht mitgerechnet und lässt sich im Verlauf korrigieren.`
+                : `Der Stand ist niedriger als die vorherige Ablesung (${formatReading(issue.previous)} ${unit}). Tippfehler – oder wurde der Zähler getauscht?`;
+        case "higher-than-next":
+            return `Der Stand ist höher als die spätere Ablesung vom ${formatDate(issue.nextDate)} (${formatReading(issue.next)} ${unit}). Stimmt der Wert?`;
+        case "unusually-high":
+            return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – sonst sind es ca. ${formatConsumption(issue.usualRate)}. Stimmt der Wert?`;
+        case "big-jump":
+            return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – ungewöhnlich viel. Stimmt der Wert?`;
+    }
 }

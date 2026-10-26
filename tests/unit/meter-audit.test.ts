@@ -8,16 +8,24 @@ import {
     canComputeCost,
     checkReading,
     consumptionCost,
+    conversionMissing,
     currentPeriodStart,
     DAY_MS,
     dailyAverage,
+    GAS_PROFILE,
     monthlyConsumption,
+    previewReading,
     projectBillingPeriod,
+    sortReadings,
+    timestampForDay,
     toSegments,
 } from "@/lib/meter/stats";
 import { meterFieldsFromForm, emptyMeterForm } from "@/components/dashboard/meter/MeterForm";
+import { readingsToCsv } from "@/lib/meter/export";
+import { parseDecimal, roundReading } from "@/lib/numbers";
 
 const r = (date: string, value: number, isReplacement = false) => ({ date: new Date(date).toISOString(), value, isReplacement });
+const total = (segments: { consumption: number }[]) => segments.reduce((s, x) => s + x.consumption, 0);
 
 const gas = {
     type: "GAS" as const,
@@ -43,7 +51,7 @@ describe("B1: ein Tippfehler darf den Verbrauch nicht verfälschen", () => {
         const { segments, anomalies } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 10500), r("2025-01-21", 1100), r("2025-01-31", 1200)]);
         expect(anomalies).toBe(1);
         expect(segments.reduce((s, x) => s + x.consumption, 0)).toBe(200);
-        expect(dailyAverage(segments)).toBeCloseTo(10);
+        expect(dailyAverage(segments)).toBeCloseTo(200 / 30); // 1000 → 1100 → 1200 in 30 Tagen
     });
 });
 
@@ -128,5 +136,224 @@ describe("Kontrolle: korrekte Rechnungen (müssen grün sein)", () => {
         expect(anomalies).toBe(0);
         expect(segments.map((s) => s.consumption)).toEqual([100, 100]);
         expect(DAY_MS).toBe(86_400_000);
+    });
+});
+
+// Nach der Gegenprüfung ergänzt ----------------------------------------------------------
+
+describe("B1: Grenzfälle der Ausreißer-Erkennung", () => {
+    it("Ziffer zu viel, danach nur EINE richtige Ablesung: der Tippfehler fliegt raus, nicht der richtige Wert", () => {
+        const { segments, ignored } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 10500), r("2025-01-21", 1100)]);
+        expect(ignored.map((x) => x.value)).toEqual([10500]);
+        expect(total(segments)).toBe(100);
+    });
+
+    it("Tippfehler in der ersten Ablesung", () => {
+        const { segments, ignored } = toSegments([r("2025-01-01", 10000), r("2025-01-11", 1100), r("2025-01-21", 1200)]);
+        expect(ignored.map((x) => x.value)).toEqual([10000]);
+        expect(total(segments)).toBe(100);
+    });
+
+    it("nicht markierter Zählerwechsel: beide Zählerhistorien bleiben, nur der Sprung zählt nicht", () => {
+        const xs = [r("2025-01-01", 5000), r("2025-02-01", 5300), r("2025-03-01", 5600), r("2025-03-15", 10), r("2025-04-01", 200), r("2025-05-01", 500), r("2025-06-01", 800)];
+        const { segments, ignored, drops } = toSegments(xs);
+        expect(ignored).toEqual([]);
+        expect(drops.map((x) => x.value)).toEqual([10]);
+        expect(total(segments)).toBe(600 + 790);
+    });
+
+    it("nur zwei Stände mit Rückgang: nicht entscheidbar → kein Verbrauch, aber gemeldet", () => {
+        const { segments, anomalies } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 900)]);
+        expect(segments).toEqual([]);
+        expect(anomalies).toBe(1);
+    });
+
+    it("Delle mitten im Verlauf: gleichmäßigere Lösung gewinnt", () => {
+        // 10/Tag; 1090 statt 1190 getippt
+        const { ignored, segments } = toSegments([r("2025-01-01", 1000), r("2025-01-11", 1100), r("2025-01-20", 1090), r("2025-01-31", 1300)]);
+        expect(ignored.map((x) => x.value)).toEqual([1090]);
+        expect(total(segments)).toBe(300);
+    });
+
+    it("Zählerwechsel mitten drin wird nicht als Ausreißer behandelt", () => {
+        const { segments, anomalies } = toSegments([r("2025-01-01", 900), r("2025-01-11", 1000), r("2025-01-11T13:00:00", 5, true), r("2025-01-21", 105)]);
+        expect(anomalies).toBe(0);
+        expect(segments.map((x) => x.consumption)).toEqual([100, 100]);
+    });
+
+    it("Warnung beim Eintragen erkennt einen Ausreißer im vorherigen Stand", () => {
+        const issue = checkReading([r("2025-01-01", 1000), r("2025-01-11", 10500)], r("2025-01-21", 1100), Date.parse("2025-03-01"));
+        expect(issue).toEqual({ kind: "lower-than-previous", previous: 10500, previousSuspicious: true });
+        // 950 liegt auch unter dem Stand davor → eher Zählerwechsel oder Tippfehler im neuen Wert
+        const plain = checkReading([r("2025-01-01", 1000), r("2025-01-11", 1100)], r("2025-01-21", 950), Date.parse("2025-03-01"));
+        expect(plain).toEqual({ kind: "lower-than-previous", previous: 1100, previousSuspicious: false });
+    });
+});
+
+describe("N1: gleicher Zeitpunkt", () => {
+    const prev = r("2025-03-01T12:00:00", 9800);
+    const oldFinal = r("2025-03-10T12:00:00", 10000);
+    const newStart = r("2025-03-10T12:00:00", 0, true);
+    const next = r("2025-03-20T12:00:00", 100);
+
+    it("Zählerwechsel am selben Zeitpunkt: unabhängig von der Reihenfolge 300", () => {
+        for (const order of [[prev, oldFinal, newStart, next], [prev, newStart, oldFinal, next], [next, newStart, oldFinal, prev]]) {
+            const { segments, anomalies } = toSegments(order);
+            expect({ anomalies, total: total(segments) }).toEqual({ anomalies: 0, total: 300 });
+        }
+        expect(sortReadings([newStart, oldFinal]).map((x) => x.isReplacement)).toEqual([false, true]);
+    });
+
+    it("zwei Stände am selben Zeitpunkt: der zuletzt eingetragene gilt", () => {
+        const a = { ...r("2025-03-10T12:00:00", 1000), createdAt: "2025-03-11T08:00:00.000Z" };
+        const b = { ...r("2025-03-10T12:00:00", 1050), createdAt: "2025-03-11T09:00:00.000Z" };
+        const p = r("2025-03-01T12:00:00", 900);
+        const n = r("2025-03-20T12:00:00", 1100);
+        for (const order of [[p, a, b, n], [p, b, a, n]]) {
+            const { segments } = toSegments(order);
+            expect(total(segments)).toBe(200);
+            expect(segments[0].consumption).toBe(150); // 900 → 1050 (b ist neuer)
+        }
+    });
+
+    it("weitere Einträge für denselben vergangenen Tag kommen eine Minute später", () => {
+        const existing = [r("2025-03-10T12:00:00", 10000)];
+        const now = Date.parse("2025-04-01T10:00:00");
+        const first = timestampForDay("2025-03-11", existing, now);
+        expect(new Date(first).getHours()).toBe(12);
+        const second = timestampForDay("2025-03-10", existing, now);
+        expect(Date.parse(second) - Date.parse(existing[0].date)).toBe(60_000);
+        expect(timestampForDay("2025-04-01", existing, now)).toBe(new Date(now).toISOString());
+    });
+
+    it("CSV und Verlauf nutzen dieselbe Reihenfolge", () => {
+        const row = (x: ReturnType<typeof r>, id: string) => ({ ...x, id, meterId: "m", source: "app", createdAt: "", updatedAt: "", deletedAt: null });
+        const csv = readingsToCsv([row(newStart, "b"), row(oldFinal, "a")], "m³");
+        const lines = csv.replace("\uFEFF", "").split("\r\n");
+        expect(lines[1]).toContain(";10000;");
+        expect(lines[2]).toContain(";0;;ja;");
+    });
+});
+
+describe("B2: Erweiterungen", () => {
+    it("Gas ist mit €/kWh voreingestellt", () => {
+        expect(emptyMeterForm("GAS").priceUnit).toBe("kwh");
+        expect(emptyMeterForm("ELECTRICITY").priceUnit).toBeNull();
+    });
+
+    it("„m3“ wird als m³ erkannt und umgerechnet", () => {
+        const res = meterFieldsFromForm({ ...emptyMeterForm("GAS"), unit: "m3", pricePerUnit: "0,11", zNumber: "0,95", calorificValue: "11,2" });
+        if ("error" in res) throw new Error(res.error);
+        expect(res.fields.unit).toBe("m³");
+        expect(billingFactor(res.fields)).toBeCloseTo(10.64);
+    });
+
+    it("Zustandszahl 0 oder unplausible Werte werden abgelehnt", () => {
+        const base = { ...emptyMeterForm("GAS"), pricePerUnit: "0,11", calorificValue: "11,2" };
+        expect("error" in meterFieldsFromForm({ ...base, zNumber: "0" })).toBe(true);
+        expect("error" in meterFieldsFromForm({ ...base, zNumber: "95" })).toBe(true);
+        expect("error" in meterFieldsFromForm({ ...base, zNumber: "0,95", calorificValue: "112" })).toBe(true);
+    });
+
+    it("Liter mit Preis pro kWh: keine Kosten statt Faktor 1", () => {
+        const liters = { ...gas, unit: "l" };
+        expect(conversionMissing(liters)).toBe(true);
+        expect(canComputeCost(liters)).toBe(false);
+        // Im Formular gibt es die Wahl €/kWh bei Litern gar nicht
+        const res = meterFieldsFromForm({ ...emptyMeterForm("GAS"), unit: "l", pricePerUnit: "0,11" });
+        if ("error" in res) throw new Error(res.error);
+        expect(res.fields.priceUnit).toBeNull();
+    });
+
+    it("Preis pro m³ ohne Umrechnung und Gas in kWh bleiben berechenbar", () => {
+        expect(canComputeCost({ ...gas, priceUnit: null, zNumber: null, calorificValue: null })).toBe(true);
+        expect(canComputeCost({ ...gas, unit: "kWh", zNumber: null, calorificValue: null })).toBe(true);
+        expect(billingFactor({ ...gas, unit: "kWh" })).toBe(1);
+    });
+});
+
+describe("B3: Jahresprofil Gas", () => {
+    it("Profil ergibt 100 %, Sommer-Beispiel landet bei ≈ 2.190 m³ und gilt als unsicher", () => {
+        expect(GAS_PROFILE.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
+        const { segments } = toSegments([r("2025-06-01T12:00:00", 0), r("2025-08-31T12:00:00", 182)]);
+        const p = projectBillingPeriod(gas, segments, new Date(2025, 8, 1).getTime())!;
+        expect(p.projectedConsumption).toBeGreaterThan(2100);
+        expect(p.projectedConsumption).toBeLessThan(2300);
+        expect(p.basis).toBe("profile");
+        expect(p.uncertain).toBe(true);
+        expect(p.balance!).toBeLessThan(-1000); // Nachzahlung statt Guthaben
+    });
+
+    it("Winter-Ablesungen werden nicht zu hoch hochgerechnet", () => {
+        // Dezember–Februar: 10 m³/Tag
+        const { segments } = toSegments([r("2024-12-01T12:00:00", 0), r("2025-03-01T12:00:00", 900)]);
+        const p = projectBillingPeriod(gas, segments, new Date(2025, 2, 2).getTime())!;
+        expect(p.projectedConsumption).toBeLessThan(900 * 365 / 90 * 0.7);
+        expect(p.uncertain).toBe(false);
+    });
+
+    it("mit Vorjahr gilt weiter das Vorjahr", () => {
+        const { segments } = toSegments([r("2024-01-01T00:00:00", 0), r("2025-01-01T00:00:00", 2000), r("2025-03-01T00:00:00", 2900)]);
+        const p = projectBillingPeriod(gas, segments, new Date(2025, 2, 2).getTime())!;
+        expect(p.basis).toBe("last-year");
+        expect(p.uncertain).toBe(false);
+    });
+});
+
+describe("B7: Vorschau zeigt die spätere Ablesung", () => {
+    it("liefert die nächste Ablesung mit", () => {
+        const p = previewReading([r("2025-01-01", 1000), r("2025-02-01", 1100)], r("2025-01-15", 1200))!;
+        expect(p.next?.value).toBe(1100);
+    });
+});
+
+describe("B8: Obergrenzen je Zählerart", () => {
+    const now = Date.parse("2026-03-01");
+    it("neuer Zähler: Start 150, ein Jahr später 3150 kWh → keine Warnung", () => {
+        expect(checkReading([r("2024-01-01", 150)], r("2025-01-01", 3150), now, { type: "ELECTRICITY", unit: "kWh" })).toBeNull();
+    });
+    it("Wasser: eine Ziffer zu viel in m³ fällt auf", () => {
+        expect(checkReading([r("2025-01-01", 123.4)], r("2025-01-11", 1240.5), now, { type: "WATER", unit: "m³" })?.kind).toBe("big-jump");
+        expect(checkReading([r("2025-01-01", 123.4)], r("2025-01-11", 124.5), now, { type: "WATER", unit: "m³" })).toBeNull();
+    });
+    it("eigene Einheit: keine Annahme", () => {
+        expect(checkReading([r("2025-01-01", 1)], r("2025-01-02", 100000), now, { type: "ELECTRICITY", unit: "Wh" })).toBeNull();
+    });
+});
+
+describe("B11: Bearbeiten nutzt dieselbe Prüfung", () => {
+    it("Stand zwischen zwei Ablesungen, der über der späteren liegt, wird erkannt", () => {
+        const others = [r("2025-01-01", 1000), r("2025-02-01", 1100)];
+        expect(checkReading(others, r("2025-01-15", 1150), Date.parse("2025-03-01"))?.kind).toBe("higher-than-next");
+    });
+});
+
+describe("B12: Ende des Abrechnungsjahres", () => {
+    it("29.02. als Beginn: Jahr endet am 28.02. des Folgejahres", () => {
+        const { segments } = toSegments([r("2025-01-01", 0), r("2025-06-01", 1510)]);
+        const p = projectBillingPeriod({ ...gas, type: "ELECTRICITY", unit: "kWh", priceUnit: null, billingStart: "2024-02-29" }, segments, Date.parse("2025-06-02"))!;
+        expect(new Date(p.periodStart).toDateString()).toBe(new Date(2025, 1, 28).toDateString());
+        expect(new Date(p.periodEnd).toDateString()).toBe(new Date(2026, 1, 28).toDateString());
+        const leap = projectBillingPeriod({ ...gas, type: "ELECTRICITY", unit: "kWh", priceUnit: null, billingStart: "2024-02-29" }, segments, Date.parse("2028-06-02"))!;
+        expect(new Date(leap.periodStart).toDateString()).toBe(new Date(2028, 1, 29).toDateString());
+    });
+});
+
+describe("B9/N6: Zahlen", () => {
+    it("rundet wie die Datenbank auf 4 Nachkommastellen", () => {
+        expect(roundReading(100.00009)).toBe(100.0001);
+        expect(roundReading(100.00004)).toBe(100);
+        expect(roundReading(12345.6)).toBe(12345.6);
+    });
+    it.each(["12.345.6", "1.2.3", "1,2,3", "1.23.456", "1.2.3,4", "1,2.5", "12,345,6.7"])("%s → null", (input) => {
+        expect(parseDecimal(input)).toBeNull();
+    });
+    it.each([
+        ["1.234.567,8", 1234567.8],
+        ["1,234,567.8", 1234567.8],
+        ["-1.234,5", -1234.5],
+        ["12.345", 12.345],
+    ])("%s → %s", (input, expected) => {
+        expect(parseDecimal(input)).toBe(expected);
     });
 });

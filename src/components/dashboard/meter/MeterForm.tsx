@@ -2,7 +2,8 @@
 
 import { FieldLabel } from "@/components/ui/AddTile";
 import { DEFAULT_UNIT, METER_TYPE_LABELS, METER_UNITS } from "@/lib/meter/format";
-import { parseOptionalDecimal, toInputValue } from "@/lib/numbers";
+import { isCubicMeters } from "@/lib/meter/stats";
+import { parseDecimal, parseOptionalDecimal, toInputValue } from "@/lib/numbers";
 import type { MeterFields, MeterType } from "@/lib/sync/types";
 import { cn } from "@/lib/utils";
 import { METER_ICONS } from "./MeterWidget";
@@ -39,8 +40,17 @@ export function meterFormFromFields(fields: Partial<MeterFields> & { type: Meter
     };
 }
 
-export const emptyMeterForm = (type: MeterType = "ELECTRICITY"): MeterFormState =>
-    meterFormFromFields({ type, unit: DEFAULT_UNIT[type] });
+/** Gastarife werden praktisch immer in ct/kWh angegeben – daher für Gas „€/kWh“ voreingestellt. */
+export const emptyMeterForm = (type: MeterType = "ELECTRICITY"): MeterFormState => ({
+    ...meterFormFromFields({ type, unit: DEFAULT_UNIT[type] }),
+    priceUnit: type === "GAS" ? "kwh" : null,
+});
+
+/** "m3" → "m³", sonst unverändert (ohne Leerzeichen am Rand). */
+const normalizeUnit = (unit: string) => (isCubicMeters(unit) ? "m³" : unit.trim());
+
+/** Der Schalter €/m³ ↔ €/kWh ergibt nur bei Gas in m³ Sinn. */
+const hasPriceUnitChoice = (form: Pick<MeterFormState, "type" | "unit">) => form.type === "GAS" && isCubicMeters(form.unit);
 
 const NUMBER_FIELDS = {
     monthlyPayment: "Abschlag",
@@ -52,7 +62,7 @@ const NUMBER_FIELDS = {
 
 /** Prüft das Formular. Liefert die Felder oder eine Fehlermeldung. */
 export function meterFieldsFromForm(form: MeterFormState): { fields: Omit<MeterFields, "isPinned"> } | { error: string } {
-    const unit = form.unit.trim();
+    const unit = normalizeUnit(form.unit);
     if (!unit) return { error: "Bitte gib eine Einheit an." };
     const numbers: Record<string, number | null> = {};
     for (const [key, label] of Object.entries(NUMBER_FIELDS)) {
@@ -61,7 +71,17 @@ export function meterFieldsFromForm(form: MeterFormState): { fields: Omit<MeterF
         if (value !== null && value < 0) return { error: `${label} darf nicht negativ sein.` };
         numbers[key] = value;
     }
-    const conversion = form.type === "GAS" && unit === "m³" && form.priceUnit === "kwh";
+    const priceUnit = hasPriceUnitChoice({ type: form.type, unit }) && form.priceUnit === "kwh" ? "kwh" : null;
+    const conversion = priceUnit === "kwh";
+    if (conversion && numbers.pricePerUnit !== null) {
+        // Ohne Umrechnung wären die Kosten rund zehnmal zu niedrig
+        if (numbers.zNumber === null || numbers.calorificValue === null)
+            return { error: "Für einen Preis pro kWh brauchst du Zustandszahl und Brennwert – beide stehen auf deiner Gasrechnung." };
+    }
+    if (conversion && numbers.zNumber !== null && (numbers.zNumber < 0.5 || numbers.zNumber > 1.5))
+        return { error: "Zustandszahl: Sie liegt meist zwischen 0,8 und 1 (z. B. 0,95)." };
+    if (conversion && numbers.calorificValue !== null && (numbers.calorificValue < 5 || numbers.calorificValue > 15))
+        return { error: "Brennwert: Er liegt meist zwischen 9 und 13 kWh/m³ (z. B. 11,2)." };
     return {
         fields: {
             type: form.type,
@@ -69,7 +89,7 @@ export function meterFieldsFromForm(form: MeterFormState): { fields: Omit<MeterF
             monthlyPayment: numbers.monthlyPayment,
             basicFee: numbers.basicFee,
             pricePerUnit: numbers.pricePerUnit,
-            priceUnit: form.type === "GAS" ? form.priceUnit : null,
+            priceUnit,
             zNumber: conversion ? numbers.zNumber : null,
             calorificValue: conversion ? numbers.calorificValue : null,
             billingStart: form.billingStart || null,
@@ -135,6 +155,8 @@ export function MeterTypeFields({ form, onChange }: { form: MeterFormState; onCh
                                         type,
                                         // Einheit mitziehen, solange keine eigene gewählt wurde
                                         unit: METER_UNITS.includes(form.unit) ? DEFAULT_UNIT[type] : form.unit,
+                                        // Gas: €/kWh voreinstellen, solange noch kein Preis eingetragen ist
+                                        priceUnit: type === "GAS" && !form.pricePerUnit.trim() ? "kwh" : form.priceUnit,
                                     })
                                 }
                                 className={cn(
@@ -184,9 +206,12 @@ export function MeterTypeFields({ form, onChange }: { form: MeterFormState; onCh
 
 export function MeterCostFields({ form, onChange, idPrefix }: { form: MeterFormState; onChange: (form: MeterFormState) => void; idPrefix: string }) {
     const set = (key: keyof MeterFormState) => (value: string) => onChange({ ...form, [key]: value });
-    const priceInKwh = form.type === "GAS" && form.priceUnit === "kwh";
-    const showConversion = form.type === "GAS" && form.unit === "m³" && priceInKwh;
-    const priceSuffix = `€/${priceInKwh ? "kWh" : form.unit || "Einheit"}`;
+    const choice = hasPriceUnitChoice(form);
+    const showConversion = choice && form.priceUnit === "kwh";
+    const priceSuffix = `€/${showConversion ? "kWh" : form.unit.trim() || "Einheit"}`;
+    // Ein Gaspreis pro m³ liegt bei rund 1 €; unter 0,40 € ist es vermutlich ein Preis pro kWh
+    const price = parseDecimal(form.pricePerUnit);
+    const looksLikeKwhPrice = choice && !showConversion && price !== null && price > 0 && price < 0.4;
 
     return (
         <div className="space-y-4">
@@ -195,10 +220,10 @@ export function MeterCostFields({ form, onChange, idPrefix }: { form: MeterFormS
                 <div className="space-y-2">
                     <div className="flex justify-between items-center gap-2">
                         <FieldLabel htmlFor={`${idPrefix}-price`}>Verbrauchspreis</FieldLabel>
-                        {form.type === "GAS" && form.unit !== "kWh" && (
+                        {choice && (
                             <div className="flex gap-1 -my-2" role="radiogroup" aria-label="Preiseinheit">
                                 {[
-                                    { value: null, label: `€/${form.unit || "m³"}` },
+                                    { value: null, label: "€/m³" },
                                     { value: "kwh", label: "€/kWh" },
                                 ].map((o) => (
                                     <button
@@ -230,6 +255,11 @@ export function MeterCostFields({ form, onChange, idPrefix }: { form: MeterFormS
                         />
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-bold pointer-events-none">{priceSuffix}</span>
                     </div>
+                    {looksLikeKwhPrice && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                            Gaspreise stehen meist pro kWh auf der Rechnung (z. B. 0,11 €/kWh). Gilt dein Preis pro kWh, stell oben auf „€/kWh“ um.
+                        </p>
+                    )}
                 </div>
                 <MoneyInput id={`${idPrefix}-fee`} label="Grundgebühr pro Monat" value={form.basicFee} onChange={set("basicFee")} suffix="€" placeholder="0,00" />
                 <div className="space-y-2">
@@ -248,7 +278,8 @@ export function MeterCostFields({ form, onChange, idPrefix }: { form: MeterFormS
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="col-span-full p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl text-xs text-blue-600 dark:text-blue-400">
                         <p className="font-bold mb-1">Umrechnung m³ → kWh</p>
-                        Dein Zähler misst in m³, der Preis gilt pro kWh. Zustandszahl und Brennwert stehen auf deiner Gasrechnung.
+                        Dein Zähler misst in m³, der Preis gilt pro kWh. Zustandszahl und Brennwert stehen auf deiner Gasrechnung – ohne sie lassen sich die
+                        Kosten nicht berechnen.
                     </div>
                     <MoneyInput id={`${idPrefix}-z`} label="Zustandszahl" value={form.zNumber} onChange={set("zNumber")} suffix="" placeholder="z. B. 0,95" />
                     <MoneyInput id={`${idPrefix}-cv`} label="Brennwert" value={form.calorificValue} onChange={set("calorificValue")} suffix="kWh/m³" placeholder="z. B. 11,2" />

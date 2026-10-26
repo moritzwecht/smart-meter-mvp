@@ -76,7 +76,7 @@ Umgebungsvariablen: siehe [`.env.example`](.env.example). Pflicht sind `DATABASE
 4. Beim ersten Öffnen lädt die App alle Daten neu. Offline-Änderungen, die in Version 1 hängen geblieben waren, werden automatisch übernommen. Bestehende Sessions werden übernommen (alte Sessions galten max. 24 h – danach einmal neu anmelden). Angemeldet wird sich ab jetzt immer mit einem Code per E-Mail; Passwörter gibt es nicht mehr, die alten Hashes werden gelöscht.
 5. Wenn alles läuft: `DROP SCHEMA v1_backup CASCADE;`
 
-**Anmeldung & Sicherheit in Kürze:** Keine Passwörter – man gibt die E-Mail-Adresse ein und bekommt einen 6-stelligen Code (10 Minuten gültig, nur der zuletzt angeforderte gilt, nach 5 falschen Eingaben verbraucht; dazu Limits pro Adresse und IP). Neue Konten entstehen beim ersten Anmelden. Gespeichert wird nur ein HMAC des Codes. Code statt Link, weil Links auf dem Handy oft im falschen Browser landen statt in der Home-Bildschirm- oder nativen App. Sessions sind signierte JWTs im `__Host-`-Cookie (90 Tage, „überall abmelden“ im Profil).
+**Anmeldung & Sicherheit in Kürze:** Keine Passwörter – man gibt die E-Mail-Adresse ein und bekommt einen 6-stelligen Code (10 Minuten gültig, nur der zuletzt angeforderte gilt, nach 3 falschen Eingaben verbraucht; dazu Limits pro Adresse und IP). Neue Konten entstehen beim ersten Anmelden. Gespeichert wird nur ein HMAC des Codes. Code statt Link, weil Links auf dem Handy oft im falschen Browser landen statt in der Home-Bildschirm- oder nativen App. Sessions sind signierte JWTs im `__Host-`-Cookie (90 Tage, „überall abmelden“ im Profil).
 
 Der tägliche Job (`/api/cron/daily`: Erinnerungen + Aufräumen) ist in `vercel.json` eingetragen und braucht `CRON_SECRET`. Ohne Vercel kann ihn z. B. n8n täglich aufrufen: `GET /api/cron/daily` mit Header `Authorization: Bearer <CRON_SECRET>`.
 
@@ -95,7 +95,12 @@ curl -X POST https://home.moritz-wecht.de/api/v1/readings \
   -d '{"meterId":"<uuid>","value":12345.6}'
 ```
 
-Antworten: `201` neu, `200` unverändert (gleicher Wert wie zuletzt), `422` Wert kleiner als zuvor (Schutz vor Sensor-Resets – bei echtem Zählerwechsel `"isReplacement": true` mitsenden).
+Antworten:
+- `201`: neu eingetragen.
+- `200`: unverändert (gleicher Wert wie zuletzt) oder aktualisiert. Pro Viertelstunde (:00, :15, :30, :45) wird höchstens eine Ablesung gespeichert, weitere Werte im selben Zeitfenster aktualisieren sie. Ein gleichbleibender Wert wird einmal am Tag neu gespeichert, damit die Ablese-Erinnerung weiß, dass der Zähler noch meldet.
+- `422`: Der Wert ist kleiner als der letzte Stand (Schutz vor Sensor-Resets – bei echtem Zählerwechsel `"isReplacement": true` mitsenden) oder größer als eine spätere Ablesung (bei Nachträgen mit `date`).
+
+Werte werden auf 4 Nachkommastellen gerundet.
 
 ## Push-Benachrichtigungen
 

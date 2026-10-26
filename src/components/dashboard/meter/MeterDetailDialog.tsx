@@ -7,11 +7,14 @@ import { Alert } from "@/components/ui/Alert";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
-import { formatConsumption, formatDate, formatReading, METER_TYPE_LABELS, toDateInputValue } from "@/lib/meter/format";
+import { formatConsumption, formatDate, formatReading, METER_TYPE_LABELS, plausibilityText, toDateInputValue } from "@/lib/meter/format";
 import {
     canComputeCost,
+    checkReading,
     consumptionCost,
+    conversionMissing,
     dailyAverage,
+    DAYS_PER_MONTH,
     monthlyConsumption,
     projectBillingPeriod,
     recentDailyAverage,
@@ -47,12 +50,19 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
     );
 }
 
+const BASIS_TEXT = {
+    "last-year": "Rest anhand des Vorjahres",
+    profile: "Rest anhand eines typischen Gasjahres",
+    average: "Rest anhand des Durchschnitts",
+} as const;
+
 function Statistics({ meter }: { meter: MeterWithReadings }) {
     const stats = useMemo(() => {
-        const { segments, anomalies } = toSegments(meter.readings);
+        const { segments, ignored, drops } = toSegments(meter.readings);
         return {
             segments,
-            anomalies,
+            ignored: ignored.length,
+            drops: drops.length,
             overall: dailyAverage(segments),
             recent: recentDailyAverage(segments, 30),
             months: monthlyConsumption(segments, 12),
@@ -60,17 +70,32 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
         };
     }, [meter]);
 
+    const missingConversion = (meter.pricePerUnit ?? 0) > 0 && conversionMissing(meter);
+    const anomalyAlert = (stats.ignored > 0 || stats.drops > 0) && (
+        <Alert variant="warning">
+            {stats.ignored > 0 &&
+                `${stats.ignored === 1 ? "Eine Ablesung passt" : `${stats.ignored} Ablesungen passen`} nicht zu den übrigen (vermutlich Tippfehler) und ${stats.ignored === 1 ? "wird" : "werden"} nicht mitgerechnet. `}
+            {stats.drops > 0 &&
+                `${stats.drops === 1 ? "Ein Stand ist" : `${stats.drops} Stände sind`} niedriger als der vorherige, der Verbrauch dazwischen zählt nicht. War das ein Zählerwechsel? Dann die Ablesung bearbeiten und als Zählerwechsel markieren. `}
+            Die Ablesungen sind im Verlauf markiert.
+        </Alert>
+    );
+
     if (stats.overall === null) {
         return (
-            <div className="p-8 text-center bg-accent/20 rounded-2xl border border-dashed border-border text-xs text-muted-foreground">
-                Ab zwei Ablesungen siehst du hier Verbrauch, Verlauf und eine Prognose.
+            <div className="space-y-4">
+                <div className="p-8 text-center bg-accent/20 rounded-2xl border border-dashed border-border text-xs text-muted-foreground">
+                    Ab zwei Ablesungen siehst du hier Verbrauch, Verlauf und eine Prognose.
+                </div>
+                {anomalyAlert}
             </div>
         );
     }
 
     const p = stats.projection;
     const hasCost = canComputeCost(meter);
-    const perDayCost = hasCost && stats.recent !== null ? consumptionCost(meter, stats.recent) : null;
+    // Monatskosten wie der Abschlag: Arbeitspreis + Grundgebühr
+    const perMonthCost = hasCost && stats.recent !== null ? consumptionCost(meter, stats.recent) * DAYS_PER_MONTH + (meter.basicFee ?? 0) : null;
 
     return (
         <div className="space-y-6">
@@ -78,7 +103,7 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
                 <Stat
                     label="Ø pro Tag (30 Tage)"
                     value={stats.recent !== null ? `${formatConsumption(stats.recent)} ${meter.unit}` : "–"}
-                    hint={perDayCost !== null ? `≈ ${formatCurrency(perDayCost * 30.44)} pro Monat` : undefined}
+                    hint={perMonthCost !== null ? `≈ ${formatCurrency(perMonthCost)} pro Monat inkl. Grundgebühr` : undefined}
                 />
                 <Stat label="Ø pro Tag (gesamt)" value={`${formatConsumption(stats.overall)} ${meter.unit}`} />
                 {p && (
@@ -91,7 +116,7 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
                         <Stat
                             label="Prognose Jahr"
                             value={`${formatConsumption(p.projectedConsumption)} ${meter.unit}`}
-                            hint={p.basis === "last-year" ? "Rest anhand des Vorjahres" : "Rest anhand des Durchschnitts"}
+                            hint={p.uncertain ? `noch unsicher – wenige Daten. ${BASIS_TEXT[p.basis]}` : BASIS_TEXT[p.basis]}
                         />
                     </>
                 )}
@@ -115,27 +140,43 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
                 </div>
             )}
 
-            {stats.anomalies > 0 && (
+            {missingConversion && (
                 <Alert variant="warning">
-                    {stats.anomalies === 1 ? "Eine Ablesung ist" : `${stats.anomalies} Ablesungen sind`} niedriger als die vorherige und
-                    {stats.anomalies === 1 ? " wird" : " werden"} nicht mitgerechnet. Tippfehler korrigieren oder als Zählerwechsel markieren.
+                    Für die Kosten fehlen Zustandszahl und Brennwert (der Preis gilt pro kWh, der Zähler misst in {meter.unit}). Trag sie unten in den
+                    Einstellungen ein – sie stehen auf deiner Gasrechnung.
                 </Alert>
             )}
+            {anomalyAlert}
         </div>
     );
 }
 
-function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: Reading; unit: string }) {
+function ReadingRow({
+    reading,
+    previous,
+    meter,
+    flag,
+}: {
+    reading: Reading;
+    previous?: Reading;
+    meter: MeterWithReadings;
+    flag?: "ignored" | "drop";
+}) {
     const confirm = useConfirm();
+    const unit = meter.unit;
     const [editing, setEditing] = useState(false);
     const [value, setValue] = useState("");
     const [day, setDay] = useState("");
+    const [isReplacement, setIsReplacement] = useState(false);
+    const [warning, setWarning] = useState<string | null>(null);
     const [error, setError] = useState("");
     const delta = previous && !reading.isReplacement ? reading.value - previous.value : null;
 
     const startEdit = () => {
         setValue(toInputValue(reading.value));
         setDay(toDateInputValue(new Date(reading.date)));
+        setIsReplacement(reading.isReplacement);
+        setWarning(null);
         setError("");
         setEditing(true);
     };
@@ -143,13 +184,37 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
     const save = async () => {
         const parsed = parseDecimal(value);
         if (parsed === null || !day) {
-            setError("Ungültiger Wert");
+            setError("Bitte einen gültigen Stand und ein Datum eingeben.");
             return;
         }
+        // Uhrzeit beibehalten; liegt sie heute noch in der Zukunft, gilt "jetzt"
         const original = new Date(reading.date);
         const [y, m, d] = day.split("-").map(Number);
-        const date = new Date(y, m - 1, d, original.getHours(), original.getMinutes()).toISOString();
-        await updateReading(reading.id, { value: parsed, date });
+        let time = new Date(y, m - 1, d, original.getHours(), original.getMinutes(), original.getSeconds()).getTime();
+        if (day === toDateInputValue(new Date()) && time > Date.now()) time = Date.now();
+        const date = new Date(time).toISOString();
+        const changed = parsed !== reading.value || date !== reading.date || isReplacement !== reading.isReplacement;
+        if (!changed) {
+            setEditing(false);
+            return;
+        }
+        const candidate = { value: parsed, date, isReplacement };
+        const issue = checkReading(
+            meter.readings.filter((r) => r.id !== reading.id),
+            candidate,
+            Date.now(),
+            meter,
+        );
+        if (issue?.kind === "future-date") {
+            setError(plausibilityText(issue, unit));
+            return;
+        }
+        const text = issue ? plausibilityText(issue, unit) : null;
+        if (text && warning !== text) {
+            setWarning(text); // zweites Tippen auf "Speichern" bestätigt
+            return;
+        }
+        await updateReading(reading.id, candidate);
         setEditing(false);
     };
 
@@ -162,18 +227,51 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
                         aria-label="Zählerstand"
                         inputMode="decimal"
                         value={value}
-                        onChange={(e) => setValue(e.target.value)}
+                        onChange={(e) => {
+                            setValue(e.target.value);
+                            setWarning(null);
+                        }}
                         className="input-field flex-1 min-w-0 py-2"
                     />
-                    <input aria-label="Datum" type="date" value={day} onChange={(e) => setDay(e.target.value)} className="input-field py-2" />
+                    <input
+                        aria-label="Datum"
+                        type="date"
+                        value={day}
+                        max={toDateInputValue(new Date())}
+                        onChange={(e) => {
+                            setDay(e.target.value);
+                            setWarning(null);
+                        }}
+                        className="input-field py-2"
+                    />
                 </div>
+                <label className="flex items-center gap-2 min-h-9 text-xs font-medium cursor-pointer select-none">
+                    <input
+                        type="checkbox"
+                        checked={isReplacement}
+                        onChange={(e) => {
+                            setIsReplacement(e.target.checked);
+                            setWarning(null);
+                        }}
+                        className="w-4 h-4 accent-current"
+                    />
+                    Zählerwechsel (Startstand eines neuen Zählers)
+                </label>
+                {warning && <Alert variant="warning">{warning} Zum Speichern erneut tippen.</Alert>}
                 <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-red-500">{error}</span>
+                    <span className="text-xs text-red-500" role={error ? "alert" : undefined}>
+                        {error}
+                    </span>
                     <div className="flex gap-1">
                         <button type="button" onClick={() => setEditing(false)} className="p-2 rounded-lg hover:bg-accent" aria-label="Abbrechen">
                             <X className="w-4 h-4" />
                         </button>
-                        <button type="button" onClick={save} className="p-2 rounded-lg bg-primary text-primary-foreground" aria-label="Speichern">
+                        <button
+                            type="button"
+                            onClick={save}
+                            className="p-2 rounded-lg bg-primary text-primary-foreground"
+                            aria-label={warning ? "Trotzdem speichern" : "Speichern"}
+                        >
                             <Check className="w-4 h-4" />
                         </button>
                     </div>
@@ -189,7 +287,7 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
                     {reading.isReplacement ? <RefreshCw className="w-4 h-4 text-muted-foreground" /> : <History className="w-4 h-4 text-muted-foreground" />}
                 </div>
                 <div className="min-w-0">
-                    <div className="text-sm font-black tabular-nums">
+                    <div className={cn("text-sm font-black tabular-nums", flag === "ignored" && "line-through decoration-amber-500/70")}>
                         {formatReading(reading.value)} {unit}
                         {delta !== null && (
                             <span className={cn("ml-2 text-[10px] font-bold", delta < 0 ? "text-red-500" : "text-muted-foreground")}>
@@ -202,6 +300,8 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
                         {formatDate(reading.date)}
                         {reading.isReplacement && " · Zählerwechsel"}
                         {reading.source === "api" && " · automatisch"}
+                        {flag === "ignored" && <span className="text-amber-700 dark:text-amber-400"> · nicht mitgerechnet</span>}
+                        {flag === "drop" && <span className="text-amber-700 dark:text-amber-400"> · Zählerwechsel?</span>}
                     </div>
                 </div>
             </div>
@@ -227,6 +327,13 @@ function ReadingRow({ reading, previous, unit }: { reading: Reading; previous?: 
 
 function History_({ meter }: { meter: MeterWithReadings }) {
     const [showAll, setShowAll] = useState(false);
+    const flags = useMemo(() => {
+        const { ignored, drops } = toSegments(meter.readings);
+        const map = new Map<Reading, "ignored" | "drop">();
+        for (const r of ignored) map.set(r, "ignored");
+        for (const r of drops) map.set(r, "drop");
+        return map;
+    }, [meter.readings]);
     const desc = [...meter.readings].reverse();
     const visible = showAll ? desc : desc.slice(0, 10);
     if (desc.length === 0) {
@@ -236,7 +343,7 @@ function History_({ meter }: { meter: MeterWithReadings }) {
         <div className="space-y-2">
             <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50">
                 {visible.map((r, i) => (
-                    <ReadingRow key={r.id} reading={r} previous={desc[i + 1]} unit={meter.unit} />
+                    <ReadingRow key={r.id} reading={r} previous={desc[i + 1]} meter={meter} flag={flags.get(r)} />
                 ))}
             </div>
             <div className="flex justify-between gap-2">
@@ -357,7 +464,7 @@ export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: Me
                     <Collapsible title={`Verlauf (${meter.readings.length})`} defaultOpen>
                         <History_ meter={meter} />
                     </Collapsible>
-                    <Collapsible title="Einstellungen & Kosten" defaultOpen={meter.pricePerUnit === null}>
+                    <Collapsible title="Einstellungen & Kosten" defaultOpen={meter.pricePerUnit === null || conversionMissing(meter)}>
                         <Settings meter={meter} />
                     </Collapsible>
                 </div>

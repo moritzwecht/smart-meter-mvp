@@ -3,6 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useSyncExternalStore } from "react";
 import type { Household, Meter, Note, Reading, TodoItem, TodoList } from "@/lib/sync/types";
+import { sortReadings } from "@/lib/meter/stats";
 import { db } from "./db";
 import { sessionStore } from "./session";
 import { getSyncState, subscribeSyncState, type SyncState } from "./sync-engine";
@@ -112,7 +113,7 @@ export function useHouseholdData(householdId: number | null): HouseholdData | un
             meters: reuse(
                 shared.meters,
                 meters
-                    .map((m) => ({ ...m, readings: (readingsByMeter.get(m.id) ?? []).sort((a, b) => a.date.localeCompare(b.date)) }))
+                    .map((m) => ({ ...m, readings: sortReadings(readingsByMeter.get(m.id) ?? []) }))
                     .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
                 (a, b) => shallowEqual(a, b, "readings") && sameChildren(a.readings, b.readings),
             ),

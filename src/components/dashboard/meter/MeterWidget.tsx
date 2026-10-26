@@ -100,7 +100,9 @@ export const MeterWidget = memo(function MeterWidget({ meter, onAddReading, onOp
                         />
                     </div>
                     <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-                        <span>{Math.round(budgetRatio * 100)} % der Abschläge</span>
+                        <span>
+                            {Math.round(budgetRatio * 100)} % der Abschläge{projection.uncertain && " · unsicher"}
+                        </span>
                         <span className={projection.balance >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
                             {projection.balance >= 0 ? "≈ " : "≈ −"}
                             {formatCurrency(Math.abs(projection.balance))} {projection.balance >= 0 ? "Guthaben" : "Nachzahlung"}

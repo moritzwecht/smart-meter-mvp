@@ -5,8 +5,8 @@ import { useState, type FormEvent } from "react";
 import { FieldLabel } from "@/components/ui/AddTile";
 import { Alert } from "@/components/ui/Alert";
 import { BaseDialog } from "@/components/ui/BaseDialog";
-import { formatConsumption, formatDate, formatReading, METER_TYPE_LABELS, toDateInputValue } from "@/lib/meter/format";
-import { canComputeCost, checkReading, consumptionCost, previewReading, type PlausibilityIssue } from "@/lib/meter/stats";
+import { formatConsumption, formatDate, formatReading, METER_TYPE_LABELS, plausibilityText, toDateInputValue } from "@/lib/meter/format";
+import { canComputeCost, checkReading, consumptionCost, previewReading, timestampForDay } from "@/lib/meter/stats";
 import { formatCurrency, parseDecimal } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
 import { addReading } from "@/lib/offline/repo";
@@ -19,35 +19,22 @@ interface MeterReadingDialogProps {
     onOpenDetails: (meterId: string) => void;
 }
 
-/** Datum aus dem Formular → Zeitpunkt (heute: jetzt, sonst Mittag, damit Zeitzonen nicht den Tag verschieben). */
-function readingTimestamp(day: string): string {
-    if (day === toDateInputValue(new Date())) return new Date().toISOString();
-    const [y, m, d] = day.split("-").map(Number);
-    return new Date(y, m - 1, d, 12, 0, 0).toISOString();
-}
-
-function issueText(issue: PlausibilityIssue, unit: string): string {
-    switch (issue.kind) {
-        case "future-date":
-            return "Das Datum liegt in der Zukunft.";
-        case "lower-than-previous":
-            return `Der Stand ist niedriger als die vorherige Ablesung (${formatReading(issue.previous)} ${unit}). Tippfehler – oder wurde der Zähler getauscht?`;
-        case "unusually-high":
-            return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – sonst sind es ca. ${formatConsumption(issue.usualRate)}. Stimmt der Wert?`;
-        case "big-jump":
-            return `Der Wert ist mehr als dreimal so hoch wie der letzte Stand (${formatReading(issue.previous)} ${unit}). Stimmt der Wert?`;
-    }
-}
-
 /** Live-Vorschau beim Tippen: Was bedeutet der neue Stand? Fällt ein Tippfehler sofort auf. */
 function PreviewLine({ meter, value, day, isReplacement }: { meter: MeterWithReadings; value: string; day: string; isReplacement: boolean }) {
     const parsed = parseDecimal(value);
     if (parsed === null || !day) return <p className="min-h-5" aria-hidden />;
-    const preview = previewReading(meter.readings, { value: parsed, date: readingTimestamp(day), isReplacement });
+    const preview = previewReading(meter.readings, { value: parsed, date: timestampForDay(day, meter.readings), isReplacement });
     if (!preview) return <p className="min-h-5" aria-hidden />;
-    const { consumption, days, perDay } = preview;
+    const { consumption, days, perDay, next } = preview;
     if (consumption < 0) {
-        return <p className="min-h-5 text-xs font-medium text-amber-700 dark:text-amber-400">Niedriger als der letzte Stand – Tippfehler oder Zählerwechsel?</p>;
+        return <p className="min-h-5 text-xs font-medium text-amber-700 dark:text-amber-400">Niedriger als der vorherige Stand – Tippfehler oder Zählerwechsel?</p>;
+    }
+    if (next && !next.isReplacement && parsed > next.value) {
+        return (
+            <p className="min-h-5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                Höher als die spätere Ablesung vom {formatDate(next.date)} ({formatReading(next.value)} {meter.unit}).
+            </p>
+        );
     }
     const rounded = Math.round(days);
     const span = rounded >= 1 ? ` in ${rounded} ${rounded === 1 ? "Tag" : "Tagen"}` : " seit der letzten Ablesung";
@@ -85,13 +72,13 @@ function ReadingForm({ meter, onDone, onOpenDetails }: { meter: MeterWithReading
             setError("Bitte wähle ein Datum.");
             return;
         }
-        const candidate = { value: parsed, date: readingTimestamp(day), isReplacement };
-        const issue = checkReading(meter.readings, candidate);
+        const candidate = { value: parsed, date: timestampForDay(day, meter.readings), isReplacement };
+        const issue = checkReading(meter.readings, candidate, Date.now(), meter);
         if (issue?.kind === "future-date") {
-            setError(issueText(issue, meter.unit));
+            setError(plausibilityText(issue, meter.unit));
             return;
         }
-        const text = issue ? issueText(issue, meter.unit) : null;
+        const text = issue ? plausibilityText(issue, meter.unit) : null;
         if (text && warning !== text) {
             setWarning(text); // zweiter Klick auf "Speichern" bestätigt
             return;

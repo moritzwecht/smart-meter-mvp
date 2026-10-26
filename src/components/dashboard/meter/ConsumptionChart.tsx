@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Monatsverbrauch als Balkendiagramm (ohne Chart-Bibliothek).
- * Monate, die nur teilweise durch Ablesungen abgedeckt sind, erscheinen heller.
+ * Monate, die nur teilweise durch Ablesungen abgedeckt sind, erscheinen heller. Ihr Wert
+ * ist der erfasste Verbrauch (keine Hochrechnung) – daher „erfasst: x % des Monats“.
  */
 export function ConsumptionChart({ buckets, unit, colorClass }: { buckets: MonthBucket[]; unit: string; colorClass: string }) {
     const [active, setActive] = useState<number | null>(null);
@@ -22,7 +23,7 @@ export function ConsumptionChart({ buckets, unit, colorClass }: { buckets: Month
                 <span className="font-bold">{formatMonthShort(current.month)} {current.month.slice(0, 4)}</span>
                 <span className="tabular-nums font-black">
                     {formatConsumption(current.consumption)} {unit}
-                    {current.coverage < 0.95 && <span className="font-medium text-muted-foreground"> (Schätzung, {Math.round(current.coverage * 100)} % abgedeckt)</span>}
+                    {current.coverage < 0.95 && <span className="font-medium text-muted-foreground"> (erfasst: {Math.round(current.coverage * 100)} % des Monats)</span>}
                 </span>
             </div>
             {/* Jeder Balken ist ein Knopf mit Beschriftung – per Tastatur und Screenreader erreichbar */}
@@ -32,7 +33,7 @@ export function ConsumptionChart({ buckets, unit, colorClass }: { buckets: Month
                         key={b.month}
                         type="button"
                         aria-pressed={i === shown}
-                        aria-label={`${formatMonthShort(b.month)} ${b.month.slice(0, 4)}: ${formatConsumption(b.consumption)} ${unit}${b.coverage < 0.95 ? " (Schätzung)" : ""}`}
+                        aria-label={`${formatMonthShort(b.month)} ${b.month.slice(0, 4)}: ${formatConsumption(b.consumption)} ${unit}${b.coverage < 0.95 ? ` (erfasst: ${Math.round(b.coverage * 100)} % des Monats)` : ""}`}
                         // Hover nur mit Maus – auf Touch-Geräten würde er das Antippen überlagern
                         onPointerEnter={(e) => e.pointerType === "mouse" && setActive(i)}
                         onPointerLeave={(e) => e.pointerType === "mouse" && setActive(null)}
