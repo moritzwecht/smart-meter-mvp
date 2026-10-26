@@ -1,11 +1,10 @@
 import "server-only";
 import { createHmac, randomInt } from "node:crypto";
-import { and, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { authTokens, households, users } from "@/lib/db/schema";
 import { getDb } from "./db";
 import { hashToken, randomToken, safeEqual } from "./crypto";
 import { authSecret } from "./env";
-import { takeAttempt } from "./rate-limit";
 
 export type TokenPurpose = "INVITE";
 
@@ -58,56 +57,74 @@ export async function consumeToken(id: number): Promise<boolean> {
 // Anmeldecodes ------------------------------------------------------------------------
 //
 // Sechsstelliger Code per E-Mail, 10 Minuten gültig, nur einmal verwendbar. Pro Adresse
-// gilt immer nur der zuletzt angeforderte Code; nach 5 falschen Eingaben ist er verbraucht.
+// gilt nur der zuletzt angeforderte Code; nach 3 falschen Eingaben ist er verbraucht –
+// gezählt wird atomar in der Datenbank, also auch bei parallelen Anfragen. Zusammen mit
+// max. 10 Codes pro Adresse und Tag sind das höchstens 30 Rateversuche pro Tag.
 // Gespeichert wird nur ein HMAC (mit AUTH_SECRET und Salz) – sechs Ziffern ließen sich
 // aus einem einfachen Hash sonst in Sekunden zurückrechnen.
 
-const LOGIN_CODE_MINUTES = 10;
-const LOGIN_CODE_MAX_TRIES = 5;
+export const LOGIN_CODE_MINUTES = 10;
+const LOGIN_CODE_MAX_TRIES = 3;
 
 function codeHmac(salt: string, email: string, code: string): string {
     return createHmac("sha256", authSecret()).update(`${salt}:${email}:${code}`).digest("hex");
 }
 
-export async function createLoginCode(email: string): Promise<string> {
-    const db = getDb();
-    await db
+/** Macht alle noch offenen Codes einer Adresse ungültig. */
+async function invalidateLoginCodes(email: string) {
+    await getDb()
         .update(authTokens)
         .set({ usedAt: new Date() })
         .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "LOGIN"), isNull(authTokens.usedAt)));
+}
+
+export async function createLoginCode(email: string): Promise<string> {
+    await invalidateLoginCodes(email);
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const salt = randomToken(12);
-    await db.insert(authTokens).values({
-        purpose: "LOGIN",
-        tokenHash: `${salt}.${codeHmac(salt, email, code)}`,
-        email,
-        expiresAt: new Date(Date.now() + LOGIN_CODE_MINUTES * 60_000),
-    });
+    await getDb()
+        .insert(authTokens)
+        .values({
+            purpose: "LOGIN",
+            tokenHash: `${salt}.${codeHmac(salt, email, code)}`,
+            email,
+            expiresAt: new Date(Date.now() + LOGIN_CODE_MINUTES * 60_000),
+        });
     return code;
 }
 
-export type LoginCodeResult = "ok" | "wrong" | "expired" | "exhausted";
+export type LoginCodeResult = "ok" | "wrong" | "exhausted";
 
 /** Prüft und verbraucht den aktuellen Code einer Adresse. */
 export async function consumeLoginCode(email: string, code: string): Promise<LoginCodeResult> {
     const db = getDb();
-    const [row] = await db
-        .select()
+    // Versuch zählen, *bevor* verglichen wird – atomar und nur, solange noch Versuche übrig
+    // sind. So prüft auch eine Flut paralleler Anfragen höchstens 3 Codes.
+    const latest = db
+        .select({ id: authTokens.id })
         .from(authTokens)
         .where(and(eq(authTokens.email, email), eq(authTokens.purpose, "LOGIN"), isNull(authTokens.usedAt), gt(authTokens.expiresAt, new Date())))
         .orderBy(desc(authTokens.id))
         .limit(1);
-    if (!row) return "expired";
+    const [row] = await db
+        .update(authTokens)
+        .set({ attempts: sql`${authTokens.attempts} + 1` })
+        .where(and(inArray(authTokens.id, latest), isNull(authTokens.usedAt), lt(authTokens.attempts, LOGIN_CODE_MAX_TRIES)))
+        .returning({ id: authTokens.id, tokenHash: authTokens.tokenHash, attempts: authTokens.attempts });
+    // Kein (gültiger) Code – bewusst dieselbe Antwort wie bei einem falschen Code
+    if (!row) return "wrong";
+
     const [salt, expected] = row.tokenHash.split(".");
-    if (!/^\d{6}$/.test(code) || !safeEqual(codeHmac(salt, email, code), expected ?? "")) {
-        const tries = await takeAttempt([`login-code:${row.id}`], LOGIN_CODE_MAX_TRIES - 1, LOGIN_CODE_MINUTES);
-        if (tries.limited) {
-            await db.update(authTokens).set({ usedAt: new Date() }).where(eq(authTokens.id, row.id));
-            return "exhausted";
-        }
-        return "wrong";
+    if (/^\d{6}$/.test(code) && safeEqual(codeHmac(salt, email, code), expected ?? "")) {
+        if (!(await consumeToken(row.id))) return "wrong";
+        await invalidateLoginCodes(email); // evtl. parallel angeforderte ältere Codes gleich mit
+        return "ok";
     }
-    return (await consumeToken(row.id)) ? "ok" : "expired";
+    if (row.attempts >= LOGIN_CODE_MAX_TRIES) {
+        await invalidateLoginCodes(email);
+        return "exhausted";
+    }
+    return "wrong";
 }
 
 export async function getInviteInfo(token: string) {

@@ -88,7 +88,14 @@ export function ProfileTab({ user }: { user: SessionUser }) {
     };
 
     const signOutOthers = async () => {
-        if (!(await confirm({ title: "Auf allen anderen Geräten abmelden?", confirmLabel: "Abmelden" }))) return;
+        if (
+            !(await confirm({
+                title: "Auf allen anderen Geräten abmelden?",
+                message: "Dort muss man sich dann neu anmelden. API-Tokens (z. B. für Home Assistant) bleiben gültig – die löschst du bei Bedarf unten einzeln.",
+                confirmLabel: "Abmelden",
+            }))
+        )
+            return;
         const result = await runAction(logoutEverywhere);
         toast(result.ok ? { message: "Alle anderen Geräte wurden abgemeldet.", variant: "success" } : { message: result.error, variant: "error" });
     };

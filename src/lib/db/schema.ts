@@ -187,6 +187,8 @@ export const authTokens = pgTable(
         createdBy: integer("created_by").references(() => users.id, { onDelete: "cascade" }),
         expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
         usedAt: timestamp("used_at", { withTimezone: true }),
+        /** Eingabeversuche (Anmeldecodes) */
+        attempts: integer("attempts").default(0).notNull(),
         createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     },
     (t) => [index("auth_tokens_email_idx").on(t.email), index("auth_tokens_household_idx").on(t.householdId)],

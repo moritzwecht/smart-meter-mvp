@@ -22,7 +22,20 @@ import { getDb } from "./db";
 export async function clientIp(): Promise<string> {
     const h = await headers();
     const candidate = h.get("x-real-ip") ?? h.get("x-vercel-forwarded-for") ?? h.get("x-forwarded-for")?.split(",")[0];
-    return (candidate ?? "unknown").trim().slice(0, 64) || "unknown";
+    return ipBucket((candidate ?? "unknown").trim().slice(0, 64) || "unknown");
+}
+
+/**
+ * IPv6-Adressen auf ihr /64-Netz kürzen: Ein einzelner Anschluss bekommt meist ein
+ * ganzes /64 – sonst hätte jeder Angreifer praktisch unbegrenzt viele "IPs".
+ */
+export function ipBucket(ip: string): string {
+    if (!ip.includes(":")) return ip;
+    const [head, tail = ""] = ip.toLowerCase().split("::");
+    const left = head ? head.split(":") : [];
+    const right = tail ? tail.split(":") : [];
+    const groups = ip.includes("::") ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill("0"), ...right] : left;
+    return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
 export interface Attempt {
@@ -55,6 +68,25 @@ export async function takeAttempt(keys: string[], limit: number, windowMinutes: 
     // bleiben stehen – deshalb bleibt das Limit auch bei parallelen Anfragen dicht.)
     if (limited) await release();
     return { limited, release: limited ? async () => {} : release };
+}
+
+/** Mehrere Limits zugleich – ist eines erreicht, zählt keines der anderen mit. */
+export async function takeAttempts(checks: { key: string; limit: number; minutes: number }[]): Promise<Attempt> {
+    const taken: Attempt[] = [];
+    for (const check of checks) {
+        const attempt = await takeAttempt([check.key], check.limit, check.minutes);
+        if (attempt.limited) {
+            for (const t of taken) await t.release();
+            return { limited: true, release: async () => {} };
+        }
+        taken.push(attempt);
+    }
+    return {
+        limited: false,
+        async release() {
+            for (const t of taken) await t.release();
+        },
+    };
 }
 
 export async function clearAttempts(key: string) {

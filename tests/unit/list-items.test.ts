@@ -44,9 +44,12 @@ describe("Punkte hinzufügen", () => {
 describe("Löschen rückgängig machen", () => {
     it("stellt gelöschte Punkte mit Inhalt, Status und Reihenfolge wieder her", async () => {
         const listId = await repo.addList(1, "Baumarkt");
-        await repo.addItems(listId, ["Schrauben", "Dübel", "Leim"]);
-        const before = await db.todoItems.where("listId").equals(listId).sortBy("createdAt");
-        await repo.updateItem(before[1].id, { completed: true });
+        for (const content of ["Schrauben", "Dübel", "Leim"]) {
+            await repo.addItems(listId, [content]);
+            await new Promise((r) => setTimeout(r, 3)); // eindeutige Reihenfolge über createdAt
+        }
+        const duebel = (await db.todoItems.where("listId").equals(listId).toArray()).find((i) => i.content === "Dübel")!;
+        await repo.updateItem(duebel.id, { completed: true });
         const done = (await db.todoItems.where("listId").equals(listId).toArray()).filter((i) => i.completed);
         await repo.clearCompletedItems(listId);
         expect(await items(listId)).toEqual(["Leim", "Schrauben"]);

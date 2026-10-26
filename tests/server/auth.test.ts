@@ -12,6 +12,7 @@ import { setupServer, type TestServer } from "../support/server";
 const jar = new Map<string, string>();
 const sentMails: { to: string; subject: string; url?: string }[] = [];
 let mailWorks = true;
+let currentIp = "203.0.113.7";
 
 vi.mock("next/headers", () => ({
     cookies: async () => ({
@@ -21,7 +22,7 @@ vi.mock("next/headers", () => ({
             else jar.set(name, value);
         },
     }),
-    headers: async () => new Headers({ "x-forwarded-for": "203.0.113.7" }),
+    headers: async () => new Headers({ "x-forwarded-for": currentIp }),
 }));
 
 vi.mock("@/lib/server/email", () => ({
@@ -44,6 +45,7 @@ beforeEach(async () => {
     jar.clear();
     sentMails.length = 0;
     mailWorks = true;
+    currentIp = "203.0.113.7";
 });
 
 const tokenFrom = (url?: string) => url!.split("/").pop()!;
@@ -98,20 +100,20 @@ describe("Anmeldung per Code", () => {
         if (first !== second) expect((await auth.verifyLoginCode({ email: "moritz@example.com", code: first })).ok).toBe(false);
         expect((await auth.verifyLoginCode({ email: "moritz@example.com", code: second })).ok).toBe(true);
         const again = await auth.verifyLoginCode({ email: "moritz@example.com", code: second });
-        expect(again).toEqual({ ok: false, error: "Der Code ist abgelaufen oder wurde schon verwendet. Bitte fordere einen neuen an." });
+        expect(again).toEqual({ ok: false, error: "Der Code stimmt nicht oder ist abgelaufen." });
     });
 
-    it("falscher Code: verständliche Meldung – nach 5 Fehlversuchen ist der Code verbraucht", async () => {
+    it("falscher Code: verständliche Meldung – nach 3 Fehlversuchen ist der Code verbraucht", async () => {
         await auth.requestLoginCode({ email: "moritz@example.com" });
         const code = lastCode("moritz@example.com");
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < 2; i++) {
             expect(await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) })).toEqual({
                 ok: false,
-                error: "Der Code stimmt nicht. Bitte prüfe ihn noch einmal.",
+                error: "Der Code stimmt nicht oder ist abgelaufen.",
             });
         }
-        const fifth = await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) });
-        expect(!fifth.ok && fifth.error).toMatch(/Zu viele falsche Versuche/);
+        const third = await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) });
+        expect(!third.ok && third.error).toMatch(/Zu viele falsche Versuche/);
         expect((await auth.verifyLoginCode({ email: "moritz@example.com", code })).ok).toBe(false);
         expect(await getCurrentUser()).toBeNull();
     });
@@ -141,29 +143,59 @@ describe("Anmeldung per Code", () => {
         expect(row.tokenHash).not.toContain(createHash("sha256").update(code).digest("hex"));
     });
 
-    it("SICHERHEIT: Raten ist begrenzt – auch über mehrere Codes und parallele Anfragen", async () => {
-        // Parallel: pro Code höchstens 5 echte Prüfungen
+    it("SICHERHEIT: auch parallel werden pro Code höchstens 3 Eingaben geprüft", async () => {
         await auth.requestLoginCode({ email: "moritz@example.com" });
         const code = lastCode("moritz@example.com");
-        const results = await Promise.all(Array.from({ length: 15 }, () => auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) })));
-        expect(results.filter((r) => !r.ok && r.error.startsWith("Der Code stimmt nicht")).length).toBeLessThanOrEqual(4);
-
-        // Insgesamt: nach 20 Fehlversuchen pro Tag ist Schluss – auch mit neuem Code
-        for (let round = 0; round < 3; round++) {
-            await auth.requestLoginCode({ email: "moritz@example.com" });
-            const c = lastCode("moritz@example.com");
-            for (let i = 0; i < 5; i++) await auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(c) });
-        }
-        await auth.requestLoginCode({ email: "moritz@example.com" });
-        const blocked = await auth.verifyLoginCode({ email: "moritz@example.com", code: lastCode("moritz@example.com") });
-        expect(!blocked.ok && blocked.error).toMatch(/Zu viele falsche Codes/);
+        await Promise.all(Array.from({ length: 12 }, () => auth.verifyLoginCode({ email: "moritz@example.com", code: wrong(code) })));
+        // Der Code ist danach verbraucht – auch der richtige hilft nicht mehr
+        expect((await auth.verifyLoginCode({ email: "moritz@example.com", code })).ok).toBe(false);
+        const [row] = await server.db.select().from(authTokens);
+        expect(row.attempts).toBeLessThanOrEqual(3);
     });
 
-    it("begrenzt, wie oft Codes angefordert werden können", async () => {
+    it("SICHERHEIT: höchstens 10 Codes pro Adresse und Tag – egal von wie vielen Netzen", async () => {
+        for (let i = 0; i < 10; i++) {
+            currentIp = `198.51.100.${i}`;
+            expect((await auth.requestLoginCode({ email: "moritz@example.com" })).ok).toBe(true);
+        }
+        currentIp = "198.51.100.200";
+        const eleventh = await auth.requestLoginCode({ email: "moritz@example.com" });
+        expect(!eleventh.ok && eleventh.error).toMatch(/Zu viele Codes/);
+    });
+
+    it("Fremde können ein Konto nicht durch falsche Eingaben aussperren", async () => {
+        currentIp = "192.0.2.66"; // Angreifer
+        for (let i = 0; i < 40; i++) await auth.verifyLoginCode({ email: "moritz@example.com", code: "000000" });
+        currentIp = "203.0.113.7"; // Moritz
+        expect((await loginAs("moritz@example.com")).ok).toBe(true);
+    });
+
+    it("begrenzt Code-Anfragen pro Adresse und Netz – andere Netze bleiben frei", async () => {
         for (let i = 0; i < 5; i++) expect((await auth.requestLoginCode({ email: "moritz@example.com" })).ok).toBe(true);
         const sixth = await auth.requestLoginCode({ email: "moritz@example.com" });
         expect(!sixth.ok && sixth.error).toMatch(/Zu viele Codes/);
         expect(sentMails).toHaveLength(5);
+        currentIp = "198.51.100.9";
+        expect((await auth.requestLoginCode({ email: "moritz@example.com" })).ok).toBe(true);
+    });
+
+    it("IPv6: ein ganzes /64-Netz zählt als ein Absender", async () => {
+        for (let i = 0; i < 20; i++) {
+            currentIp = `2001:db8:1:2:${i.toString(16)}::1`;
+            expect((await auth.requestLoginCode({ email: `opfer${i}@example.com` })).ok).toBe(true);
+        }
+        currentIp = "2001:0db8:0001:0002:ffff:ffff:ffff:ffff";
+        const next = await auth.requestLoginCode({ email: "noch-eins@example.com" });
+        expect(!next.ok && next.error).toMatch(/Zu viele Codes/);
+    });
+
+    it("begrenzt die Zahl der Code-Mails insgesamt (Schutz des Mail-Kontingents)", async () => {
+        for (let i = 0; i < 60; i++) {
+            currentIp = `198.18.${Math.floor(i / 10)}.${i}`;
+            expect((await auth.requestLoginCode({ email: `user${i}@example.com` })).ok).toBe(true);
+        }
+        currentIp = "198.19.0.1";
+        expect((await auth.requestLoginCode({ email: "user-x@example.com" })).ok).toBe(false);
     });
 
     it("meldet es, wenn die E-Mail nicht verschickt werden konnte", async () => {

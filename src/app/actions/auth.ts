@@ -10,7 +10,7 @@ import { hashToken } from "@/lib/server/crypto";
 import { getDb } from "@/lib/server/db";
 import { isEmailConfigured, sendMail } from "@/lib/server/email";
 import { isProduction } from "@/lib/server/env";
-import { clearAttempts, clientIp, takeAttempt } from "@/lib/server/rate-limit";
+import { clientIp, takeAttempts } from "@/lib/server/rate-limit";
 import { endSession, publicUser, requireUser, startSession, type AuthUser } from "@/lib/server/session";
 
 /*
@@ -45,13 +45,17 @@ async function joinHousehold(userId: number, householdId: number) {
 const requestCodeSchema = z.object({ email: emailSchema });
 
 const requestCodeAction = action(requestCodeSchema, async ({ email }) => {
-    // Begrenzt pro Adresse und pro IP – Codes sollen nicht als Spam-Schleuder taugen
-    const perEmail = await takeAttempt([`code-request:${email}`], 5, 15);
-    const perIp = perEmail.limited ? perEmail : await takeAttempt([`code-request-ip:${await clientIp()}`], 20, 60);
-    if (perEmail.limited || perIp.limited) {
-        await perEmail.release();
-        throw new UserError("Zu viele Codes angefordert. Bitte warte ein paar Minuten.");
-    }
+    // Codes sollen weder als Spam-Schleuder noch zum Leerräumen des Mail-Kontingents taugen:
+    // pro Adresse+Netz, pro Adresse, pro Netz (IPv6: /64) und insgesamt begrenzt.
+    const ip = await clientIp();
+    const attempt = await takeAttempts([
+        { key: `code-request:${email}:${ip}`, limit: 5, minutes: 15 },
+        { key: `code-request:${email}`, limit: 10, minutes: 24 * 60 },
+        { key: `code-request-ip:${ip}`, limit: 20, minutes: 60 },
+        { key: "code-request-all", limit: 60, minutes: 60 },
+        { key: "code-request-all-day", limit: 300, minutes: 24 * 60 },
+    ]);
+    if (attempt.limited) throw new UserError("Zu viele Codes angefordert. Bitte warte ein paar Minuten und versuche es dann erneut.");
 
     const code = await createLoginCode(email);
     const sent = await sendMail({
@@ -86,23 +90,21 @@ const verifyCodeSchema = z.object({
 });
 
 const verifyCodeAction = action(verifyCodeSchema, async ({ email, code, inviteToken }) => {
-    // Raten unmöglich machen: pro Code 5 Versuche (siehe consumeLoginCode), dazu
-    // insgesamt 20 Fehlversuche pro Adresse und Tag sowie 50 pro IP und Stunde.
-    const perEmail = await takeAttempt([`code-verify:${email}`], 20, 24 * 60);
-    const perIp = perEmail.limited ? perEmail : await takeAttempt([`code-verify-ip:${await clientIp()}`], 50, 60);
-    if (perEmail.limited || perIp.limited) {
-        await perEmail.release();
-        throw new UserError("Zu viele falsche Codes. Bitte versuche es später erneut.");
-    }
+    // Raten verhindert vor allem das Limit pro Code (3 Versuche, siehe consumeLoginCode) –
+    // zusammen mit max. 10 Codes pro Adresse und Tag. Die Limits hier bremsen nur Fluten
+    // aus einem Netz; bewusst KEIN Limit nur pro Adresse: Sonst könnte jeder Fremde ein
+    // Konto mit ein paar falschen Eingaben für alle sperren.
+    const ip = await clientIp();
+    const attempt = await takeAttempts([
+        { key: `code-verify:${email}:${ip}`, limit: 30, minutes: 60 },
+        { key: `code-verify-ip:${ip}`, limit: 100, minutes: 60 },
+    ]);
+    if (attempt.limited) throw new UserError("Zu viele Versuche. Bitte warte ein paar Minuten.");
 
     const result = await consumeLoginCode(email, code);
-    if (result === "wrong") throw new UserError("Der Code stimmt nicht. Bitte prüfe ihn noch einmal.");
+    if (result === "wrong") throw new UserError("Der Code stimmt nicht oder ist abgelaufen.");
     if (result === "exhausted") throw new UserError("Zu viele falsche Versuche – bitte fordere einen neuen Code an.");
-    if (result === "expired") throw new UserError("Der Code ist abgelaufen oder wurde schon verwendet. Bitte fordere einen neuen an.");
-
-    await perEmail.release();
-    await perIp.release();
-    await clearAttempts(`code-verify:${email}`);
+    await attempt.release();
 
     const db = getDb();
     let user = await db.query.users.findFirst({ where: eq(users.email, email) });

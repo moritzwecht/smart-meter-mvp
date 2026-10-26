@@ -1,5 +1,5 @@
 {
-  "id": "6320c40a-5bd4-4476-8e74-4b1bd0ea9e49",
+  "id": "a8d4cce9-2bdb-460a-861d-bca305ce2e68",
   "prevId": "08df21dd-f7ea-4025-a75e-ec0a7b39cd61",
   "version": "7",
   "dialect": "postgresql",
@@ -203,6 +203,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_at": {
           "name": "created_at",
