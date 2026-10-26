@@ -190,7 +190,7 @@ describe("Anmeldung per Code", () => {
     });
 
     it("begrenzt die Zahl der Code-Mails insgesamt (Schutz des Mail-Kontingents)", async () => {
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 30; i++) {
             currentIp = `198.18.${Math.floor(i / 10)}.${i}`;
             expect((await auth.requestLoginCode({ email: `user${i}@example.com` })).ok).toBe(true);
         }

@@ -52,8 +52,10 @@ const requestCodeAction = action(requestCodeSchema, async ({ email }) => {
         { key: `code-request:${email}:${ip}`, limit: 5, minutes: 15 },
         { key: `code-request:${email}`, limit: 10, minutes: 24 * 60 },
         { key: `code-request-ip:${ip}`, limit: 20, minutes: 60 },
-        { key: "code-request-all", limit: 60, minutes: 60 },
-        { key: "code-request-all-day", limit: 300, minutes: 24 * 60 },
+        // Insgesamt deutlich unter dem Tageslimit von Resend Free (100 Mails/Tag, gilt fürs
+        // ganze Resend-Konto) – so bleibt auch Luft für Einladungen und andere Apps.
+        { key: "code-request-all", limit: 30, minutes: 60 },
+        { key: "code-request-all-day", limit: 60, minutes: 24 * 60 },
     ]);
     if (attempt.limited) throw new UserError("Zu viele Codes angefordert. Bitte warte ein paar Minuten und versuche es dann erneut.");
 
