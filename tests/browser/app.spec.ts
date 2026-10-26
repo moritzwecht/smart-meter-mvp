@@ -50,7 +50,7 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await expect(page.getByText("Lege deinen ersten Haushalt an")).toBeVisible();
         await page.getByRole("button", { name: "Anlegen" }).click();
         await expect(page.getByText("Willkommen!")).toBeVisible();
-        expect((await q<{ name: string }>("select name from households"))[0].name).toBe("Zuhause");
+        await expect.poll(async () => (await q<{ name: string }>("select name from households"))[0]?.name).toBe("Zuhause");
     });
 
     await test.step("Gaszähler mit Kosten anlegen und zwei Stände eintragen", async () => {
@@ -110,8 +110,8 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
         await dialog.getByRole("button", { name: "Brot", exact: true }).click();
         await page.getByRole("button", { name: "Fertig" }).click();
         await expect.poll(() => count("todo_items", "completed")).toBe(1);
-        expect((await q<{ content: string }>("select content from todo_items where completed"))[0].content).toBe("Brot");
-        expect((await q<{ name: string }>("select name from todo_lists"))[0].name).toBe("Einkauf");
+        expect((await q<{ content: string }>("select content from todo_items where completed"))[0]?.content).toBe("Brot");
+        await expect.poll(async () => (await q<{ name: string }>("select name from todo_lists"))[0]?.name).toBe("Einkauf");
     });
 
     await test.step("Offline eine Notiz schreiben", async () => {
@@ -135,7 +135,7 @@ test("Haushalt einrichten, offline weiterarbeiten, gemeinsam nutzen", async ({ p
     await test.step("Wieder online: alles wird synchronisiert", async () => {
         await context.setOffline(false);
         await expect.poll(() => count("notes"), { timeout: 30_000 }).toBe(1);
-        expect((await q<{ content: string }>("select content from notes"))[0].content).toContain("Funkloch");
+        expect((await q<{ content: string }>("select content from notes"))[0]?.content).toContain("Funkloch");
     });
 
     await test.step("Liste an die Übersicht heften, Dunkelmodus, Profil", async () => {

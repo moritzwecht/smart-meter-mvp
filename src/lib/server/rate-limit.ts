@@ -10,7 +10,8 @@ import { getDb } from "./db";
  * braucht keine zusätzliche Infrastruktur (Redis o. Ä.).
  *
  * Der Versuch wird *zuerst* gespeichert und dann gezählt – so können parallele
- * Anfragen das Limit nicht umgehen (kein Check-then-Insert-Race).
+ * Anfragen das Limit nicht umgehen (kein Check-then-Insert-Race). Abgewiesene
+ * Versuche werden direkt wieder entfernt.
  */
 
 /**
@@ -46,12 +47,14 @@ export async function takeAttempt(keys: string[], limit: number, windowMinutes: 
         }
     }
     const ids = inserted.map((r) => r.id);
-    return {
-        limited,
-        async release() {
-            if (ids.length) await db.delete(authAttempts).where(inArray(authAttempts.id, ids));
-        },
+    const release = async () => {
+        if (ids.length) await db.delete(authAttempts).where(inArray(authAttempts.id, ids));
     };
+    // Abgewiesene Versuche nicht mitzählen: sonst verlängert jeder weitere Versuch die
+    // Sperre, und wer die Seite flutet, füllt die Tabelle. (Durchgelassene Versuche
+    // bleiben stehen – deshalb bleibt das Limit auch bei parallelen Anfragen dicht.)
+    if (limited) await release();
+    return { limited, release: limited ? async () => {} : release };
 }
 
 export async function clearAttempts(key: string) {

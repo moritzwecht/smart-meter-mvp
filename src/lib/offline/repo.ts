@@ -10,6 +10,7 @@ import type {
     TodoList,
 } from "@/lib/sync/types";
 import { db } from "./db";
+import { newId } from "./ids";
 import { enqueue } from "./outbox";
 import { requestSync } from "./sync-engine";
 
@@ -22,16 +23,7 @@ import { requestSync } from "./sync-engine";
  *   3. stößt einen Sync an (gebündelt, funktioniert auch offline).
  */
 
-export function newId(): string {
-    const c = globalThis.crypto;
-    if (typeof c.randomUUID === "function") return c.randomUUID();
-    // Fallback für ältere Browser / unsichere Kontexte
-    const b = c.getRandomValues(new Uint8Array(16));
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
-    const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
-    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-}
+export { newId };
 
 const opId = newId;
 const nowIso = () => new Date().toISOString();

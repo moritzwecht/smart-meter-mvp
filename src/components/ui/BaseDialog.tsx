@@ -89,6 +89,23 @@ function DialogLayer({ children, zIndex }: { children: ReactNode; zIndex: number
 
 // Stapel offener Dialoge: ESC und Fokus gehören immer dem obersten.
 const openStack: string[] = [];
+// Die letzten beiden fokussierten Elemente: Setzt ein Dialog per autoFocus den Fokus
+// schon beim Rendern (vor unserem Effect), ist das vorletzte der Auslöser, zu dem der
+// Fokus beim Schließen zurückkehren soll.
+let lastFocused: Element | null = null;
+let focusedBefore: Element | null = null;
+if (typeof document !== "undefined") {
+    document.addEventListener(
+        "focusin",
+        (e) => {
+            if (e.target === lastFocused) return;
+            focusedBefore = lastFocused;
+            lastFocused = e.target as Element;
+        },
+        true,
+    );
+}
+
 // Scroll-Sperre nur beim ersten öffnenden / letzten schließenden Dialog anfassen –
 // sonst stellt ein gleichzeitig geschlossener Dialog evtl. "hidden" wieder her.
 let savedOverflow = "";
@@ -123,7 +140,8 @@ export function BaseDialog({
             savedOverflow = document.body.style.overflow;
             document.body.style.overflow = "hidden";
         }
-        const previouslyFocused = document.activeElement as HTMLElement | null;
+        const active = document.activeElement;
+        const previouslyFocused = (panelRef.current && active && panelRef.current.contains(active) ? focusedBefore : active) as HTMLElement | null;
 
         // Fokus in den Dialog (Elemente mit autoFocus fokussiert React schon selbst)
         const focusTimer = setTimeout(() => {

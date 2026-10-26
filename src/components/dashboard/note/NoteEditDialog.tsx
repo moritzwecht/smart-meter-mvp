@@ -1,12 +1,13 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { FieldLabel } from "@/components/ui/AddTile";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { deleteNote, discardNoteIfEmpty, updateNote } from "@/lib/offline/repo";
 import type { Note } from "@/lib/sync/types";
+import { useFinalUnmount } from "@/lib/use-final-unmount";
 
 const AUTOSAVE_MS = 600;
 
@@ -16,10 +17,11 @@ const AUTOSAVE_MS = 600;
  * gespeichert. Nach dem Löschen läuft kein verspäteter Speichervorgang mehr –
  * der hatte in Version 1 den kompletten Sync blockiert.
  */
-function NoteEditor({ note }: { note: Note }) {
+function NoteEditor({ note, created }: { note: Note; created: boolean }) {
     const [title, setTitle] = useState(note.title);
     const [content, setContent] = useState(note.content ?? "");
-    const [isNew] = useState(() => !note.title && !note.content);
+    // Gerade eben hier angelegt? Nur dann darf eine leere Notiz beim Schließen weg.
+    const [isNew] = useState(created);
     const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const dirty = useRef<{ title: string; content: string } | null>(null);
 
@@ -31,12 +33,10 @@ function NoteEditor({ note }: { note: Note }) {
     }, [note.id]);
 
     // Beim Schließen speichern – eine neue, leer gebliebene Notiz wieder verwerfen
-    useEffect(
-        () => () => {
-            void flush().then(() => (isNew ? discardNoteIfEmpty(note.id) : undefined));
-        },
-        [flush, isNew, note.id],
-    );
+    const noteId = note.id;
+    useFinalUnmount(() => {
+        void flush().then(() => (isNew ? discardNoteIfEmpty(noteId) : undefined));
+    });
 
     const change = (next: { title: string; content: string }) => {
         setTitle(next.title);
@@ -76,7 +76,7 @@ function NoteEditor({ note }: { note: Note }) {
     );
 }
 
-export function NoteEditDialog({ note, instance, onClose }: { note: Note | undefined; instance?: number; onClose: () => void }) {
+export function NoteEditDialog({ note, instance, created = false, onClose }: { note: Note | undefined; instance?: number; created?: boolean; onClose: () => void }) {
     const confirm = useConfirm();
     return (
         <BaseDialog
@@ -107,7 +107,7 @@ export function NoteEditDialog({ note, instance, onClose }: { note: Note | undef
                 </button>
             }
         >
-            {note && <NoteEditor key={`${note.id}:${instance}`} note={note} />}
+            {note && <NoteEditor key={`${note.id}:${instance}`} note={note} created={created} />}
         </BaseDialog>
     );
 }

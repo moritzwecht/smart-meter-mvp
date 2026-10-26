@@ -99,12 +99,15 @@ export async function getCurrentUser(options: { refresh?: boolean } = {}): Promi
     const current = store.get(SESSION_COOKIE)?.value;
     const token = current ?? store.get(LEGACY_COOKIE)?.value;
     if (!token) return null;
-    const needsRename = !current;
+    // Das alte Cookie "session" kann jede andere Subdomain setzen. Es wird deshalb nur
+    // noch für Tokens aus Version 1 akzeptiert (max. 24 h gültig) und dann umgestellt.
+    const needsRename = !current && SESSION_COOKIE !== LEGACY_COOKIE;
     const claims = await verify(token);
     if (!claims) return null;
 
     const db = getDb();
     let row: typeof users.$inferSelect | undefined;
+    if (needsRename && !claims.email) return null;
     if (claims.sub) {
         const id = Number(claims.sub);
         if (!Number.isInteger(id)) return null;
@@ -122,7 +125,7 @@ export async function getCurrentUser(options: { refresh?: boolean } = {}): Promi
     }
 
     const age = Date.now() / 1000 - (claims.iat ?? 0);
-    if (options.refresh && (age > REFRESH_AFTER_SECONDS || needsRename)) {
+    if (options.refresh && age > REFRESH_AFTER_SECONDS) {
         await startSession(row);
     }
     return toAuthUser(row);

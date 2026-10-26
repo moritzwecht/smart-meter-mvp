@@ -2,23 +2,26 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Eraser, Plus, Trash2 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import type { ListWithItems } from "@/lib/offline/hooks";
 import { addItem, clearCompletedItems, deleteItem, deleteList, discardListIfUntouched, updateItem, updateList } from "@/lib/offline/repo";
+import { useFinalUnmount } from "@/lib/use-final-unmount";
 import { cn } from "@/lib/utils";
 
 export const NEW_LIST_NAME = "Neue Liste";
 
-function ListEditor({ list }: { list: ListWithItems }) {
+function ListEditor({ list, created }: { list: ListWithItems; created: boolean }) {
     const [name, setName] = useState(list.name);
     const [newItem, setNewItem] = useState("");
     const inputRef = useRef<HTMLInputElement>(null);
     const nameRef = useRef<HTMLInputElement>(null);
 
-    // Frisch angelegte Liste: Namen direkt fokussieren und markieren, damit man sofort lostippen kann
-    const [isNew] = useState(() => list.items.length === 0 && list.name === NEW_LIST_NAME);
+    // Gerade eben hier angelegt (nicht nur zufällig leer – die Liste könnte sonst
+    // jemand anderem gehören, dessen Punkte nur noch nicht angekommen sind)
+    const [isNew] = useState(created);
+    // Namen direkt fokussieren und markieren, damit man sofort lostippen kann
     useLayoutEffect(() => {
         if (isNew) nameRef.current?.select();
     }, [isNew]);
@@ -26,16 +29,14 @@ function ListEditor({ list }: { list: ListWithItems }) {
     // Name beim Schließen sicher speichern (auch bei ESC / Tippen auf den Hintergrund);
     // eine neue, unberührte Liste wird wieder verworfen.
     const pendingName = useRef<string | null>(null);
-    useEffect(() => {
-        const id = list.id;
-        return () => {
-            const value = pendingName.current?.trim();
-            void (async () => {
-                if (value) await updateList(id, { name: value });
-                if (isNew) await discardListIfUntouched(id, NEW_LIST_NAME);
-            })();
-        };
-    }, [list.id, isNew]);
+    const listId = list.id;
+    useFinalUnmount(() => {
+        const value = pendingName.current?.trim();
+        void (async () => {
+            if (value) await updateList(listId, { name: value });
+            if (isNew) await discardListIfUntouched(listId, NEW_LIST_NAME);
+        })();
+    });
 
     const saveName = () => {
         const trimmed = name.trim();
@@ -151,7 +152,15 @@ function ListEditor({ list }: { list: ListWithItems }) {
     );
 }
 
-export function ListEditDialog({ list, instance, onClose }: { list: ListWithItems | undefined; instance?: number; onClose: () => void }) {
+interface ListEditDialogProps {
+    list: ListWithItems | undefined;
+    instance?: number;
+    /** Liste wurde gerade über "Liste hinzufügen" angelegt */
+    created?: boolean;
+    onClose: () => void;
+}
+
+export function ListEditDialog({ list, instance, created = false, onClose }: ListEditDialogProps) {
     const confirm = useConfirm();
     return (
         <BaseDialog
@@ -182,7 +191,7 @@ export function ListEditDialog({ list, instance, onClose }: { list: ListWithItem
                 </button>
             }
         >
-            {list && <ListEditor key={`${list.id}:${instance}`} list={list} />}
+            {list && <ListEditor key={`${list.id}:${instance}`} list={list} created={created} />}
         </BaseDialog>
     );
 }

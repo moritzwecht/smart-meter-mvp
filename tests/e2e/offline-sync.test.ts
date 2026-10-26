@@ -469,6 +469,23 @@ describe("Upgrade von Version 1 – große Queue", () => {
         expect(await device.db.todoItems.count()).toBe(250);
     });
 
+    it("vorübergehende Serverfehler verwerfen die alte Queue nicht – und blockieren den Sync nicht", async () => {
+        const device = await legacyDevice([
+            { type: "CREATE", entity: "NOTE", data: { householdId, title: "aus Version 1" }, timestamp: Date.now(), status: "PENDING" },
+        ]);
+        const repo = await import("@/lib/offline/repo");
+        await repo.addNote(householdId, { title: "Neu" });
+        activeUserId = server.users.moritz.id;
+        failNextRequests = 1; // z. B. 500/429 bei der Übernahme
+        await device.engine.runSync();
+        expect(await device.db.legacyQueue.count()).toBe(1);
+        expect(await server.count("notes", "title = 'Neu'")).toBe(1);
+        await device.engine.runSync();
+        activeUserId = null;
+        expect(await device.db.legacyQueue.count()).toBe(0);
+        expect(await server.count("notes", "title = 'aus Version 1'")).toBe(1);
+    });
+
     it("eine unlesbare alte Queue blockiert den normalen Sync nicht", async () => {
         const device = await legacyDevice([{ type: "CREATE", entity: "NOTE", data: "kaputt", status: "PENDING" }]);
         const repo = await import("@/lib/offline/repo");

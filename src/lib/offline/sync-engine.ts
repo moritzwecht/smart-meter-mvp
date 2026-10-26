@@ -1,6 +1,7 @@
 import type { EntityTable, Table } from "dexie";
 import type { Household, SyncResponse } from "@/lib/sync/types";
 import { db, getMeta, setMeta, type OutboxEntry } from "./db";
+import { newId } from "./ids";
 
 /*
  * Sync-Engine (Client)
@@ -68,9 +69,12 @@ class HttpError extends Error {
     }
 }
 
+/** Server nicht erreichbar (kein Netz, Funkloch, Timeout). */
+class NetworkError extends Error {}
+
 /** Netzwerk nicht erreichbar oder Request hängt – wie offline behandeln. */
 function isNetworkError(error: unknown): boolean {
-    if (error instanceof TypeError) return true;
+    if (error instanceof NetworkError || error instanceof TypeError) return true;
     return error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
 }
 
@@ -107,8 +111,9 @@ export async function runSync(): Promise<void> {
             rerunRequested = false;
             await withLock(async () => {
                 await uploadLegacyQueue().catch((error) => {
-                    // Darf den normalen Sync nie blockieren
-                    if (error instanceof UnauthenticatedError || isNetworkError(error)) throw error;
+                    // Darf den normalen Sync nie blockieren – nur echte Netz-/Login-Probleme
+                    // betreffen auch den normalen Sync und werden weitergereicht.
+                    if (error instanceof UnauthenticatedError || error instanceof NetworkError) throw error;
                     console.warn("[sync] Übernahme aus Version 1 fehlgeschlagen", error);
                 });
                 let rounds = 0;
@@ -161,7 +166,6 @@ async function postJson(url: string, body: unknown): Promise<Response> {
     return res;
 }
 
-const newUid = () => crypto.randomUUID();
 
 /**
  * Bereitet die alte Queue einmalig vor: Jede Operation bekommt eine feste UUID und
@@ -179,7 +183,7 @@ async function prepareLegacyQueue() {
             return Number.isInteger(n) && n < 0 ? (temp.get(`${entity}:${n}`) ?? value) : value;
         };
         for (const entry of entries) {
-            const uid = entry.uid ?? newUid();
+            const uid = entry.uid ?? newId();
             const data = { ...entry.data };
             if (!entry.uid) {
                 if (entry.type === "CREATE") {
@@ -199,14 +203,21 @@ async function prepareLegacyQueue() {
 async function uploadLegacyQueue() {
     if ((await db.legacyQueue.count()) === 0) return;
     await prepareLegacyQueue();
+    let size = LEGACY_CHUNK_SIZE;
     for (;;) {
-        const chunk = await db.legacyQueue.orderBy("id").limit(LEGACY_CHUNK_SIZE).toArray();
+        const chunk = await db.legacyQueue.orderBy("id").limit(size).toArray();
         if (!chunk.length) break;
         try {
             await postJson("/api/sync/legacy", { ops: chunk.map(({ type, entity, data, timestamp, uid }) => ({ type, entity, data, timestamp, uid })) });
         } catch (error) {
-            // Vom Server abgelehnt (z. B. unlesbare Daten): Wiederholen hilft nicht → verwerfen
-            if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+            if (!(error instanceof HttpError)) throw error;
+            if (error.status === 413 && size > 1) {
+                size = Math.max(1, Math.floor(size / 2)); // zu groß (z. B. lange Notizen) → kleinere Teile
+                continue;
+            }
+            // Inhaltlich abgelehnt – Wiederholen hilft nicht → verwerfen. Alles andere
+            // (429, 5xx, …) ist vorübergehend: später erneut versuchen.
+            if (error.status === 400 || error.status === 413 || error.status === 422) {
                 await db.legacyQueue.bulkDelete(chunk.map((l) => l.id!));
                 continue;
             }
@@ -371,9 +382,11 @@ export async function startSync(options: { userId?: number; onUnauthenticated?: 
         return;
     }
     started = true;
+    const gen = generation;
     // Absturz während des Sendens? Operationen wieder freigeben (der Server ist idempotent).
     // Unter dem Lock, damit ein anderer Tab nicht mitten in seinem Sync gestört wird.
     await withLock(() => db.outbox.where("seq").above(0).modify({ sending: 0 }));
+    if (gen !== generation) return; // währenddessen gestoppt (z. B. abgemeldet)
     setState({ lastSyncedAt: (await getMeta<string>("lastSyncedAt")) ?? null });
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);

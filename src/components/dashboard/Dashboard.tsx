@@ -29,8 +29,8 @@ import { NoteWidget } from "./note/NoteWidget";
 import { ProfileTab } from "./ProfileTab";
 
 type DialogKind =
-    | { kind: "note"; id: string }
-    | { kind: "list"; id: string }
+    | { kind: "note"; id: string; created?: boolean }
+    | { kind: "list"; id: string; created?: boolean }
     | { kind: "reading"; id: string }
     | { kind: "meter"; id: string }
     | { kind: "add-meter" }
@@ -160,12 +160,12 @@ export function Dashboard({ user }: { user: SessionUser }) {
     const createList = async () => {
         if (!household) return;
         const id = await addList(household.id, NEW_LIST_NAME, { isPinned: autoPin });
-        setDialog({ kind: "list", id });
+        setDialog({ kind: "list", id, created: true });
     };
     const createNote = async () => {
         if (!household) return;
         const id = await addNote(household.id, { isPinned: autoPin });
-        setDialog({ kind: "note", id });
+        setDialog({ kind: "note", id, created: true });
     };
     const isEmpty = meters.length + lists.length + notes.length === 0;
 
@@ -284,8 +284,8 @@ export function Dashboard({ user }: { user: SessionUser }) {
             )}
             <MeterReadingDialog meter={find(meters, "reading")} instance={dialog?.n} onClose={closeDialog} onOpenDetails={openMeter} />
             <MeterDetailDialog meter={find(meters, "meter")} instance={dialog?.n} onClose={closeDialog} onAddReading={openReading} />
-            <ListEditDialog list={find(lists, "list")} instance={dialog?.n} onClose={closeDialog} />
-            <NoteEditDialog note={find(notes, "note")} instance={dialog?.n} onClose={closeDialog} />
+            <ListEditDialog list={find(lists, "list")} instance={dialog?.n} created={dialog?.kind === "list" && !!dialog.created} onClose={closeDialog} />
+            <NoteEditDialog note={find(notes, "note")} instance={dialog?.n} created={dialog?.kind === "note" && !!dialog.created} onClose={closeDialog} />
             <HouseholdSettingsDialog household={dialog?.kind === "household" ? households.find((h) => h.id === dialog.id) : undefined} onClose={closeDialog} />
         </>
     );

@@ -7,7 +7,9 @@ import { useState } from "react";
 import { acceptInvite, logout } from "@/app/actions/auth";
 import { Alert } from "@/components/ui/Alert";
 import { Spinner } from "@/components/ui/Spinner";
+import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { runAction } from "@/lib/client-actions";
+import { usePendingCount } from "@/lib/offline/hooks";
 import { signedOut } from "@/lib/offline/session";
 import type { SessionUser } from "@/lib/sync/types";
 import { AuthForm } from "./AuthForm";
@@ -23,6 +25,8 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
     const router = useRouter();
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    const pending = usePendingCount();
+    const confirm = useConfirm();
 
     const join = async () => {
         setBusy(true);
@@ -34,6 +38,29 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
             return;
         }
         router.replace("/");
+    };
+
+    /** Abmelden, um die Einladung mit einem anderen Konto anzunehmen – ohne stillen Datenverlust. */
+    const switchAccount = async () => {
+        if (
+            pending > 0 &&
+            !(await confirm({
+                title: "Trotzdem abmelden?",
+                message: `${pending} Änderung${pending === 1 ? " ist" : "en sind"} auf diesem Gerät noch nicht synchronisiert und ${pending === 1 ? "würde" : "würden"} verloren gehen.`,
+                confirmLabel: "Abmelden",
+                danger: true,
+            }))
+        )
+            return;
+        setBusy(true);
+        const result = await runAction(logout);
+        if (!result.ok) {
+            setBusy(false);
+            setError("Abmelden geht nur mit Internetverbindung.");
+            return;
+        }
+        await signedOut(); // lokale Daten des bisherigen Kontos verwerfen
+        window.location.reload();
     };
 
     if (!invite) {
@@ -76,12 +103,9 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
                         </button>
                         <button
                             type="button"
-                            onClick={async () => {
-                                await runAction(logout);
-                                await signedOut(); // lokale Daten des bisherigen Kontos verwerfen
-                                window.location.reload();
-                            }}
-                            className="w-full py-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-primary"
+                            onClick={switchAccount}
+                            disabled={busy}
+                            className="w-full min-h-11 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground hover:text-primary"
                         >
                             Mit anderem Konto anmelden
                         </button>
@@ -89,7 +113,9 @@ export function InviteAccept({ token, invite, user }: InviteAcceptProps) {
                 ) : (
                     <div className="space-y-3">
                         <p className="text-xs text-muted-foreground">
-                            {invite.accountExists ? "Melde dich an, um beizutreten." : "Erstelle ein Konto (oder melde dich an), um beizutreten."}
+                            {invite.accountExists
+                                ? "Melde dich an, um beizutreten. Noch kein Passwort (Konto aus der alten App-Version)? Dann über „Passwort vergessen“ eins festlegen und den Link danach erneut öffnen."
+                                : "Erstelle ein Konto (oder melde dich an), um beizutreten."}
                         </p>
                         {error && <Alert variant="error">{error}</Alert>}
                         <AuthForm

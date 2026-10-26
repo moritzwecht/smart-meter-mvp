@@ -67,9 +67,18 @@ describe("Login & Registrierung", () => {
     });
 
     it("SICHERHEIT: parallele Fehlversuche umgehen das Limit nicht", async () => {
-        await Promise.all(Array.from({ length: 20 }, (_, i) => auth.login({ email: "moritz@example.com", password: `falsch${i}` })));
-        const result = await auth.login({ email: "moritz@example.com", password: "richtig-gut-123" });
-        expect(!result.ok && result.error).toMatch(/Zu viele Fehlversuche/);
+        const results = await Promise.all(Array.from({ length: 30 }, (_, i) => auth.login({ email: "moritz@example.com", password: `falsch${i}` })));
+        // Höchstens 10 Passwörter wurden wirklich geprüft – der Rest wurde abgewiesen
+        const checked = results.filter((r) => !r.ok && /^E-Mail oder Passwort/.test(r.error));
+        expect(checked.length).toBeLessThanOrEqual(10);
+        expect(results.length - checked.length).toBeGreaterThanOrEqual(20);
+    });
+
+    it("abgewiesene Versuche verlängern die Sperre nicht und landen nicht in der Datenbank", async () => {
+        for (let i = 0; i < 10; i++) await auth.login({ email: "moritz@example.com", password: `falsch${i}` });
+        const before = await server.count("auth_attempts");
+        for (let i = 0; i < 20; i++) await auth.login({ email: "moritz@example.com", password: "egal" });
+        expect(await server.count("auth_attempts")).toBe(before);
     });
 
     it("bremst Brute-Force nach 10 Fehlversuchen", async () => {

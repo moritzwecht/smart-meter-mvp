@@ -73,15 +73,15 @@ export async function getInviteInfo(token: string) {
     const inviter = invite.createdBy
         ? await db.query.users.findFirst({ where: eq(users.id, invite.createdBy), columns: { name: true, email: true } })
         : undefined;
-    const existingUser = await db.query.users.findFirst({ where: eq(users.email, invite.email), columns: { password: true } });
+    const existingUser = await db.query.users.findFirst({ where: eq(users.email, invite.email), columns: { id: true } });
     return {
         id: invite.id,
         email: invite.email,
         householdId: household.id,
         householdName: household.name,
         inviterName: inviter ? inviter.name || inviter.email : null,
-        /** Konto existiert bereits mit Passwort → anmelden; sonst registrieren / Passwort setzen. */
-        accountExists: !!existingUser?.password,
+        /** Konto existiert bereits → anmelden (ohne Passwort: erst „Passwort vergessen“). */
+        accountExists: !!existingUser,
     };
 }
 
