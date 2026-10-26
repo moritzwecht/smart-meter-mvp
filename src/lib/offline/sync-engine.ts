@@ -264,7 +264,10 @@ async function applyResponse(batch: OutboxEntry[], res: SyncResponse): Promise<b
             const householdIds = new Set(res.households.map((h) => h.id));
             const known = (await getMeta<number[]>("knownHouseholds")) ?? [];
             if (!res.reset && res.households.some((h) => !known.includes(h.id))) needsFull = true; // neu beigetreten
-            const gone = (await db.households.toArray()).filter((h) => !householdIds.has(h.id)).map((h) => h.id);
+            // Nur Haushalte, die der Server beim letzten Mal noch kannte: ein gerade erst
+            // angelegter (lokal schon eingetragener) Haushalt fehlt in einer Antwort, die
+            // kurz vor dem Anlegen berechnet wurde – der darf nicht kurz verschwinden.
+            const gone = (await db.households.toArray()).filter((h) => !householdIds.has(h.id) && known.includes(h.id)).map((h) => h.id);
             if (gone.length) await removeHouseholdData(gone);
             await db.households.bulkPut(res.households as Household[]);
             await setMeta("knownHouseholds", [...householdIds]);

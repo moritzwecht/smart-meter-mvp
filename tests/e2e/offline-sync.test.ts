@@ -6,6 +6,7 @@
 import "fake-indexeddb/auto";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { householdUsers, households } from "@/lib/db/schema";
 import { setupServer, type TestServer } from "../support/server";
 
 let activeUserId: number | null = null;
@@ -14,6 +15,8 @@ let failNextRequests = 0;
 let dropNextResponses = 0;
 /** Hält Requests an, bis das Promise erfüllt ist (für "während eines laufenden Syncs"). */
 let gate: Promise<void> | null = null;
+/** Hält die (schon berechnete) Antwort zurück. */
+let responseGate: Promise<void> | null = null;
 let offline = false;
 
 vi.mock("@/lib/server/session", async (importOriginal) => {
@@ -44,6 +47,7 @@ globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) =>
     if (url === "/api/sync") res = await routes.sync.POST(request);
     else if (url === "/api/sync/legacy") res = await routes.legacy.POST(request);
     else res = new Response("not found", { status: 404 });
+    if (responseGate) await responseGate;
     if (dropNextResponses > 0) {
         dropNextResponses--;
         throw new TypeError("The network connection was lost.");
@@ -89,6 +93,7 @@ beforeEach(async () => {
     failNextRequests = 0;
     dropNextResponses = 0;
     gate = null;
+    responseGate = null;
     phone = await createDevice(server.users.moritz.id);
     laptop = await createDevice(server.users.moritz.id);
     annasPhone = await createDevice(server.users.anna.id);
@@ -344,6 +349,22 @@ describe("Robustheit bei Verbindungsabbrüchen", () => {
         const restarted = await createDevice(server.users.anna.id, annasPhone.factory);
         await restarted.sync();
         expect((await restarted.db.notes.toArray()).map((x) => x.title)).toContain("Alt");
+    });
+
+    it("ein gerade angelegter Haushalt verschwindet nicht durch eine ältere Sync-Antwort", async () => {
+        let release!: () => void;
+        responseGate = new Promise((r) => (release = r));
+        const running = phone.sync(); // Antwort ist berechnet, kommt aber erst gleich an
+        await new Promise((r) => setTimeout(r, 50));
+        const [neu] = await server.db.insert(households).values({ name: "Ferienhaus", createdBy: server.users.moritz.id }).returning();
+        await server.db.insert(householdUsers).values({ householdId: neu.id, userId: server.users.moritz.id, role: "OWNER" });
+        await phone.db.households.put({ id: neu.id, name: "Ferienhaus", role: "OWNER" }); // wie nach createHousehold
+        responseGate = null;
+        release();
+        await running;
+        expect(await phone.db.households.get(neu.id)).toBeDefined();
+        await phone.sync();
+        expect((await phone.db.households.toArray()).map((h) => h.name).sort()).toEqual(["Ferienhaus", "Zuhause"]);
     });
 
     it("sendet nichts, wenn im Browser inzwischen ein anderes Konto angemeldet ist", async () => {
