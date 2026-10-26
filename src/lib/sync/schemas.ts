@@ -14,6 +14,8 @@ export const meterTypeSchema = z.enum(["ELECTRICITY", "GAS", "WATER"]);
 
 export const meterFieldsSchema = z.object({
     type: meterTypeSchema,
+    /** eigener Name; leer = Typ (siehe lib/meter/names.ts) */
+    name: z.string().trim().max(40).optional(),
     unit: z.string().trim().min(1).max(16),
     isPinned: z.boolean(),
     monthlyPayment: money,

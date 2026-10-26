@@ -156,9 +156,9 @@ describe("CSV-Export", () => {
         });
         const csv = readingsToCsv([reading("2025-02-01T09:00:00", 12400.25), reading("2025-01-01T09:00:00", 12345.5)], "kWh");
         const lines = csv.replace("﻿", "").split("\r\n");
-        expect(lines[0]).toBe("Datum;Uhrzeit;Stand (kWh);Verbrauch seit vorheriger (kWh);Zählerwechsel;Quelle");
-        expect(lines[1]).toBe("1.1.2025;09:00;12345,5;;;App");
-        expect(lines[2]).toBe("1.2.2025;09:00;12400,25;54,75;;App");
+        expect(lines[0]).toBe("Datum;Uhrzeit;Stand (kWh);Verbrauch seit vorheriger (kWh);Zählerwechsel;Quelle;Hinweis");
+        expect(lines[1]).toBe("1.1.2025;09:00;12345,5;;;App;");
+        expect(lines[2]).toBe("1.2.2025;09:00;12400,25;54,75;;App;");
     });
 });
 

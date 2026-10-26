@@ -58,7 +58,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {children}
             <div
                 aria-live="polite"
-                className="fixed inset-x-0 z-[200] flex flex-col items-center gap-2 px-4 pointer-events-none bottom-[calc(6.5rem+env(safe-area-inset-bottom))]"
+                className="toast-region fixed inset-x-0 z-[200] flex flex-col items-center gap-2 px-4 pointer-events-none bottom-[calc(6.5rem+env(safe-area-inset-bottom))]"
             >
                 <AnimatePresence initial={false}>
                     {toasts.map((t) => {
@@ -90,7 +90,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                                             t.action!.onClick();
                                             dismiss(t.id);
                                         }}
-                                        className="shrink-0 text-xs font-black uppercase tracking-wider text-primary hover:opacity-80"
+                                        className="shrink-0 min-h-11 px-2 -my-3 text-xs font-black uppercase tracking-wider text-primary hover:opacity-80"
                                     >
                                         {t.action.label}
                                     </button>

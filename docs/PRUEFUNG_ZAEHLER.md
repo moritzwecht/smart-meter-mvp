@@ -22,7 +22,7 @@ Stand: 26.10.2026 · Umfang: alles, was mit Zählern rechnet oder entscheidet.
 
 - **Verbrauch** entsteht nur zwischen zwei Ablesungen desselben Zählers und wird gleichmäßig auf die Zeit dazwischen verteilt (lineare Interpolation). Daraus ergeben sich Monatswerte, Durchschnitte und Zeiträume, auch wenn nicht genau an Monatsgrenzen abgelesen wurde.
 - **Zählerwechsel**: Eine als „Zählerwechsel“ markierte Ablesung beginnt einen neuen Zähler. Der Sprung zum neuen Startstand zählt nicht als Verbrauch.
-- **Ø pro Tag (30 Tage)**: die 30 Tage vor der letzten Ablesung. **Ø gesamt**: der gesamte Verbrauch geteilt durch die erfasste Zeit.
+- **Ø pro Tag (letzte 30 Tage)**: die 30 Tage vor der letzten Ablesung. **Ø seit …**: der gesamte Verbrauch geteilt durch die erfasste Zeit. Beide erst ab einem Tag gemessener Zeit – aus Minuten lässt sich kein Tageswert ableiten (UX-Prüfung U6).
 - **Kosten** = Verbrauch × Umrechnungsfaktor × Arbeitspreis, dazu die Grundgebühr.
   - Bei Gas mit Preis pro kWh und Zähler in m³ ist der Faktor Zustandszahl × Brennwert.
   - Fehlen Zustandszahl oder Brennwert, zeigt die App keine Kosten, sondern einen Hinweis. Vor der Korrektur wurde stillschweigend mit 1 gerechnet (B2).
@@ -91,8 +91,9 @@ Folge: Kosten und Prognose sind viel zu niedrig, und die App meldet ein Guthaben
 Vorschlag:
 - Für neue Gaszähler „€/kWh“ voreinstellen.
 - Den Schalter €/kWh nur bei m³ anzeigen; die Eingabe „m3“ wird als m³ erkannt.
-- Beide Umrechnungswerte > 0 verlangen.
+- Eingetragene Umrechnungswerte müssen plausibel sein (> 0).
 - Keine Kosten ausweisen, solange die Umrechnung unvollständig ist.
+- Nachtrag aus der UX-Prüfung (U4): Zunächst hatte das Formular beide Werte verlangt. Das blockierte das Anlegen eines Zählers wegen eines *optionalen* Kostenteils. Jetzt darf der Zähler ohne sie angelegt werden. Die App zeigt dann keine Kosten, sondern einen Hinweis mit „Jetzt eintragen“. Die Absicherung gegen zehnfach zu niedrige Kosten bleibt damit bestehen.
 - Einen Hinweis geben, wenn ein Preis „pro m³“ verdächtig nach einem Preis pro kWh aussieht.
 
 ### B3 – Gas-Prognose ohne Vorjahr (hoch, betrifft nur das erste Jahr)
@@ -302,7 +303,10 @@ Auch die Dokumentation wurde berichtigt: Testaussage, Sensor-Reset, Einträge pr
   - Eine Ziffer zu viel wird auch bei zwei Ablesungen am selben Tag erkannt.
 - **Live-Vorschau beim Ablesen**: Sie rechnet mit dem Stand davor, auch beim Nachtragen.
 - **Verlauf**: Die Differenz zur vorherigen Ablesung stimmt, auch beim Zählerwechsel und wenn nur die letzten 10 Einträge angezeigt werden.
-- **CSV**: Dezimalkomma, keine Tausenderpunkte, Differenz pro Zeile, auch bei negativen Werten. Zählerwechsel ohne Differenz.
+- **CSV**:
+  - Dezimalkomma, keine Tausenderpunkte, Differenz pro Zeile, auch bei negativen Werten. Zählerwechsel ohne Differenz.
+  - Die Differenz bezieht sich wie im Verlauf auf die vorherige *mitgerechnete* Ablesung.
+  - Die Spalte „Hinweis“ nennt Tippfehler und nicht markierte Zählerwechsel (UX-Prüfung U24).
 - **Erinnerung**:
   - Sie kommt am eingestellten Tag nach deutscher Zeit (Tag 1–28, der Job läuft um 07:00 UTC).
   - Sie kommt nur, wenn ein Zähler seit 5 Tagen keinen neuen Stand hat.

@@ -70,9 +70,11 @@ export function formatNumber(value: number, decimals = 2, minDecimals = decimals
 }
 
 const currency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
+const wholeCurrency = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0, minimumFractionDigits: 0 });
 
-export function formatCurrency(value: number): string {
-    return currency.format(value);
+/** Euro mit Cent – oder ganze Euro (`whole`) für Schätzungen, die nicht centgenau sein können. */
+export function formatCurrency(value: number, options: { whole?: boolean } = {}): string {
+    return (options.whole ? wholeCurrency : currency).format(value);
 }
 
 /** Zahl für ein Eingabefeld (deutsches Komma, keine Tausenderpunkte). */

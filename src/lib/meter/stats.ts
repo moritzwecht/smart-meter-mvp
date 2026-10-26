@@ -229,6 +229,10 @@ export function consumptionBetween(segments: Segment[], from: number, to: number
     return { consumption, coveredMs, coverage: to > from ? coveredMs / (to - from) : 0 };
 }
 
+/** Gesamte gemessene Zeit in ms */
+export const measuredMs = (segments: Segment[]) => segments.reduce((ms, s) => ms + (s.end - s.start), 0);
+
+/** Ø pro Tag – erst ab einem Tag gemessener Zeit (aus Minuten lässt sich kein Tageswert ableiten). */
 export function dailyAverage(segments: Segment[]): number | null {
     let total = 0;
     let ms = 0;
@@ -236,15 +240,33 @@ export function dailyAverage(segments: Segment[]): number | null {
         total += s.consumption;
         ms += s.end - s.start;
     }
-    return ms > 0 ? (total / ms) * DAY_MS : null;
+    return ms >= DAY_MS ? (total / ms) * DAY_MS : null;
 }
 
-/** Ø pro Tag in den letzten `days` Tagen bis zur letzten Ablesung. */
+/** Ø pro Tag in den letzten `days` Tagen bis zur letzten Ablesung (mindestens ein Tag gemessen). */
 export function recentDailyAverage(segments: Segment[], days = 30): number | null {
     if (!segments.length) return null;
     const end = segments[segments.length - 1].end;
     const { consumption, coveredMs } = consumptionBetween(segments, end - days * DAY_MS, end);
-    return coveredMs > 0 ? (consumption / coveredMs) * DAY_MS : null;
+    return coveredMs >= DAY_MS ? (consumption / coveredMs) * DAY_MS : null;
+}
+
+/**
+ * Für Verlauf und CSV: welche Ablesungen nicht mitzählen und gegen welche vorherige
+ * (mitgerechnete) Ablesung die Differenz gebildet wird.
+ */
+export function readingFlags<T extends ReadingLike>(readings: readonly T[]) {
+    const { ignored, drops } = toSegments(readings);
+    const flags = new Map<T, "ignored" | "drop">();
+    for (const r of ignored) flags.set(r, "ignored");
+    for (const r of drops) flags.set(r, "drop");
+    const previousOf = new Map<T, T>();
+    let last: T | undefined;
+    for (const r of sortReadings(readings)) {
+        if (last) previousOf.set(r, last);
+        if (flags.get(r) !== "ignored") last = r;
+    }
+    return { flags, previousOf };
 }
 
 export interface MonthBucket {
@@ -284,6 +306,21 @@ type CostFields = Pick<MeterFields, "type" | "pricePerUnit" | "priceUnit" | "zNu
 
 /** "m³", auch als "m3" geschrieben */
 export const isCubicMeters = (unit: string) => /^m[³3]$/i.test(unit.trim());
+
+/**
+ * Preis in Cent statt Euro eingetippt? Liefert den vermuteten Faktor (100 bzw. 1000 bei Litern),
+ * wenn der Preis für die Einheit unrealistisch hoch ist – sonst `null`. Eigene Einheiten: keine Prüfung.
+ */
+export function priceLooksTooHigh(meter: Pick<MeterFields, "type" | "priceUnit" | "pricePerUnit"> & { unit: string }): 100 | 1000 | null {
+    const price = meter.pricePerUnit ?? 0;
+    if (!(price > 0)) return null;
+    const unit = meter.unit.trim().toLowerCase();
+    const perKwh = unit === "kwh" || (meter.type === "GAS" && meter.priceUnit === "kwh" && isCubicMeters(unit));
+    if (perKwh) return price > 1 ? 100 : null;
+    if (isCubicMeters(unit)) return price > (meter.type === "WATER" ? 15 : 5) ? 100 : null;
+    if (unit === "l") return price > 0.05 ? 1000 : null;
+    return null;
+}
 
 /** Gas mit Preis pro kWh, Zähler misst nicht in kWh → Umrechnung nötig. */
 export function needsConversion(meter: CostFields): boolean {
@@ -365,8 +402,12 @@ function coveredWeight(segments: Segment[], from: number, to: number, weight: We
 export interface BillingProjection {
     periodStart: number;
     periodEnd: number;
+    /** Bis hier reichen die Ablesungen im Abrechnungsjahr */
+    knownUntil: number;
     /** Verbrauch bisher (bis zur letzten Ablesung, Lücken geschätzt) */
     consumptionSoFar: number;
+    /** Davon geschätzt (Lücken, z. B. vor der ersten Ablesung) */
+    estimatedSoFar: number;
     /** Hochgerechneter Verbrauch für das ganze Abrechnungsjahr */
     projectedConsumption: number;
     /** Kosten inkl. Grundgebühr (12 × monatlich) */
@@ -463,7 +504,9 @@ export function projectBillingPeriod(
     return {
         periodStart,
         periodEnd,
+        knownUntil,
         consumptionSoFar,
+        estimatedSoFar: gapWeight * annual,
         projectedConsumption,
         projectedCost,
         payments,
@@ -478,7 +521,7 @@ export function projectBillingPeriod(
 export type PlausibilityIssue =
     | { kind: "lower-than-previous"; previous: number; /** der vorherige Stand sieht selbst nach einem Tippfehler aus */ previousSuspicious: boolean }
     | { kind: "higher-than-next"; next: number; nextDate: string }
-    | { kind: "unusually-high"; dailyRate: number; usualRate: number }
+    | { kind: "unusually-high"; dailyRate: number; usualRate: number; /** Stand, der bei üblichem Verbrauch zu erwarten wäre */ expected: number }
     | { kind: "big-jump"; dailyRate: number; previous: number; /** vielfacher Stand statt hoher Tagesrate */ ratio: boolean }
     | { kind: "future-date" };
 
@@ -491,6 +534,13 @@ export interface ReadingPreview {
     days: number;
     /** nur bei mindestens einem Tag Abstand aussagekräftig */
     perDay: number | null;
+}
+
+/** Mitgerechnete Ablesungen vor und nach einem Zeitpunkt – z. B. für „Stand davor/danach“ beim Nachtragen. */
+export function readingNeighbours<T extends ReadingLike>(readings: readonly T[], date: string): { previous?: T; next?: T } {
+    const { counted, countedTimes } = analyse(readings);
+    const { previous, next } = neighbours(counted, countedTimes, Date.parse(date), false);
+    return { previous, next };
 }
 
 /**
@@ -551,7 +601,10 @@ export function checkReading(
     const days = Math.max((t - Date.parse(previous.date)) / DAY_MS, 1);
     const dailyRate = increase / days;
     if (usual && usual > 0) {
-        if (dailyRate > usual * 5 && dailyRate - usual > 1) return { kind: "unusually-high", dailyRate, usualRate: usual };
+        if (dailyRate > usual * 5 && dailyRate - usual > 1) {
+            const elapsed = Math.max((t - Date.parse(previous.date)) / DAY_MS, 0);
+            return { kind: "unusually-high", dailyRate, usualRate: usual, expected: previous.value + usual * elapsed };
+        }
     } else {
         // Noch kein Verbrauchsmuster: hohe Tagesrate – oder nach langer Zeit ein Vielfaches des Stands (Ziffer zu viel)
         const max = maxDailyRate(meter);

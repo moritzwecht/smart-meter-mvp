@@ -20,7 +20,7 @@ export function PinButton({ pinned, name, onToggle, large = false }: { pinned: b
                 className={cn(
                     "flex items-center justify-center transition-colors",
                     large ? "w-8 h-8 rounded-xl" : "w-7 h-7 rounded-lg",
-                    pinned ? "text-primary bg-primary/10" : "text-muted-foreground/40 group-hover:text-primary group-hover:bg-primary/5",
+                    pinned ? "text-primary bg-primary/10" : "text-muted-foreground group-hover:text-primary group-hover:bg-primary/5",
                 )}
             >
                 <Pin className={cn(large ? "w-4 h-4" : "w-3.5 h-3.5", pinned && "fill-current")} />

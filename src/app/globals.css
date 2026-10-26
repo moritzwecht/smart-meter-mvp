@@ -370,3 +370,15 @@ body {
     @apply opacity-0 group-hover:opacity-100 focus-visible:opacity-100;
   }
 }
+
+/* Toasts bei offenem Dialog oben – unten würden sie Knöpfe im Sheet verdecken */
+body:has([role="dialog"]) .toast-region {
+  top: calc(1rem + env(safe-area-inset-top));
+  bottom: auto;
+}
+
+/* Sichtbarer Fokusrahmen für Knöpfe – auch weiß auf weiß im Dark Mode */
+.btn:focus-visible {
+  outline: 2px solid var(--color-emerald-600);
+  outline-offset: 3px;
+}

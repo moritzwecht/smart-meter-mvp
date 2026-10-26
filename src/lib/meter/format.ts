@@ -21,10 +21,17 @@ export function formatReading(value: number): string {
     return formatNumber(value, 3, 0);
 }
 
-/** Verbrauch je nach Größe sinnvoll gerundet. */
+/** Verbrauch je nach Größe sinnvoll gerundet – mit fester Stellenzahl, damit Werte vergleichbar aussehen (4,40 neben 4,08). */
 export function formatConsumption(value: number): string {
     const abs = Math.abs(value);
-    return formatNumber(value, abs >= 100 ? 0 : abs >= 10 ? 1 : 2, 0);
+    const decimals = abs >= 100 ? 0 : abs >= 10 ? 1 : 2;
+    return formatNumber(value, decimals, decimals);
+}
+
+/** Differenz mit Vorzeichen: „+8,20“ bzw. „−585“ (echtes Minuszeichen wie überall in der App). */
+export function formatDelta(value: number): string {
+    const text = formatConsumption(Math.abs(value));
+    return value < 0 ? `−${text}` : `+${text}`;
 }
 
 const dateFormat = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -70,7 +77,7 @@ export function plausibilityText(issue: PlausibilityIssue, unit: string): string
         case "higher-than-next":
             return `Der Stand ist höher als die spätere Ablesung vom ${formatDate(issue.nextDate)} (${formatReading(issue.next)} ${unit}). Stimmt der Wert?`;
         case "unusually-high":
-            return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – sonst sind es ca. ${formatConsumption(issue.usualRate)}. Stimmt der Wert?`;
+            return `Das wären ${formatConsumption(issue.dailyRate)} ${unit} pro Tag – üblich sind ca. ${formatConsumption(issue.usualRate)} ${unit}. Erwartet etwa ${formatReading(Math.round(issue.expected))} ${unit}. Eine Ziffer zu viel oder das Komma verrutscht?`;
         case "big-jump":
             return issue.ratio
                 ? `Der Wert ist ein Vielfaches des vorherigen Stands (${formatReading(issue.previous)} ${unit}). Stimmt der Wert?`

@@ -1,98 +1,180 @@
 "use client";
 
-import { Check, ChevronDown, Download, History, Pencil, RefreshCw, Save, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowLeft, ChevronDown, Download, History, Pencil, RefreshCw, Settings as SettingsIcon, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FieldLabel } from "@/components/ui/AddTile";
 import { Alert } from "@/components/ui/Alert";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { useConfirm } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
-import { formatConsumption, formatDate, formatReading, METER_TYPE_LABELS, plausibilityText, toDateInputValue } from "@/lib/meter/format";
+import { formatConsumption, formatDate, formatDelta, formatReading, formatRelativeDay, METER_TYPE_LABELS, plausibilityText, toDateInputValue } from "@/lib/meter/format";
+import { customMeterName, meterTitle } from "@/lib/meter/names";
 import {
+    billingFactor,
     canComputeCost,
     checkReading,
+    consumptionBetween,
     consumptionCost,
     conversionMissing,
     dailyAverage,
+    DAY_MS,
     DAYS_PER_MONTH,
     isCubicMeters,
+    measuredMs,
     MIN_PROJECTION_DAYS,
     monthlyConsumption,
+    needsConversion,
+    priceLooksTooHigh,
     projectBillingPeriod,
+    readingFlags,
     recentDailyAverage,
-    sortReadings,
     timestampForDay,
     toSegments,
 } from "@/lib/meter/stats";
 import { readingsToCsv, shareOrDownloadCsv } from "@/lib/meter/export";
-import { formatCurrency, parseDecimal, toInputValue } from "@/lib/numbers";
+import { formatCurrency, formatNumber, parseDecimal, toInputValue } from "@/lib/numbers";
 import type { MeterWithReadings } from "@/lib/offline/hooks";
-import { deleteMeter, deleteReading, updateMeter, updateReading } from "@/lib/offline/repo";
+import { addReading, deleteMeter, deleteReading, updateMeter, updateReading } from "@/lib/offline/repo";
 import type { Reading } from "@/lib/sync/types";
 import { cn } from "@/lib/utils";
 import { ConsumptionChart } from "./ConsumptionChart";
-import { MeterCostFields, meterFieldsFromForm, meterFormFromFields, MeterTypeFields } from "./MeterForm";
+import { focusFormField, MeterCostFields, meterFieldsFromForm, meterFormFromFields, MeterTypeFields, type MeterFormError, type MeterFormState } from "./MeterForm";
+import { ReadingPreview } from "./MeterReadingDialog";
 import { METER_ICONS } from "./MeterWidget";
 
 const CHART_COLORS = { ELECTRICITY: "bg-amber-500", WATER: "bg-blue-500", GAS: "bg-orange-500" } as const;
 
-function Stat({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "good" | "bad" }) {
+/** Ab so vielen Tagen ohne Ablesung gilt der Stand als veraltet */
+export const STALE_DAYS = 45;
+
+/** „Ø“ liest mancher Screenreader als „Durchmesser“ */
+const Avg = () => (
+    <>
+        <span aria-hidden>Ø</span>
+        <span className="sr-only">Durchschnitt</span>
+    </>
+);
+
+/** Geld: ganze Beträge ohne Cent, sonst mit */
+const money = (value: number) => formatCurrency(value, { whole: Number.isInteger(value) });
+
+function Stat({ label, value, hint, tone, wide }: { label: ReactNode; value: string; hint?: ReactNode; tone?: "good" | "bad"; wide?: boolean }) {
     return (
-        <div className="p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50 min-w-0">
-            <div className="text-[10px] uppercase font-bold text-muted-foreground">{label}</div>
-            <div
+        <div className={cn("p-3 bg-accent/30 rounded-2xl space-y-1 border-2 border-border/50 min-w-0", wide && "col-span-2")}>
+            <dt className="text-[11px] font-bold text-muted-foreground">{label}</dt>
+            <dd
                 className={cn(
                     "text-xl font-black tabular-nums truncate",
-                    tone === "good" && "text-emerald-600 dark:text-emerald-400",
-                    tone === "bad" && "text-red-600 dark:text-red-400",
+                    tone === "good" && "text-emerald-700 dark:text-emerald-400",
+                    tone === "bad" && "text-red-700 dark:text-red-400",
                 )}
             >
                 {value}
-            </div>
-            {hint && <div className="text-[10px] text-muted-foreground leading-snug">{hint}</div>}
+            </dd>
+            {hint && <dd className="text-xs text-muted-foreground leading-snug">{hint}</dd>}
         </div>
     );
 }
 
 const BASIS_TEXT = {
-    "last-year": "Rest anhand des Vorjahres",
-    profile: "Rest anhand eines typischen Gasjahres",
-    average: "Rest anhand des Durchschnitts",
+    "last-year": "Rest wie im Vorjahr",
+    profile: "Rest nach typischem Gasverlauf (Winter mehr)",
+    average: "Rest nach deinem bisherigen Schnitt",
 } as const;
 
-function Statistics({ meter }: { meter: MeterWithReadings }) {
+function Notice({ children, action, onAction }: { children: ReactNode; action?: string; onAction?: () => void }) {
+    return (
+        <li className="flex flex-col gap-2 p-3 rounded-xl border-2 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50 text-sm text-amber-800 dark:text-amber-300">
+            <span>{children}</span>
+            {action && onAction && (
+                <button type="button" onClick={onAction} className="self-start min-h-11 px-3 rounded-lg bg-amber-500/15 font-bold text-amber-900 dark:text-amber-200">
+                    {action}
+                </button>
+            )}
+        </li>
+    );
+}
+
+type EditRequest = { id: string; preset?: "replacement" };
+
+function Statistics({ meter, onOpenSettings, onFix }: { meter: MeterWithReadings; onOpenSettings: () => void; onFix: (edit: EditRequest) => void }) {
+    const [now] = useState(() => Date.now());
     const stats = useMemo(() => {
-        const { segments, ignored, drops } = toSegments(meter.readings);
+        const { segments } = toSegments(meter.readings);
+        const { flags, previousOf } = readingFlags(meter.readings);
+        const last = segments.length ? segments[segments.length - 1].end : null;
+        const recentWindow = last !== null ? consumptionBetween(segments, last - 30 * DAY_MS, last).coveredMs / DAY_MS : 0;
         return {
             segments,
-            ignored: ignored.length,
-            drops: drops.length,
+            flags,
+            previousOf,
             overall: dailyAverage(segments),
             recent: recentDailyAverage(segments, 30),
+            recentDays: Math.min(30, Math.round(recentWindow)),
+            measuredDays: measuredMs(segments) / DAY_MS,
+            firstStart: segments[0]?.start ?? null,
+            lastEnd: last,
             months: monthlyConsumption(segments, 12),
             projection: projectBillingPeriod(meter, segments),
         };
     }, [meter]);
 
+    const { unit } = meter;
+    const issues = meter.readings.filter((r) => stats.flags.has(r));
     const missingConversion = (meter.pricePerUnit ?? 0) > 0 && conversionMissing(meter);
-    const tooShort = stats.overall !== null && !stats.projection;
-    const anomalyAlert = (stats.ignored > 0 || stats.drops > 0) && (
-        <Alert variant="warning">
-            {stats.ignored > 0 &&
-                `${stats.ignored === 1 ? "Eine Ablesung passt" : `${stats.ignored} Ablesungen passen`} nicht zu den übrigen (vermutlich Tippfehler) und ${stats.ignored === 1 ? "wird" : "werden"} nicht mitgerechnet. `}
-            {stats.drops > 0 &&
-                `${stats.drops === 1 ? "Ein Stand ist" : `${stats.drops} Stände sind`} niedriger als der vorherige, der Verbrauch dazwischen zählt nicht. War das ein Zählerwechsel? Dann die Ablesung bearbeiten und als Zählerwechsel markieren. `}
-            Die Ablesungen sind im Verlauf markiert.
-        </Alert>
+    const priceTooHigh = priceLooksTooHigh(meter);
+    const lastReading = meter.readings[meter.readings.length - 1];
+    const stale = !!lastReading && now - Date.parse(lastReading.date) > STALE_DAYS * DAY_MS;
+    const factor = needsConversion(meter) && !conversionMissing(meter) ? billingFactor(meter) : null;
+    const kwh = (value: number) => (factor ? ` · ≈ ${formatNumber(Math.round(value * factor), 0)} kWh` : "");
+
+    const notices = (issues.length > 0 || missingConversion || priceTooHigh || stale) && (
+        <ul className="space-y-2" aria-label="Hinweise">
+            {issues.map((r) => {
+                const previous = stats.previousOf.get(r);
+                return stats.flags.get(r) === "drop" ? (
+                    <Notice key={r.id} action="Als Zählerwechsel markieren" onAction={() => onFix({ id: r.id, preset: "replacement" })}>
+                        {formatDate(r.date)}: {formatReading(r.value)} {unit} ist niedriger als {previous ? `${formatReading(previous.value)} ${unit}` : "der Stand davor"} –
+                        wurde der Zähler getauscht? Bis dahin zählt der Verbrauch dazwischen nicht.
+                    </Notice>
+                ) : (
+                    <Notice key={r.id} action="Korrigieren" onAction={() => onFix({ id: r.id })}>
+                        {formatDate(r.date)}: {formatReading(r.value)} {unit} passt nicht zu den übrigen Ständen (Tippfehler?) und zählt nicht mit.
+                    </Notice>
+                );
+            })}
+            {missingConversion && (
+                <Notice action="Jetzt eintragen" onAction={onOpenSettings}>
+                    {isCubicMeters(unit)
+                        ? "Für die Kosten fehlen Zustandszahl und Brennwert (der Preis gilt pro kWh, der Zähler misst in m³). Beide stehen auf deiner Gasrechnung."
+                        : `Der Preis gilt pro kWh, der Zähler misst aber in ${unit} – das lässt sich nicht umrechnen. Prüf Einheit und Preis.`}
+                </Notice>
+            )}
+            {priceTooHigh && !missingConversion && (
+                <Notice action="Preis prüfen" onAction={onOpenSettings}>
+                    Der Arbeitspreis von {formatNumber(meter.pricePerUnit ?? 0, 4, 2)} € ist sehr hoch – vermutlich in Cent statt Euro eingetragen.
+                </Notice>
+            )}
+            {stale && (
+                <Notice>
+                    Letzte Ablesung {formatRelativeDay(lastReading.date)} ({formatDate(lastReading.date)}) – Durchschnitt und Prognose beziehen sich auf die Zeit bis
+                    dahin.
+                </Notice>
+            )}
+        </ul>
     );
 
     if (stats.overall === null) {
+        const text =
+            meter.readings.length === 0
+                ? "Trag deinen ersten Zählerstand ein – ab der zweiten Ablesung siehst du Verbrauch und Prognose."
+                : meter.readings.length === 1
+                  ? "Noch eine Ablesung, dann siehst du deinen Verbrauch pro Tag."
+                  : "Durchschnitt und Prognose erscheinen, sobald zwei Ablesungen mindestens einen Tag auseinanderliegen.";
         return (
             <div className="space-y-4">
-                <div className="p-8 text-center bg-accent/20 rounded-2xl border border-dashed border-border text-xs text-muted-foreground">
-                    Ab zwei Ablesungen siehst du hier Verbrauch, Verlauf und eine Prognose.
-                </div>
-                {anomalyAlert}
+                {notices}
+                <p className="p-6 text-center bg-accent/20 rounded-2xl border border-dashed border-border text-sm text-muted-foreground">{text}</p>
             </div>
         );
     }
@@ -101,114 +183,220 @@ function Statistics({ meter }: { meter: MeterWithReadings }) {
     const hasCost = canComputeCost(meter);
     // Monatskosten wie der Abschlag: Arbeitspreis + Grundgebühr
     const perMonthCost = hasCost && stats.recent !== null ? consumptionCost(meter, stats.recent) * DAYS_PER_MONTH + (meter.basicFee ?? 0) : null;
+    const showOverall = stats.measuredDays > 31;
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-3">
+            {notices}
+            <dl className="grid grid-cols-2 gap-3">
+                {p?.balance != null && (
+                    <Stat
+                        wide
+                        label={p.balance >= 0 ? "Voraussichtliches Guthaben" : "Voraussichtliche Nachzahlung"}
+                        value={`≈ ${formatCurrency(Math.abs(p.balance), { whole: true })}`}
+                        tone={p.balance >= 0 ? "good" : "bad"}
+                        hint={
+                            <>
+                                bei {money(p.payments! / 12)} Abschlag pro Monat · passend wären ≈ {formatCurrency(p.projectedCost! / 12, { whole: true })}
+                                {p.uncertain && " · grobe Schätzung, noch wenige Daten"}
+                            </>
+                        }
+                    />
+                )}
                 <Stat
-                    label="Ø pro Tag (30 Tage)"
-                    value={stats.recent !== null ? `${formatConsumption(stats.recent)} ${meter.unit}` : "–"}
-                    hint={perMonthCost !== null ? `≈ ${formatCurrency(perMonthCost)} pro Monat inkl. Grundgebühr` : undefined}
+                    label={
+                        <>
+                            <Avg /> pro Tag (letzte {stats.recentDays} {stats.recentDays === 1 ? "Tag" : "Tage"})
+                        </>
+                    }
+                    value={stats.recent !== null ? `${formatConsumption(stats.recent)} ${unit}` : "–"}
+                    hint={
+                        <>
+                            bis {formatDate(stats.lastEnd!)}
+                            {perMonthCost !== null && ` · ≈ ${formatCurrency(perMonthCost, { whole: true })} pro Monat inkl. Grundgebühr`}
+                        </>
+                    }
                 />
-                <Stat label="Ø pro Tag (gesamt)" value={`${formatConsumption(stats.overall)} ${meter.unit}`} />
+                {showOverall && (
+                    <Stat
+                        label={
+                            <>
+                                <Avg /> pro Tag seit {formatDate(stats.firstStart!)}
+                            </>
+                        }
+                        value={`${formatConsumption(stats.overall)} ${unit}`}
+                    />
+                )}
                 {p && (
                     <>
                         <Stat
-                            label="Abrechnungsjahr bisher"
-                            value={`${formatConsumption(p.consumptionSoFar)} ${meter.unit}`}
-                            hint={`seit ${formatDate(p.periodStart)}`}
+                            label={`Bisher (seit ${formatDate(p.periodStart)})`}
+                            value={`${formatConsumption(p.consumptionSoFar)} ${unit}`}
+                            hint={
+                                <>
+                                    bis {formatDate(p.knownUntil)}
+                                    {p.estimatedSoFar > Math.max(0.01 * p.consumptionSoFar, 0.5) && ` · davon ≈ ${formatConsumption(p.estimatedSoFar)} ${unit} geschätzt`}
+                                    {kwh(p.consumptionSoFar)}
+                                    {!meter.billingStart && " · Abrechnungsjahr = Kalenderjahr (in den Einstellungen änderbar)"}
+                                </>
+                            }
                         />
                         <Stat
-                            label="Prognose Jahr"
-                            value={`${formatConsumption(p.projectedConsumption)} ${meter.unit}`}
-                            hint={p.uncertain ? `noch unsicher – wenige Daten. ${BASIS_TEXT[p.basis]}` : BASIS_TEXT[p.basis]}
+                            label={`Prognose bis ${formatDate(p.periodEnd - DAY_MS)}`}
+                            value={`${formatConsumption(p.projectedConsumption)} ${unit}`}
+                            hint={
+                                <>
+                                    {BASIS_TEXT[p.basis]}
+                                    {p.uncertain && " · grobe Schätzung"}
+                                    {kwh(p.projectedConsumption)}
+                                </>
+                            }
                         />
                     </>
                 )}
                 {p?.projectedCost != null && (
-                    <Stat label="Kosten (Prognose)" value={formatCurrency(p.projectedCost)} hint="inkl. Grundgebühr" />
+                    <Stat label="Kosten Abrechnungsjahr (geschätzt)" value={`≈ ${formatCurrency(p.projectedCost, { whole: true })}`} hint="inkl. Grundgebühr" />
                 )}
-                {p?.balance != null && (
-                    <Stat
-                        label={p.balance >= 0 ? "Voraussichtl. Guthaben" : "Voraussichtl. Nachzahlung"}
-                        value={formatCurrency(Math.abs(p.balance))}
-                        hint={`bei ${formatCurrency(p.payments! / 12)} Abschlag`}
-                        tone={p.balance >= 0 ? "good" : "bad"}
-                    />
-                )}
-            </div>
+            </dl>
 
-            {stats.months.length > 1 && (
-                <div className="space-y-2">
-                    <FieldLabel>Verbrauch pro Monat</FieldLabel>
-                    <ConsumptionChart buckets={stats.months} unit={meter.unit} colorClass={CHART_COLORS[meter.type]} />
-                </div>
-            )}
-
-            {tooShort && (
+            {!p && (
                 <p className="text-xs text-muted-foreground">
                     Prognose und Kosten fürs Jahr erscheinen, sobald die Ablesungen mindestens {MIN_PROJECTION_DAYS} Tage auseinanderliegen.
                 </p>
             )}
-            {missingConversion && (
-                <Alert variant="warning">
-                    {isCubicMeters(meter.unit)
-                        ? `Für die Kosten fehlen Zustandszahl und Brennwert (der Preis gilt pro kWh, der Zähler misst in m³). Trag sie unten in den Einstellungen ein – sie stehen auf deiner Gasrechnung.`
-                        : `Der Preis gilt pro kWh, der Zähler misst aber in ${meter.unit} – das lässt sich nicht umrechnen. Prüf unten in den Einstellungen Einheit und Preis.`}
-                </Alert>
+
+            {stats.months.length > 1 && (
+                <section className="space-y-2" aria-labelledby={`chart-${meter.id}`}>
+                    <h3 id={`chart-${meter.id}`}>
+                        <FieldLabel>Verbrauch pro Monat</FieldLabel>
+                    </h3>
+                    <ConsumptionChart buckets={stats.months} unit={unit} colorClass={CHART_COLORS[meter.type]} until={stats.lastEnd!} />
+                </section>
             )}
-            {anomalyAlert}
         </div>
     );
 }
+
+const REPLACEMENT_LABEL = "Zählerwechsel: neuer Zähler eingebaut";
 
 function ReadingRow({
     reading,
     previous,
     meter,
     flag,
+    edit,
+    onEdit,
 }: {
     reading: Reading;
     previous?: Reading;
     meter: MeterWithReadings;
     flag?: "ignored" | "drop";
+    edit: EditRequest | null;
+    onEdit: (edit: EditRequest | null) => void;
 }) {
     const confirm = useConfirm();
-    const unit = meter.unit;
-    const [editing, setEditing] = useState(false);
-    const [value, setValue] = useState("");
-    const [day, setDay] = useState("");
-    const [isReplacement, setIsReplacement] = useState(false);
+    const { unit } = meter;
+    const delta = previous && !reading.isReplacement ? reading.value - previous.value : null;
+    const dateText = formatDate(reading.date);
+
+    if (edit?.id === reading.id) {
+        return <ReadingEditor key={`${reading.id}:${edit.preset ?? ""}`} reading={reading} meter={meter} preset={edit.preset} onDone={() => onEdit(null)} />;
+    }
+
+    return (
+        <li className="flex justify-between items-center p-3 hover:bg-accent/20 transition-colors group">
+            <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shrink-0" aria-hidden>
+                    {reading.isReplacement ? <RefreshCw className="w-4 h-4 text-muted-foreground" /> : <History className="w-4 h-4 text-muted-foreground" />}
+                </div>
+                <div className="min-w-0">
+                    <div className="text-sm font-black tabular-nums">
+                        <span className={cn(flag === "ignored" && "line-through decoration-amber-600/70")}>
+                            {formatReading(reading.value)} {unit}
+                        </span>
+                        {delta !== null && (
+                            <span className={cn("ml-2 text-[11px] font-bold", delta < 0 ? "text-red-700 dark:text-red-400" : "text-muted-foreground")}>
+                                <span className="sr-only">, Verbrauch seit vorher: </span>
+                                {formatDelta(delta)} {unit}
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                        <span className="sr-only">, </span>
+                        {dateText}
+                        {reading.isReplacement && " · Zählerwechsel"}
+                        {reading.source === "api" && " · automatisch"}
+                        {flag === "ignored" && <span className="text-amber-800 dark:text-amber-300"> · Tippfehler? Zählt nicht mit</span>}
+                        {flag === "drop" && <span className="text-amber-800 dark:text-amber-300"> · Stand gesunken – Zählerwechsel?</span>}
+                    </div>
+                </div>
+            </div>
+            <div className="flex">
+                <button
+                    type="button"
+                    onClick={() => onEdit({ id: reading.id })}
+                    className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-primary"
+                    aria-label={`Ablesung vom ${dateText} bearbeiten`}
+                >
+                    <Pencil className="w-4 h-4" />
+                </button>
+                <button
+                    type="button"
+                    onClick={async () => {
+                        if (await confirm({ title: "Ablesung löschen?", message: `${formatReading(reading.value)} ${unit} vom ${dateText}`, confirmLabel: "Löschen", danger: true }))
+                            await deleteReading(reading.id);
+                    }}
+                    className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-red-700 dark:hover:text-red-400"
+                    aria-label={`Ablesung vom ${dateText} löschen`}
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            </div>
+        </li>
+    );
+}
+
+/** Ablesung im Verlauf bearbeiten – mit derselben Vorschau und Prüfung wie beim Eintragen. */
+function ReadingEditor({ reading, meter, preset, onDone }: { reading: Reading; meter: MeterWithReadings; preset?: "replacement"; onDone: () => void }) {
+    const ref = useRef<HTMLLIElement>(null);
+    const [value, setValue] = useState(() => toInputValue(reading.value));
+    const [day, setDay] = useState(() => toDateInputValue(new Date(reading.date)));
+    const [isReplacement, setIsReplacement] = useState(preset === "replacement" || reading.isReplacement);
+    const [oldFinal, setOldFinal] = useState("");
     const [warning, setWarning] = useState<string | null>(null);
     const [error, setError] = useState("");
-    const delta = previous && !reading.isReplacement ? reading.value - previous.value : null;
+    const { unit } = meter;
+    const others = useMemo(() => meter.readings.filter((r) => r.id !== reading.id), [meter.readings, reading.id]);
+    // Gleicher Tag: Zeitpunkt unverändert. Anderer Tag: wie beim Eintragen (heute jetzt, sonst 12:00
+    // bzw. die nächste freie Minute) – so kommen sich zwei Ablesungen nie in die Quere.
+    const date = !day ? null : day === toDateInputValue(new Date(reading.date)) ? reading.date : timestampForDay(day, others);
+    const addsOldFinal = isReplacement && !reading.isReplacement;
 
-    const startEdit = () => {
-        setValue(toInputValue(reading.value));
-        setDay(toDateInputValue(new Date(reading.date)));
-        setIsReplacement(reading.isReplacement);
-        setWarning(null);
+    useEffect(() => {
+        ref.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+    }, []);
+
+    const save = async (e: FormEvent) => {
+        e.preventDefault();
         setError("");
-        setEditing(true);
-    };
-
-    const save = async () => {
         const parsed = parseDecimal(value);
-        if (parsed === null || !day) {
+        if (parsed === null || !date) {
             setError("Bitte einen gültigen Stand und ein Datum eingeben.");
             return;
         }
-        const others = meter.readings.filter((r) => r.id !== reading.id);
-        // Gleicher Tag: Zeitpunkt unverändert. Anderer Tag: wie beim Eintragen (heute jetzt, sonst 12:00
-        // bzw. die nächste freie Minute) – so kommen sich zwei Ablesungen nie in die Quere.
-        const date = day === toDateInputValue(new Date(reading.date)) ? reading.date : timestampForDay(day, others);
-        const changed = parsed !== reading.value || date !== reading.date || isReplacement !== reading.isReplacement;
-        if (!changed) {
-            setEditing(false);
+        const oldValue = addsOldFinal && oldFinal.trim() ? parseDecimal(oldFinal) : null;
+        if (addsOldFinal && oldFinal.trim() && oldValue === null) {
+            setError("Endstand bitte als Zahl eingeben – oder das Feld leer lassen.");
             return;
         }
-        const candidate = { value: parsed, date, isReplacement };
-        const issue = checkReading(others, candidate, Date.now(), meter);
+        const changed = parsed !== reading.value || date !== reading.date || isReplacement !== reading.isReplacement;
+        if (!changed) return onDone();
+        const checked = !isReplacement
+            ? { value: parsed, date, isReplacement: false }
+            : oldValue !== null
+              ? { value: oldValue, date, isReplacement: false }
+              : { value: parsed, date, isReplacement: true };
+        const issue = checkReading(others, checked, Date.now(), meter);
         if (issue?.kind === "future-date") {
             setError(plausibilityText(issue, unit));
             return;
@@ -218,38 +406,71 @@ function ReadingRow({
             setWarning(text); // zweites Tippen auf "Speichern" bestätigt
             return;
         }
-        await updateReading(reading.id, candidate);
-        setEditing(false);
+        await updateReading(reading.id, { value: parsed, date, isReplacement });
+        // Endstand des alten Zählers zum selben Zeitpunkt – die Sortierung stellt ihn vor den Wechsel
+        if (oldValue !== null) await addReading(meter.id, { value: oldValue, date, isReplacement: false });
+        onDone();
     };
 
-    if (editing) {
-        return (
-            <div className="p-3 space-y-2 bg-accent/20">
-                <div className="flex gap-2">
-                    <input
-                        autoFocus
-                        aria-label="Zählerstand"
-                        inputMode="decimal"
-                        value={value}
-                        onChange={(e) => {
-                            setValue(e.target.value);
-                            setWarning(null);
-                        }}
-                        className="input-field flex-1 min-w-0 py-2"
-                    />
-                    <input
-                        aria-label="Datum"
-                        type="date"
-                        value={day}
-                        max={toDateInputValue(new Date())}
-                        onChange={(e) => {
-                            setDay(e.target.value);
-                            setWarning(null);
-                        }}
-                        className="input-field py-2"
-                    />
+    return (
+        <li ref={ref} className="p-3 bg-accent/20">
+            <form onSubmit={save} noValidate className="space-y-3">
+                {addsOldFinal && (
+                    <div className="space-y-1">
+                        <FieldLabel htmlFor={`edit-old-${reading.id}`}>Endstand alter Zähler (empfohlen)</FieldLabel>
+                        <input
+                            id={`edit-old-${reading.id}`}
+                            inputMode="decimal"
+                            value={oldFinal}
+                            placeholder="Letzter Stand vor dem Ausbau"
+                            onChange={(e) => {
+                                setOldFinal(e.target.value);
+                                setWarning(null);
+                            }}
+                            className="input-field w-full py-2"
+                        />
+                        {oldFinal.trim() ? (
+                            <ReadingPreview meter={meter} readings={others} raw={oldFinal} date={date} />
+                        ) : (
+                            <p className="text-xs text-muted-foreground">Ohne Endstand zählt der Verbrauch bis zum Wechsel nicht mit.</p>
+                        )}
+                    </div>
+                )}
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                    <div className="space-y-1 min-w-0">
+                        <FieldLabel htmlFor={`edit-value-${reading.id}`}>{isReplacement ? "Startstand neuer Zähler" : "Stand"}</FieldLabel>
+                        <div className="relative">
+                            <input
+                                id={`edit-value-${reading.id}`}
+                                autoFocus
+                                inputMode="decimal"
+                                value={value}
+                                onChange={(e) => {
+                                    setValue(e.target.value);
+                                    setWarning(null);
+                                }}
+                                className="input-field w-full py-2 pr-12"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">{unit}</span>
+                        </div>
+                    </div>
+                    <div className="space-y-1">
+                        <FieldLabel htmlFor={`edit-date-${reading.id}`}>Datum</FieldLabel>
+                        <input
+                            id={`edit-date-${reading.id}`}
+                            type="date"
+                            value={day}
+                            max={toDateInputValue(new Date())}
+                            onChange={(e) => {
+                                setDay(e.target.value);
+                                setWarning(null);
+                            }}
+                            className="input-field py-2"
+                        />
+                    </div>
                 </div>
-                <label className="flex items-center gap-2 min-h-9 text-xs font-medium cursor-pointer select-none">
+                {!isReplacement && <ReadingPreview meter={meter} readings={others} raw={value} date={date} />}
+                <label className="flex items-center gap-3 min-h-11 text-xs font-medium cursor-pointer select-none">
                     <input
                         type="checkbox"
                         checked={isReplacement}
@@ -257,109 +478,49 @@ function ReadingRow({
                             setIsReplacement(e.target.checked);
                             setWarning(null);
                         }}
-                        className="w-4 h-4 accent-current"
+                        className="w-5 h-5 shrink-0 accent-current"
                     />
-                    Zählerwechsel (Startstand eines neuen Zählers)
+                    {REPLACEMENT_LABEL}
                 </label>
                 {warning && <Alert variant="warning">{warning} Zum Speichern erneut tippen.</Alert>}
-                <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-red-500" role={error ? "alert" : undefined}>
-                        {error}
-                    </span>
-                    <div className="flex gap-1">
-                        <button type="button" onClick={() => setEditing(false)} className="p-2 rounded-lg hover:bg-accent" aria-label="Abbrechen">
-                            <X className="w-4 h-4" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={save}
-                            className="p-2 rounded-lg bg-primary text-primary-foreground"
-                            aria-label={warning ? "Trotzdem speichern" : "Speichern"}
-                        >
-                            <Check className="w-4 h-4" />
-                        </button>
-                    </div>
+                {error && <Alert variant="error">{error}</Alert>}
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={onDone} className="btn btn-secondary min-h-11 text-xs">
+                        Abbrechen
+                    </button>
+                    <button type="submit" className="btn btn-primary min-h-11 text-xs">
+                        {warning ? "Trotzdem speichern" : "Speichern"}
+                    </button>
                 </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex justify-between items-center p-3 hover:bg-accent/20 transition-colors group">
-            <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-accent flex items-center justify-center shrink-0">
-                    {reading.isReplacement ? <RefreshCw className="w-4 h-4 text-muted-foreground" /> : <History className="w-4 h-4 text-muted-foreground" />}
-                </div>
-                <div className="min-w-0">
-                    <div className={cn("text-sm font-black tabular-nums", flag === "ignored" && "line-through decoration-amber-500/70")}>
-                        {formatReading(reading.value)} {unit}
-                        {delta !== null && (
-                            <span className={cn("ml-2 text-[10px] font-bold", delta < 0 ? "text-red-500" : "text-muted-foreground")}>
-                                {delta >= 0 ? "+" : ""}
-                                {formatConsumption(delta)}
-                            </span>
-                        )}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground uppercase">
-                        {formatDate(reading.date)}
-                        {reading.isReplacement && " · Zählerwechsel"}
-                        {reading.source === "api" && " · automatisch"}
-                        {flag === "ignored" && <span className="text-amber-700 dark:text-amber-400"> · nicht mitgerechnet</span>}
-                        {flag === "drop" && <span className="text-amber-700 dark:text-amber-400"> · Zählerwechsel?</span>}
-                    </div>
-                </div>
-            </div>
-            <div className="flex">
-                <button type="button" onClick={startEdit} className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-primary" aria-label="Ablesung bearbeiten">
-                    <Pencil className="w-4 h-4" />
-                </button>
-                <button
-                    type="button"
-                    onClick={async () => {
-                        if (await confirm({ title: "Ablesung löschen?", message: `${formatReading(reading.value)} ${unit} vom ${formatDate(reading.date)}`, confirmLabel: "Löschen", danger: true }))
-                            await deleteReading(reading.id);
-                    }}
-                    className="hover-reveal w-11 h-11 flex items-center justify-center text-muted-foreground hover:text-red-500"
-                    aria-label="Ablesung löschen"
-                >
-                    <Trash2 className="w-4 h-4" />
-                </button>
-            </div>
-        </div>
+            </form>
+        </li>
     );
 }
 
-function History_({ meter }: { meter: MeterWithReadings }) {
+function History_({ meter, edit, onEdit }: { meter: MeterWithReadings; edit: EditRequest | null; onEdit: (edit: EditRequest | null) => void }) {
     const [showAll, setShowAll] = useState(false);
-    const { flags, previousOf } = useMemo(() => {
-        const { ignored, drops } = toSegments(meter.readings);
-        const flags = new Map<Reading, "ignored" | "drop">();
-        for (const r of ignored) flags.set(r, "ignored");
-        for (const r of drops) flags.set(r, "drop");
-        // Differenz zur vorherigen mitgerechneten Ablesung – ein Tippfehler verzerrt sonst auch die Zeile danach
-        const previousOf = new Map<Reading, Reading>();
-        let last: Reading | undefined;
-        for (const r of sortReadings(meter.readings)) {
-            if (last) previousOf.set(r, last);
-            if (flags.get(r) !== "ignored") last = r;
-        }
-        return { flags, previousOf };
-    }, [meter.readings]);
+    const { flags, previousOf } = useMemo(() => readingFlags(meter.readings), [meter.readings]);
     const desc = [...meter.readings].reverse();
-    const visible = showAll ? desc : desc.slice(0, 10);
+    // Eine Ablesung, die bearbeitet werden soll (z. B. aus einem Hinweis), muss sichtbar sein
+    const editIndex = edit ? desc.findIndex((r) => r.id === edit.id) : -1;
+    const visible = showAll || editIndex >= 10 ? desc : desc.slice(0, 10);
     if (desc.length === 0) {
-        return <div className="p-10 text-center text-xs text-muted-foreground italic border border-border rounded-2xl">Noch keine Ablesungen.</div>;
+        return <p className="p-10 text-center text-xs text-muted-foreground italic border border-border rounded-2xl">Noch keine Ablesungen.</p>;
     }
     return (
         <div className="space-y-2">
-            <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50">
+            <ul className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border/50">
                 {visible.map((r) => (
-                    <ReadingRow key={r.id} reading={r} previous={previousOf.get(r)} meter={meter} flag={flags.get(r)} />
+                    <ReadingRow key={r.id} reading={r} previous={previousOf.get(r)} meter={meter} flag={flags.get(r)} edit={edit} onEdit={onEdit} />
                 ))}
-            </div>
+            </ul>
             <div className="flex justify-between gap-2">
                 {desc.length > 10 ? (
-                    <button type="button" onClick={() => setShowAll((v) => !v)} className="py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary">
+                    <button
+                        type="button"
+                        onClick={() => setShowAll((v) => !v)}
+                        className="min-h-11 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary"
+                    >
                         {showAll ? "Weniger anzeigen" : `Alle ${desc.length} anzeigen`}
                     </button>
                 ) : (
@@ -367,8 +528,8 @@ function History_({ meter }: { meter: MeterWithReadings }) {
                 )}
                 <button
                     type="button"
-                    onClick={() => shareOrDownloadCsv(readingsToCsv(meter.readings, meter.unit), meter.type)}
-                    className="py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center gap-1.5"
+                    onClick={() => shareOrDownloadCsv(readingsToCsv(meter.readings, meter.unit), meter)}
+                    className="min-h-11 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-primary flex items-center gap-1.5"
                 >
                     <Download className="w-3.5 h-3.5" />
                     CSV exportieren
@@ -378,45 +539,16 @@ function History_({ meter }: { meter: MeterWithReadings }) {
     );
 }
 
-function Settings({ meter }: { meter: MeterWithReadings }) {
-    const toast = useToast();
-    const [form, setForm] = useState(() => meterFormFromFields(meter));
-    const [error, setError] = useState("");
-
-    const save = async () => {
-        const result = meterFieldsFromForm(form);
-        if ("error" in result) {
-            setError(result.error);
-            return;
-        }
-        setError("");
-        await updateMeter(meter.id, result.fields);
-        toast({ message: "Einstellungen gespeichert", variant: "success" });
-    };
-
-    return (
-        <div className="space-y-6 bg-card border border-border rounded-2xl p-4">
-            <MeterTypeFields form={form} onChange={setForm} />
-            <MeterCostFields form={form} onChange={setForm} idPrefix={`meter-${meter.id}`} />
-            {error && <Alert variant="error">{error}</Alert>}
-            <div className="flex justify-end">
-                <button type="button" onClick={save} className="btn btn-primary py-2 px-4 text-xs font-black uppercase tracking-widest">
-                    <Save className="w-3 h-3" />
-                    Speichern
-                </button>
-            </div>
-        </div>
-    );
-}
-
-function Collapsible({ title, children, defaultOpen = false }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
+function Collapsible({ title, children, defaultOpen = false }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
     const [open, setOpen] = useState(defaultOpen);
     return (
         <section className="space-y-3">
-            <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex items-center gap-2 w-full text-left">
-                <ChevronDown className={cn("w-4 h-4 opacity-50 transition-transform", !open && "-rotate-90")} />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{title}</span>
-            </button>
+            <h3>
+                <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex items-center gap-2 w-full min-h-11 text-left">
+                    <ChevronDown className={cn("w-4 h-4 opacity-50 transition-transform", !open && "-rotate-90")} aria-hidden />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{title}</span>
+                </button>
+            </h3>
             {open && children}
         </section>
     );
@@ -429,54 +561,146 @@ interface MeterDetailDialogProps {
     onAddReading: (meterId: string) => void;
 }
 
+interface DetailState {
+    instance?: number;
+    view: "overview" | "settings";
+    form: MeterFormState | null;
+    error: MeterFormError | null;
+    edit: EditRequest | null;
+}
+
+const SETTINGS_PREFIX = "meter-settings";
+
 export function MeterDetailDialog({ meter, instance, onClose, onAddReading }: MeterDetailDialogProps) {
     const confirm = useConfirm();
+    const toast = useToast();
+    const fresh = (): DetailState => ({ instance, view: "overview", form: null, error: null, edit: null });
+    const [state, setState] = useState<DetailState>(fresh);
+    // Bei jedem Öffnen frisch starten
+    if (state.instance !== instance) setState(fresh());
+
     const Icon = meter ? METER_ICONS[meter.type].icon : null;
+    const custom = meter ? customMeterName(meter) : null;
+    const title = meter ? `${METER_TYPE_LABELS[meter.type]}zähler${custom ? ` · ${custom}` : ""}` : undefined;
+    const dirty = !!meter && state.view === "settings" && !!state.form && JSON.stringify(state.form) !== JSON.stringify(meterFormFromFields(meter));
+
+    const confirmDiscard = async () =>
+        !dirty ||
+        (await confirm({
+            title: "Änderungen verwerfen?",
+            message: "Deine Änderungen an den Einstellungen sind noch nicht gespeichert.",
+            confirmLabel: "Verwerfen",
+            danger: true,
+        }));
+
+    const requestClose = async () => {
+        if (await confirmDiscard()) onClose();
+    };
+
+    const openSettings = () => {
+        if (meter) setState((s) => ({ ...s, view: "settings", form: meterFormFromFields(meter), error: null, edit: null }));
+    };
+    const backToOverview = async () => {
+        if (await confirmDiscard()) setState((s) => ({ ...s, view: "overview", form: null, error: null }));
+    };
+
+    const saveSettings = async () => {
+        if (!meter || !state.form) return;
+        const result = meterFieldsFromForm(state.form);
+        if ("error" in result) {
+            setState((s) => ({ ...s, error: result }));
+            focusFormField(SETTINGS_PREFIX, result.field);
+            return;
+        }
+        const n = meter.readings.length;
+        const unitChanged = result.fields.unit !== meter.unit;
+        const typeChanged = result.fields.type !== meter.type;
+        if (n > 0 && (unitChanged || typeChanged)) {
+            const what = unitChanged ? `als ${result.fields.unit}` : `als ${METER_TYPE_LABELS[result.fields.type]}`;
+            const ok = await confirm({
+                title: unitChanged ? "Einheit ändern?" : "Zählertyp ändern?",
+                message: `${n === 1 ? "Die Ablesung bleibt" : `Die ${n} Ablesungen bleiben`} unverändert und ${n === 1 ? "gilt" : "gelten"} danach ${what}. Nur ändern, wenn das beim Anlegen falsch eingestellt war.`,
+                confirmLabel: "Ändern",
+            });
+            if (!ok) return;
+        }
+        await updateMeter(meter.id, result.fields);
+        toast({ message: "Einstellungen gespeichert", variant: "success" });
+        setState((s) => ({ ...s, view: "overview", form: null, error: null }));
+    };
+
+    const removeMeter = async () => {
+        if (!meter) return;
+        const n = meter.readings.length;
+        const ok = await confirm({
+            title: `${meterTitle(meter)} löschen?`,
+            message: `Der Zähler${n ? ` und ${n === 1 ? "seine Ablesung" : `seine ${n} Ablesungen`}` : ""} ${n ? "werden" : "wird"} gelöscht – auch für die anderen im Haushalt. Das lässt sich nicht rückgängig machen.`,
+            confirmLabel: "Endgültig löschen",
+            danger: true,
+        });
+        if (ok) {
+            onClose();
+            await deleteMeter(meter.id);
+        }
+    };
+
+    const settings = state.view === "settings";
+    const setForm = (form: MeterFormState) => setState((s) => ({ ...s, form }));
 
     return (
         <BaseDialog
             isOpen={!!meter}
-            onClose={onClose}
-            title={meter ? `${METER_TYPE_LABELS[meter.type]}zähler` : undefined}
+            onClose={() => void requestClose()}
+            title={settings ? "Einstellungen" : title}
             className="sm:max-w-2xl"
+            headerAction={
+                meter &&
+                (settings ? (
+                    <button type="button" onClick={() => void backToOverview()} className="w-11 h-11 flex items-center justify-center hover:bg-accent rounded-full" aria-label="Zurück zur Übersicht">
+                        <ArrowLeft className="w-5 h-5" />
+                    </button>
+                ) : (
+                    <button type="button" onClick={openSettings} className="w-11 h-11 flex items-center justify-center hover:bg-accent rounded-full" aria-label="Einstellungen & Kosten">
+                        <SettingsIcon className="w-5 h-5" />
+                    </button>
+                ))
+            }
             footer={
-                meter && (
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const ok = await confirm({
-                                    title: "Zähler löschen?",
-                                    message: "Alle Ablesungen dieses Zählers werden ebenfalls gelöscht – auch für die anderen Mitglieder des Haushalts.",
-                                    confirmLabel: "Endgültig löschen",
-                                    danger: true,
-                                });
-                                if (ok) {
-                                    onClose();
-                                    await deleteMeter(meter.id);
-                                }
-                            }}
-                            className="btn btn-danger py-3 px-4"
-                            aria-label="Zähler löschen"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                        <button type="button" onClick={() => onAddReading(meter.id)} className="flex-1 btn btn-primary py-3">
-                            {Icon && <Icon className="w-4 h-4" />}
-                            Ablesung eintragen
+                meter &&
+                (settings ? (
+                    <div className="space-y-3">
+                        {state.error && <Alert variant="error">{state.error.error}</Alert>}
+                        <button type="button" onClick={() => void saveSettings()} className="w-full btn btn-primary py-3">
+                            Einstellungen speichern
                         </button>
                     </div>
-                )
+                ) : (
+                    <button type="button" onClick={() => onAddReading(meter.id)} className="w-full btn btn-primary py-3">
+                        {Icon && <Icon className="w-4 h-4" />}
+                        Ablesung eintragen
+                    </button>
+                ))
             }
         >
-            {meter && (
+            {meter && settings && state.form && (
+                <div className="space-y-6">
+                    <MeterTypeFields form={state.form} onChange={setForm} idPrefix={SETTINGS_PREFIX} invalid={state.error?.field} />
+                    <div className="border-t border-border/50 pt-4">
+                        <MeterCostFields form={state.form} onChange={setForm} idPrefix={SETTINGS_PREFIX} invalid={state.error?.field} />
+                    </div>
+                    <div className="border-t border-border/50 pt-4">
+                        <button type="button" onClick={() => void removeMeter()} className="min-h-11 flex items-center gap-2 text-sm font-bold text-red-700 dark:text-red-400 hover:underline">
+                            <Trash2 className="w-4 h-4" />
+                            Zähler löschen
+                        </button>
+                    </div>
+                </div>
+            )}
+            {meter && !settings && (
                 <div key={`${meter.id}:${instance}`} className="space-y-8">
-                    <Statistics meter={meter} />
+                    <Statistics meter={meter} onOpenSettings={openSettings} onFix={(edit) => setState((s) => ({ ...s, edit }))} />
                     <Collapsible title={`Verlauf (${meter.readings.length})`} defaultOpen>
-                        <History_ meter={meter} />
-                    </Collapsible>
-                    <Collapsible title="Einstellungen & Kosten" defaultOpen={meter.pricePerUnit === null || conversionMissing(meter)}>
-                        <Settings meter={meter} />
+                        <History_ meter={meter} edit={state.edit} onEdit={(edit) => setState((s) => ({ ...s, edit }))} />
                     </Collapsible>
                 </div>
             )}

@@ -12,6 +12,7 @@ import {
     type ParsedSyncOp,
 } from "@/lib/sync/schemas";
 import type { Household, Meter, Note, OpResult, Reading, SyncChanges, TodoItem, TodoList } from "@/lib/sync/types";
+import { resolveMeterName } from "@/lib/meter/names";
 import { getDb } from "./db";
 
 /*
@@ -31,7 +32,6 @@ export interface SyncContext {
     householdIds: number[];
 }
 
-export const METER_NAMES: Record<string, string> = { ELECTRICITY: "Strom", WATER: "Wasser", GAS: "Gas" };
 
 /** Nach dieser Zeit ohne Sync gibt es statt eines Deltas den vollen Bestand (Tombstones werden aufgeräumt). */
 export const FULL_SYNC_AFTER_DAYS = 30;
@@ -115,7 +115,11 @@ async function applyCreate(ctx: SyncContext, op: ParsedSyncOp): Promise<OpResult
             const base = { id: op.id, householdId: op.householdId, createdAt, updatedAt: now };
             const values =
                 op.entity === "meter"
-                    ? { ...base, ...(parsed.data as z.infer<typeof createSchemas.meter>), name: METER_NAMES[(parsed.data as { type: string }).type] ?? "Zähler" }
+                    ? {
+                          ...base,
+                          ...(parsed.data as z.infer<typeof createSchemas.meter>),
+                          name: resolveMeterName((parsed.data as { name?: string }).name, (parsed.data as { type: string }).type),
+                      }
                     : op.entity === "note"
                       ? { title: "", ...base, ...(parsed.data as z.infer<typeof createSchemas.note>) }
                       : { ...base, ...(parsed.data as z.infer<typeof createSchemas.list>) };
@@ -190,8 +194,10 @@ async function applyUpdate(ctx: SyncContext, op: ParsedSyncOp): Promise<OpResult
     const parsed = updateSchemas[op.entity].safeParse(op.fields ?? {});
     if (!parsed.success) return rejected(op.opId, "invalid");
     let fields: Record<string, unknown> = op.entity === "reading" ? withDates(parsed.data as { date?: string }) : parsed.data;
-    if (op.entity === "meter" && "type" in fields && typeof fields.type === "string") {
-        fields = { ...fields, name: METER_NAMES[fields.type] ?? "Zähler" };
+    // Der Name ändert sich nur, wenn er mitgeschickt wird – ältere App-Versionen schicken bei
+    // jedem Speichern den Typ mit und dürfen damit keinen eigenen Namen überschreiben.
+    if (op.entity === "meter" && typeof fields.name === "string") {
+        fields = { ...fields, name: resolveMeterName(fields.name, typeof fields.type === "string" ? fields.type : "") };
     }
     if (!hasKeys(fields)) return ok(op.opId);
     const table = tables[op.entity];

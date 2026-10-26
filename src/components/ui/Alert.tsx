@@ -96,25 +96,25 @@ export function Alert({
     info: {
       container:
         "bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/50",
-      text: "text-blue-600 dark:text-blue-400",
+      text: "text-blue-800 dark:text-blue-300",
       icon: <Info className="w-4 h-4" />,
     },
     success: {
       container:
         "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/50",
-      text: "text-emerald-600 dark:text-emerald-400",
+      text: "text-emerald-800 dark:text-emerald-300",
       icon: <CheckCircle className="w-4 h-4" />,
     },
     warning: {
       container:
         "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50",
-      text: "text-amber-600 dark:text-amber-400",
+      text: "text-amber-800 dark:text-amber-300",
       icon: <AlertTriangle className="w-4 h-4" />,
     },
     error: {
       container:
         "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/50",
-      text: "text-red-600 dark:text-red-400",
+      text: "text-red-700 dark:text-red-300",
       icon: <AlertCircle className="w-4 h-4" />,
     },
   };
@@ -142,7 +142,7 @@ export function Alert({
         {/* Content
             ====================================================================
             Titel + Nachricht */}
-        <div className="flex-1 space-y-1">
+        <div className="flex-1 min-w-0 space-y-1">
           {title && (
             <h4 className={cn("text-sm font-bold", config.text)}>{title}</h4>
           )}

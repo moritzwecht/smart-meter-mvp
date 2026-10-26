@@ -9,6 +9,7 @@ import type {
     TodoItem,
     TodoList,
 } from "@/lib/sync/types";
+import { resolveMeterName } from "@/lib/meter/names";
 import { roundReading } from "@/lib/numbers";
 import { db } from "./db";
 import { newId } from "./ids";
@@ -29,7 +30,6 @@ export { newId };
 const opId = newId;
 const nowIso = () => new Date().toISOString();
 
-const METER_NAMES: Record<string, string> = { ELECTRICITY: "Strom", WATER: "Wasser", GAS: "Gas" };
 
 const allTables = [db.meters, db.readings, db.todoLists, db.todoItems, db.notes, db.outbox];
 
@@ -65,7 +65,7 @@ export async function addMeter(householdId: number, fields: Partial<MeterFields>
         ...fields,
         id,
         householdId,
-        name: METER_NAMES[fields.type] ?? "Zähler",
+        name: resolveMeterName(fields.name, fields.type),
         createdAt,
         updatedAt: createdAt,
         deletedAt: null,
@@ -80,7 +80,11 @@ export async function addMeter(householdId: number, fields: Partial<MeterFields>
 export async function updateMeter(id: string, fields: Partial<MeterFields>) {
     await write(async () => {
         const changes: Partial<Meter> = { ...fields, updatedAt: nowIso() };
-        if (fields.type) changes.name = METER_NAMES[fields.type] ?? "Zähler";
+        // Name nur, wenn mitgeschickt – leer heißt Standardname des Typs
+        if (fields.name !== undefined) {
+            const current = await db.meters.get(id);
+            changes.name = resolveMeterName(fields.name, fields.type ?? current?.type ?? "");
+        }
         if (!(await db.meters.update(id, changes))) return;
         await op({ opId: opId(), entity: "meter", action: "update", id, fields });
     });
@@ -108,6 +112,26 @@ export async function addReading(meterId: string, input: ReadingFields) {
         await op({ opId: opId(), entity: "reading", action: "create", id, parentId: meterId, fields, createdAt });
     });
     return id;
+}
+
+/**
+ * Zählerwechsel: Endstand des alten Zählers (optional) und Startstand des neuen – beide mit
+ * demselben Zeitpunkt; die Sortierung stellt den Endstand immer vor den Wechsel.
+ */
+export async function addReplacement(meterId: string, input: { date: string; oldFinal: number | null; newStart: number }) {
+    const ids: string[] = [];
+    const entries: [number, boolean][] = input.oldFinal !== null ? [[input.oldFinal, false], [input.newStart, true]] : [[input.newStart, true]];
+    await write(async () => {
+        for (const [value, isReplacement] of entries) {
+            const id = newId();
+            const createdAt = nowIso();
+            const fields: ReadingFields = { value: roundReading(value), date: input.date, isReplacement };
+            await db.readings.add({ ...fields, id, meterId, source: "app", createdAt, updatedAt: createdAt, deletedAt: null });
+            await op({ opId: opId(), entity: "reading", action: "create", id, parentId: meterId, fields, createdAt });
+            ids.push(id);
+        }
+    });
+    return ids;
 }
 
 export async function updateReading(id: string, input: Partial<ReadingFields>) {

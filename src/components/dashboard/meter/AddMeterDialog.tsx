@@ -6,7 +6,7 @@ import { Alert } from "@/components/ui/Alert";
 import { BaseDialog } from "@/components/ui/BaseDialog";
 import { addMeter } from "@/lib/offline/repo";
 import { cn } from "@/lib/utils";
-import { emptyMeterForm, MeterCostFields, meterFieldsFromForm, MeterTypeFields, type MeterFormState } from "./MeterForm";
+import { emptyMeterForm, focusFormField, MeterCostFields, meterFieldsFromForm, MeterTypeFields, type MeterFormError, type MeterFormState } from "./MeterForm";
 
 interface AddMeterDialogProps {
     householdId: number;
@@ -20,25 +20,26 @@ interface AddMeterDialogProps {
 export function AddMeterDialog({ householdId, isOpen, onClose, onCreated, pinByDefault = false }: AddMeterDialogProps) {
     const [form, setForm] = useState<MeterFormState>(() => emptyMeterForm());
     const [showCosts, setShowCosts] = useState(false);
-    const [error, setError] = useState("");
+    const [error, setError] = useState<MeterFormError | null>(null);
 
     // Schließen (auch versehentlich per Tipp daneben) verwirft die Eingaben nicht
     const close = () => {
         onClose();
-        setError("");
+        setError(null);
     };
 
     const reset = () => {
         setForm(emptyMeterForm());
         setShowCosts(false);
-        setError("");
+        setError(null);
     };
 
     const create = async () => {
         const result = meterFieldsFromForm(form);
         if ("error" in result) {
-            setError(result.error);
-            setShowCosts(true);
+            setError(result);
+            if (result.field !== "unit") setShowCosts(true);
+            focusFormField("new-meter", result.field);
             return;
         }
         const id = await addMeter(householdId, { ...result.fields, isPinned: pinByDefault });
@@ -54,28 +55,30 @@ export function AddMeterDialog({ householdId, isOpen, onClose, onCreated, pinByD
             title="Neuer Zähler"
             className="sm:max-w-md"
             footer={
-                <button type="button" onClick={create} className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
-                    Erstellen
-                </button>
+                <div className="space-y-3">
+                    {/* Fehler direkt über dem Knopf – sonst liegt er außerhalb des sichtbaren Bereichs */}
+                    {error && <Alert variant="error">{error.error}</Alert>}
+                    <button type="button" onClick={create} className="w-full btn btn-primary py-4 text-sm uppercase tracking-[0.2em] font-black">
+                        Zähler anlegen
+                    </button>
+                </div>
             }
         >
             <div className="space-y-6">
-                <MeterTypeFields form={form} onChange={setForm} />
+                <MeterTypeFields form={form} onChange={setForm} idPrefix="new-meter" invalid={error?.field} />
 
                 <div className="border-t border-border/50 pt-4 space-y-4">
                     <button
                         type="button"
                         onClick={() => setShowCosts((v) => !v)}
                         aria-expanded={showCosts}
-                        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
+                        className="flex items-center gap-2 min-h-11 w-full text-[10px] font-bold uppercase tracking-widest text-muted-foreground"
                     >
                         <ChevronDown className={cn("w-4 h-4 transition-transform", !showCosts && "-rotate-90")} />
                         Kosten & Abrechnung (optional)
                     </button>
-                    {showCosts && <MeterCostFields form={form} onChange={setForm} idPrefix="new-meter" />}
+                    {showCosts && <MeterCostFields form={form} onChange={setForm} idPrefix="new-meter" invalid={error?.field} />}
                 </div>
-
-                {error && <Alert variant="error">{error}</Alert>}
             </div>
         </BaseDialog>
     );

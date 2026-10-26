@@ -15,6 +15,7 @@ import {
     GAS_PROFILE,
     monthlyConsumption,
     previewReading,
+    priceLooksTooHigh,
     projectBillingPeriod,
     sortReadings,
     timestampForDay,
@@ -62,9 +63,12 @@ describe("B2: Gas mit Preis pro kWh braucht Zustandszahl und Brennwert", () => {
         expect(canComputeCost(incomplete) && billingFactor(incomplete) === 1).toBe(false);
     });
 
-    it("das Formular verlangt beide Werte, wenn der Preis pro kWh gilt", () => {
+    it("ohne Zustandszahl/Brennwert darf der Zähler angelegt werden – Kosten erscheinen aber erst mit beiden Werten (UX U4)", () => {
         const form = { ...emptyMeterForm("GAS"), pricePerUnit: "0,11", priceUnit: "kwh" };
-        expect("error" in meterFieldsFromForm(form)).toBe(true);
+        const res = meterFieldsFromForm(form);
+        if ("error" in res) throw new Error(res.error);
+        expect(canComputeCost(res.fields)).toBe(false);
+        expect(billingFactor(res.fields)).toBe(1);
     });
 });
 
@@ -422,5 +426,44 @@ describe("Nachbesserung: nächste freie Minute", () => {
     it("eine Ablesung um 23:59 stört nicht", () => {
         const t = new Date(timestampForDay("2025-03-10", [r(new Date(2025, 2, 10, 23, 59).toISOString(), 1)], now));
         expect([t.getHours(), t.getMinutes()]).toEqual([12, 0]);
+    });
+});
+
+// UX-Prüfung (docs/UX_ZAEHLER.md) – Rechenteile ------------------------------------------
+
+describe("UX U1: Preis in Cent statt Euro", () => {
+    it.each([
+        [{ type: "ELECTRICITY", unit: "kWh", priceUnit: null, pricePerUnit: 32 }, 100],
+        [{ type: "ELECTRICITY", unit: "kWh", priceUnit: null, pricePerUnit: 0.32 }, null],
+        [{ type: "GAS", unit: "m³", priceUnit: "kwh", pricePerUnit: 11.5 }, 100],
+        [{ type: "GAS", unit: "m³", priceUnit: null, pricePerUnit: 1.2 }, null],
+        [{ type: "GAS", unit: "m³", priceUnit: null, pricePerUnit: 120 }, 100],
+        [{ type: "WATER", unit: "m³", priceUnit: null, pricePerUnit: 4.5 }, null],
+        [{ type: "WATER", unit: "m³", priceUnit: null, pricePerUnit: 450 }, 100],
+        [{ type: "WATER", unit: "l", priceUnit: null, pricePerUnit: 4.5 }, 1000],
+        [{ type: "WATER", unit: "Wh", priceUnit: null, pricePerUnit: 99 }, null],
+    ] as const)("%o → %s", (meter, expected) => {
+        expect(priceLooksTooHigh(meter)).toBe(expected);
+    });
+});
+
+describe("UX U6: Durchschnitt erst ab einem Tag", () => {
+    it("zwei Ablesungen Minuten auseinander ergeben keinen Tageswert – und verderben die Tippfehlerprüfung nicht", () => {
+        const xs = [r("2025-01-01T08:00:00", 1000), r("2025-01-01T08:10:00", 1084)];
+        const { segments } = toSegments(xs);
+        expect(dailyAverage(segments)).toBeNull();
+        // ohne „üblichen“ Wert greift die Obergrenze pro Tag: eine Ziffer zu viel fällt weiter auf
+        expect(checkReading(xs, r("2025-01-02T08:00:00", 10900), Date.parse("2025-03-01"))?.kind).toBe("big-jump");
+    });
+});
+
+describe("UX U5: geschätzter Anteil der Prognose", () => {
+    it("weist den geschätzten Teil von „bisher“ aus", () => {
+        // Abrechnungsjahr ab 01.01., Ablesungen erst ab 01.06.
+        const { segments } = toSegments([r("2025-06-01T00:00:00", 0), r("2025-07-01T00:00:00", 300)]);
+        const p = projectBillingPeriod({ ...gas, type: "ELECTRICITY", unit: "kWh", priceUnit: null }, segments, Date.parse("2025-07-02"))!;
+        expect(p.estimatedSoFar).toBeGreaterThan(1400); // Januar–Mai geschätzt (≈ 151 Tage × 10)
+        expect(p.consumptionSoFar - p.estimatedSoFar).toBeCloseTo(300, 0);
+        expect(new Date(p.knownUntil).toDateString()).toBe(new Date(2025, 6, 1).toDateString());
     });
 });

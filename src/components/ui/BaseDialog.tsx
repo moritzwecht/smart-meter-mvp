@@ -240,7 +240,7 @@ export function BaseDialog({
                                             type="button"
                                             data-dialog-close
                                             onClick={onClose}
-                                            className="p-2.5 -m-0.5 hover:bg-accent rounded-full transition-colors"
+                                            className="p-3 -m-1 hover:bg-accent rounded-full transition-colors"
                                             aria-label="Schließen"
                                         >
                                             <X className="w-5 h-5" />

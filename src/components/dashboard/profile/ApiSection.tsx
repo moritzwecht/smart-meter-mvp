@@ -10,7 +10,8 @@ import { Section } from "@/components/ui/Section";
 import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { runAction } from "@/lib/client-actions";
-import { formatDate, formatRelativeDay, METER_TYPE_LABELS } from "@/lib/meter/format";
+import { formatDate, formatRelativeDay } from "@/lib/meter/format";
+import { meterTitle } from "@/lib/meter/names";
 import { db } from "@/lib/offline/db";
 
 async function copy(text: string) {
@@ -22,29 +23,56 @@ async function copy(text: string) {
     }
 }
 
-/** Beispiel-Konfiguration für Home Assistant (configuration.yaml + Automation). */
-function homeAssistantExample(origin: string, meterId: string, unit: string) {
+/** Beispiel für Home Assistant: REST-Befehl (configuration.yaml) */
+function restCommandExample(origin: string) {
     return `# configuration.yaml
 rest_command:
   my_home_reading:
     url: "${origin}/api/v1/readings"
     method: POST
     headers:
-      Authorization: !secret my_home_token   # secrets.yaml: my_home_token: "Bearer mh_…"
+      # in secrets.yaml: my_home_token: "Bearer mh_…"
+      Authorization: !secret my_home_token
       Content-Type: application/json
-    payload: '{"meterId": "{{ meter_id }}", "value": {{ value }}}'
+    payload: '{"meterId": "{{ meter_id }}", "value": {{ value }}}'`;
+}
 
-# Automation: täglich um 23:55 den Zählerstand (${unit}) übertragen
-automation:
-  - alias: "Zählerstand an My Home"
-    trigger:
-      - platform: time
-        at: "23:55:00"
-    action:
-      - service: rest_command.my_home_reading
-        data:
-          meter_id: "${meterId}"
-          value: "{{ states('sensor.DEIN_ZAEHLER') }}"`;
+/** Beispiel-Automation – als eigener Eintrag für automations.yaml (oder in der HA-Oberfläche als YAML einfügen) */
+function automationExample(meterId: string, title: string, unit: string) {
+    return `# automations.yaml – oder in Home Assistant unter
+# Einstellungen → Automationen → Neu → „Als YAML bearbeiten“
+- alias: "Zählerstand ${title} an My Home"
+  description: "Sensor muss in ${unit} melden"
+  triggers:
+    - trigger: time
+      at: "23:55:00"
+  conditions:
+    # nur gültige Zahlen senden (nicht "unavailable"/"unknown")
+    - condition: template
+      value_template: "{{ states('sensor.DEIN_ZAEHLER') | is_number }}"
+  actions:
+    - action: rest_command.my_home_reading
+      data:
+        meter_id: "${meterId}"
+        value: "{{ states('sensor.DEIN_ZAEHLER') }}"`;
+}
+
+function CodeBlock({ label, code, onCopy }: { label: string; code: string; onCopy: () => void }) {
+    return (
+        <div className="space-y-1">
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold">{label}</span>
+                <button type="button" onClick={onCopy} className="min-h-11 px-2 flex items-center gap-1.5 text-xs font-bold text-primary hover:underline">
+                    <Copy className="w-3.5 h-3.5" aria-hidden />
+                    Kopieren<span className="sr-only">: {label}</span>
+                </button>
+            </div>
+            {/* tabIndex: per Tastatur scrollbar */}
+            <pre tabIndex={0} aria-label={label} className="text-[11px] leading-relaxed bg-accent/30 rounded-xl p-3 overflow-x-auto">
+                {code}
+            </pre>
+        </div>
+    );
 }
 
 export function ApiSection() {
@@ -56,6 +84,7 @@ export function ApiSection() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [showExample, setShowExample] = useState(false);
+    const [exampleId, setExampleId] = useState<string | null>(null);
     const meters = useLiveQuery(() => db.meters.toArray(), []);
     const households = useLiveQuery(() => db.households.toArray(), []);
 
@@ -81,7 +110,8 @@ export function ApiSection() {
     };
 
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const exampleMeter = meters?.[0];
+    const exampleMeter = meters?.find((m) => m.id === exampleId) ?? meters?.[0];
+    const copyText = async (text: string, what: string) => toast((await copy(text)) ? { message: `${what} kopiert`, variant: "success" } : "Kopieren nicht möglich");
 
     return (
         <Section title="Home Assistant & API" icon={<Plug className="w-3.5 h-3.5" />}>
@@ -90,16 +120,12 @@ export function ApiSection() {
             </p>
 
             {fresh && (
-                <Alert variant="success" title="Neuer Token – nur jetzt sichtbar">
-                    <div className="flex items-center gap-2 mt-2">
-                        <code className="flex-1 truncate text-xs bg-background/60 rounded px-2 py-1">{fresh}</code>
-                        <button
-                            type="button"
-                            className="btn btn-secondary px-3 py-1 text-xs"
-                            onClick={async () => toast((await copy(fresh)) ? { message: "Token kopiert", variant: "success" } : "Kopieren nicht möglich")}
-                        >
-                            <Copy className="w-3.5 h-3.5" />
-                            Kopieren
+                <Alert variant="success" title="Neuer Token – kopier ihn jetzt, er wird nur einmal angezeigt">
+                    <div className="space-y-2 mt-2">
+                        <code className="block break-all text-xs bg-background/60 rounded px-2 py-1.5 text-foreground">{fresh}</code>
+                        <button type="button" className="w-full btn btn-secondary min-h-11 text-xs" onClick={() => void copyText(fresh, "Token")}>
+                            <Copy className="w-3.5 h-3.5" aria-hidden />
+                            Token kopieren
                         </button>
                     </div>
                 </Alert>
@@ -124,7 +150,7 @@ export function ApiSection() {
                             <button
                                 type="button"
                                 aria-label={`Token ${t.name} löschen`}
-                                className="p-2 text-muted-foreground hover:text-red-500"
+                                className="w-11 h-11 -m-2 flex items-center justify-center text-muted-foreground hover:text-red-700 dark:hover:text-red-400"
                                 onClick={async () => {
                                     if (!(await confirm({ title: `Token „${t.name}“ löschen?`, message: "Geräte, die ihn nutzen, können danach keine Werte mehr eintragen.", confirmLabel: "Löschen", danger: true }))) return;
                                     const result = await runAction(() => deleteToken({ id: t.id }));
@@ -148,32 +174,71 @@ export function ApiSection() {
 
             {meters && meters.length > 0 && (
                 <div className="space-y-2">
-                    <button type="button" onClick={() => setShowExample((v) => !v)} className="text-xs font-bold text-primary hover:underline">
+                    <button
+                        type="button"
+                        onClick={() => setShowExample((v) => !v)}
+                        aria-expanded={showExample}
+                        className="min-h-11 text-xs font-bold text-primary hover:underline"
+                    >
                         {showExample ? "Beispiel ausblenden" : "Zähler-IDs & Beispiel für Home Assistant anzeigen"}
                     </button>
                     {showExample && (
-                        <div className="space-y-3">
-                            <ul className="text-xs space-y-1">
+                        <div className="space-y-4">
+                            <ul className="text-xs space-y-1" aria-label="Zähler-IDs">
                                 {meters.map((m) => (
-                                    <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-accent/30 px-3 py-2">
-                                        <span className="shrink-0">
-                                            {METER_TYPE_LABELS[m.type]} ({m.unit}) · {households?.find((h) => h.id === m.householdId)?.name}
+                                    <li key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-accent/30 pl-3">
+                                        <span className="min-w-0 truncate">
+                                            <span className="font-bold">{meterTitle(m)}</span> ({m.unit}) · {households?.find((h) => h.id === m.householdId)?.name}
                                         </span>
                                         <button
                                             type="button"
-                                            className="font-mono truncate text-muted-foreground hover:text-primary"
-                                            title="ID kopieren"
-                                            onClick={async () => toast((await copy(m.id)) ? { message: "Zähler-ID kopiert", variant: "success" } : m.id)}
+                                            className="shrink-0 min-h-11 px-3 flex items-center gap-1.5 font-mono text-foreground/80 hover:text-primary"
+                                            aria-label={`Zähler-ID von ${meterTitle(m)} kopieren`}
+                                            onClick={() => void copyText(m.id, "Zähler-ID")}
                                         >
-                                            {m.id}
+                                            {m.id.slice(0, 8)}…
+                                            <Copy className="w-3.5 h-3.5" aria-hidden />
                                         </button>
                                     </li>
                                 ))}
                             </ul>
+
+                            <div className="text-xs text-muted-foreground space-y-1">
+                                <p className="font-bold text-foreground">So speichert die App deine Werte</p>
+                                <ul className="list-disc pl-4 space-y-0.5">
+                                    <li>Höchstens ein Wert pro Viertelstunde (:00, :15, :30, :45) – spätere im selben Zeitfenster ersetzen ihn.</li>
+                                    <li>Unveränderte Werte nur einmal am Tag.</li>
+                                    <li>Ein Wert unter dem letzten Stand wird abgelehnt – nach einem Zählertausch {'"isReplacement": true'} mitsenden.</li>
+                                    <li>Der Sensor muss in derselben Einheit melden wie der Zähler in der App (z. B. m³, nicht Liter).</li>
+                                    <li>Empfehlung: stündlich oder einmal täglich senden.</li>
+                                </ul>
+                            </div>
+
                             {exampleMeter && (
-                                <pre className="text-[11px] leading-relaxed bg-accent/30 rounded-xl p-3 overflow-x-auto">
-                                    {homeAssistantExample(origin, exampleMeter.id, exampleMeter.unit)}
-                                </pre>
+                                <div className="space-y-3">
+                                    {meters.length > 1 && (
+                                        <label className="flex items-center gap-2 text-xs font-bold">
+                                            Beispiel für
+                                            <select
+                                                value={exampleMeter.id}
+                                                onChange={(e) => setExampleId(e.target.value)}
+                                                className="input-field py-2 min-h-11 flex-1 min-w-0"
+                                            >
+                                                {meters.map((m) => (
+                                                    <option key={m.id} value={m.id}>
+                                                        {meterTitle(m)} ({m.unit})
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                    )}
+                                    <CodeBlock label="REST-Befehl (configuration.yaml)" code={restCommandExample(origin)} onCopy={() => void copyText(restCommandExample(origin), "Beispiel")} />
+                                    <CodeBlock
+                                        label="Automation (automations.yaml)"
+                                        code={automationExample(exampleMeter.id, meterTitle(exampleMeter), exampleMeter.unit)}
+                                        onCopy={() => void copyText(automationExample(exampleMeter.id, meterTitle(exampleMeter), exampleMeter.unit), "Beispiel")}
+                                    />
+                                </div>
                             )}
                         </div>
                     )}

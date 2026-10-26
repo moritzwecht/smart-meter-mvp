@@ -30,6 +30,7 @@ const { BaseDialog } = await import("@/components/ui/BaseDialog");
 const { ListEditDialog } = await import("@/components/dashboard/list/ListEditDialog");
 const { NoteEditDialog } = await import("@/components/dashboard/note/NoteEditDialog");
 const { MeterDetailDialog } = await import("@/components/dashboard/meter/MeterDetailDialog");
+const { MeterReadingDialog } = await import("@/components/dashboard/meter/MeterReadingDialog");
 const { MeterWidget } = await import("@/components/dashboard/meter/MeterWidget");
 const { ConsumptionChart } = await import("@/components/dashboard/meter/ConsumptionChart");
 const { MeterCostFields, emptyMeterForm } = await import("@/components/dashboard/meter/MeterForm");
@@ -114,7 +115,13 @@ function setInput(el: HTMLInputElement, value: string) {
 }
 
 const click = (el: Element) => act(async () => (el as HTMLElement).click());
-const buttons = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(`button[aria-label="${label}"]`)];
+/** Knöpfe nach Namen (aria-label oder sichtbarer Text) */
+const buttons = (name: string | RegExp) =>
+    [...document.querySelectorAll<HTMLButtonElement>("button")].filter((b) => {
+        const n = b.getAttribute("aria-label") ?? b.textContent?.trim() ?? "";
+        return typeof name === "string" ? n === name : name.test(n);
+    });
+const EDIT = /^Ablesung vom .* bearbeiten$/;
 
 describe("Zähler: Ablesung bearbeiten (Prüfung B6/B11)", () => {
     async function setup() {
@@ -135,10 +142,10 @@ describe("Zähler: Ablesung bearbeiten (Prüfung B6/B11)", () => {
     it("markiert den Rückgang im Verlauf und lässt ihn nachträglich als Zählerwechsel markieren", async () => {
         const { meterId, rerender } = await setup();
         expect(document.body.textContent).toContain("Zählerwechsel?");
-        expect(document.body.textContent).toContain("War das ein Zählerwechsel?");
+        expect(document.body.textContent).toContain("wurde der Zähler getauscht?");
 
         // Verlauf ist absteigend: [105, 5, 10000, 9800] → zweite Zeile bearbeiten
-        await click(buttons("Ablesung bearbeiten")[1]);
+        await click(buttons(EDIT)[1]);
         const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
         expect(checkbox.checked).toBe(false);
         await click(checkbox);
@@ -148,17 +155,17 @@ describe("Zähler: Ablesung bearbeiten (Prüfung B6/B11)", () => {
         const edited = (await db.readings.where("meterId").equals(meterId).toArray()).find((r) => r.value === 5)!;
         expect(edited.isReplacement).toBe(true);
         await rerender();
-        expect(document.body.textContent).not.toContain("War das ein Zählerwechsel?");
+        expect(document.body.textContent).not.toContain("wurde der Zähler getauscht?");
     });
 
     it("prüft geänderte Stände wie beim Eintragen – zweites Tippen bestätigt", async () => {
         const { meterId } = await setup();
         // neueste Ablesung 105 → 99999: weit über dem üblichen Verbrauch
-        await click(buttons("Ablesung bearbeiten")[0]);
-        const value = document.querySelector<HTMLInputElement>('input[aria-label="Zählerstand"]')!;
+        await click(buttons(EDIT)[0]);
+        const value = document.querySelector<HTMLInputElement>('input[id^="edit-value-"]')!;
         await act(async () => setInput(value, "99999"));
         await click(buttons("Speichern")[0]);
-        expect(document.body.textContent).toContain("Stimmt der Wert?");
+        expect(document.body.textContent).toMatch(/Stimmt der Wert\?|Komma verrutscht\?/);
         expect((await db.readings.where("meterId").equals(meterId).toArray()).some((r) => r.value === 99999)).toBe(false);
         // zweites Tippen bestätigt
         await click(buttons("Trotzdem speichern")[0]);
@@ -168,8 +175,8 @@ describe("Zähler: Ablesung bearbeiten (Prüfung B6/B11)", () => {
 
     it("Datum in der Zukunft wird nicht gespeichert", async () => {
         const { meterId } = await setup();
-        await click(buttons("Ablesung bearbeiten")[0]);
-        const date = document.querySelector<HTMLInputElement>('input[aria-label="Datum"]')!;
+        await click(buttons(EDIT)[0]);
+        const date = document.querySelector<HTMLInputElement>('input[id^="edit-date-"]')!;
         const future = new Date(Date.now() + 3 * 86_400_000);
         const iso = `${future.getFullYear()}-${String(future.getMonth() + 1).padStart(2, "0")}-${String(future.getDate()).padStart(2, "0")}`;
         await act(async () => setInput(date, iso));
@@ -204,11 +211,11 @@ describe("Zähler: Bearbeiten ohne Seiteneffekte (Nachbesserung)", () => {
         const date = new Date(Date.now() - 3 * 86_400_000 + 123).toISOString();
         const { all } = await setup([{ value: 100, date: noon(10) }, { value: 200, date }]);
         const before = await all();
-        await click(buttons("Ablesung bearbeiten")[0]);
+        await click(buttons(EDIT)[0]);
         await click(buttons("Speichern")[0]);
         await act(() => sleep(20));
         expect(await all()).toEqual(before);
-        expect(document.querySelector('input[aria-label="Zählerstand"]')).toBeNull(); // Bearbeiten beendet
+        expect(document.querySelector('input[id^="edit-value-"]')).toBeNull(); // Bearbeiten beendet
     });
 
     it("auf einen Tag mit einer anderen Ablesung verschieben: beide zählen, eine Minute auseinander", async () => {
@@ -219,11 +226,11 @@ describe("Zähler: Bearbeiten ohne Seiteneffekte (Nachbesserung)", () => {
             { value: 1300, date: noon(10) },
         ]);
         // Verlauf absteigend: [1300, 1200, 1100, 1000] → 1200 auf den Tag von 1100 legen
-        await click(buttons("Ablesung bearbeiten")[1]);
-        await act(async () => setInput(document.querySelector<HTMLInputElement>('input[aria-label="Datum"]')!, pastDay(30)));
+        await click(buttons(EDIT)[1]);
+        await act(async () => setInput(document.querySelector<HTMLInputElement>('input[id^="edit-date-"]')!, pastDay(30)));
         await click(buttons("Speichern")[0]);
         // 100 kWh in einer Minute: zu Recht eine Warnung – bestätigen
-        expect(document.body.textContent).toContain("Stimmt der Wert?");
+        expect(document.body.textContent).toMatch(/Stimmt der Wert\?|Komma verrutscht\?/);
         await click(buttons("Trotzdem speichern")[0]);
         await act(() => sleep(20));
         const rows = await all();
@@ -272,22 +279,39 @@ describe("Zähler: Anzeigen (Prüfung B3/B4/B5/B2)", () => {
     const text = () => document.body.textContent ?? "";
 
     it("B4: angebrochener Monat heißt „erfasst“, nicht „Schätzung“ – auch für Screenreader", async () => {
-        await mount(h(ConsumptionChart, { buckets: [{ month: "2026-09", consumption: 300, coverage: 1 }, { month: "2026-10", consumption: 144, coverage: 0.48 }], unit: "kWh", colorClass: "" }));
-        expect(text()).toContain("erfasst: 48 % des Monats");
+        const until = new Date(2026, 9, 15).getTime();
+        await mount(
+            h(ConsumptionChart, {
+                buckets: [
+                    { month: "2026-08", consumption: 200, coverage: 0.5 },
+                    { month: "2026-09", consumption: 300, coverage: 1 },
+                    { month: "2026-10", consumption: 144, coverage: 0.48 },
+                ],
+                unit: "kWh",
+                colorClass: "",
+                until,
+            }),
+        );
+        expect(text()).toContain("bisher, bis 15.10.2026");
+        expect(text()).toContain("Hell = Monat nicht vollständig abgelesen");
         expect(text()).not.toContain("Schätzung");
-        expect(document.querySelector('button[aria-pressed="true"]')?.getAttribute("aria-label")).toContain("erfasst: 48 % des Monats");
+        const pressed = document.querySelector('button[aria-pressed="true"]');
+        expect(pressed?.getAttribute("aria-label")).toContain("bisher, bis 15.10.2026");
+        // ausgewählter Teilmonat bleibt hell (Auswahl nur per Rahmen)
+        expect(pressed?.firstElementChild?.className).toContain("opacity-40");
+        expect(document.querySelectorAll('button[aria-label*="nur teilweise abgelesen"]')).toHaveLength(1);
     });
 
     it("B5: Monatskosten enthalten die Grundgebühr", async () => {
-        // 10 kWh/Tag × 0,30 € × 30,44 Tage + 10 € = 101,31 €
+        // 10 kWh/Tag × 0,30 € × 30,44 Tage + 10 € = 101,31 € → ganze Euro
         await details(meter({ pricePerUnit: 0.3, basicFee: 10 }, [[60, 1000], [30, 1300], [0, 1600]]));
-        expect(text()).toMatch(/≈ 101,31\s€ pro Monat inkl\. Grundgebühr/);
+        expect(text()).toMatch(/≈ 101\s€ pro Monat inkl\. Grundgebühr/);
     });
 
     it("B2: Gas pro kWh ohne Zustandszahl/Brennwert zeigt einen Hinweis statt Kosten", async () => {
         await details(meter({ type: "GAS", unit: "m³", pricePerUnit: 0.11, priceUnit: "kwh", monthlyPayment: 100 }, [[60, 1000], [0, 1300]]));
         expect(text()).toContain("fehlen Zustandszahl und Brennwert");
-        expect(text()).not.toContain("Kosten (Prognose)");
+        expect(text()).not.toContain("Kosten Abrechnungsjahr");
     });
 
     it("B2: Gas pro kWh mit Litern: Hinweis passt zur Einheit", async () => {
@@ -303,13 +327,104 @@ describe("Zähler: Anzeigen (Prüfung B3/B4/B5/B2)", () => {
         expect(text()).not.toContain("Gaspreise stehen meist pro kWh");
     });
 
-    it("B3: wenige Daten → „unsicher“ im Widget, unter 14 Tagen gar keine Prognose", async () => {
+    it("B3: wenige Daten → „grobe Schätzung“ im Widget, unter 14 Tagen gar keine Prognose", async () => {
         const m = meter({ pricePerUnit: 0.3, monthlyPayment: 100 }, [[40, 1000], [0, 1400]]);
         await mount(h(MeterWidget, { meter: m as never, onAddReading() {}, onOpen() {}, onTogglePin() {} }));
-        expect(text()).toContain("unsicher");
+        expect(text()).toContain("(grobe Schätzung)");
         await unmount();
         await details(meter({ pricePerUnit: 0.3, monthlyPayment: 100 }, [[2, 1000], [0, 1020]]));
         expect(text()).toContain("mindestens 14 Tage");
-        expect(text()).not.toContain("Prognose Jahr");
+        expect(text()).not.toContain("Prognose bis");
+    });
+});
+
+describe("Zähler: Abläufe aus der UX-Prüfung (U7, U9, U11, U13)", () => {
+    const DAY = 86_400_000;
+    const ago = (n: number) => new Date(Date.now() - n * DAY).toISOString();
+    const typeInto = (selector: string, value: string) => act(async () => setInput(document.querySelector<HTMLInputElement>(selector)!, value));
+    const load = async (meterId: string) => ({ ...(await db.meters.get(meterId))!, readings: sortReadings(await db.readings.where("meterId").equals(meterId).toArray()) });
+    const providers = (child: ReactNode) => h(ConfirmProvider, null, h(ToastProvider, null, child));
+
+    it("U7/U13: Zählerwechsel mit Endstand und Startstand – richtige Reihenfolge, Rückgängig entfernt beide", async () => {
+        const meterId = await repo.addMeter(1, { type: "ELECTRICITY", unit: "kWh" });
+        await repo.addReading(meterId, { value: 9800, date: ago(20), isReplacement: false });
+        await mount(providers(h(MeterReadingDialog, { meter: await load(meterId), onClose() {}, onOpenDetails() {} })));
+        await act(() => sleep(50));
+        await click(document.querySelector('input[type="checkbox"]')!);
+        await typeInto("#reading-old-final", "10000");
+        await typeInto("#reading-value", "0,5");
+        await click(buttons("Speichern")[0]);
+        await act(() => sleep(30));
+
+        const rows = sortReadings(await db.readings.where("meterId").equals(meterId).toArray());
+        expect(rows.map((r) => [r.value, r.isReplacement])).toEqual([
+            [9800, false],
+            [10000, false],
+            [0.5, true],
+        ]);
+        expect(rows[1].date).toBe(rows[2].date);
+        const { toSegments } = await import("@/lib/meter/stats");
+        expect(toSegments(rows).anomalies).toBe(0);
+
+        expect(document.body.textContent).toContain("Zählerwechsel gespeichert");
+        await click(buttons("Rückgängig")[0]);
+        await act(() => sleep(30));
+        expect((await db.readings.where("meterId").equals(meterId).toArray()).map((r) => r.value)).toEqual([9800]);
+    });
+
+    it("U9: „Als Zählerwechsel markieren“ aus dem Hinweis – mit Endstand des alten Zählers", async () => {
+        const meterId = await repo.addMeter(1, { type: "WATER", unit: "m³" });
+        await repo.addReading(meterId, { value: 500, date: ago(40), isReplacement: false });
+        await repo.addReading(meterId, { value: 520, date: ago(30), isReplacement: false });
+        await repo.addReading(meterId, { value: 3, date: ago(20), isReplacement: false }); // neuer Zähler, nicht markiert
+        await repo.addReading(meterId, { value: 13, date: ago(10), isReplacement: false });
+        const rerender = await mount(providers(h(MeterDetailDialog, { meter: await load(meterId), onClose() {}, onAddReading() {} })));
+        await act(() => sleep(50));
+        await click(buttons("Als Zählerwechsel markieren")[0]);
+        const checkbox = document.querySelector<HTMLInputElement>('li input[type="checkbox"]')!;
+        expect(checkbox.checked).toBe(true);
+        await typeInto('input[id^="edit-old-"]', "540");
+        await click(buttons("Speichern")[0]);
+        await act(() => sleep(30));
+
+        const rows = sortReadings(await db.readings.where("meterId").equals(meterId).toArray());
+        expect(rows.map((r) => [r.value, r.isReplacement])).toEqual([
+            [500, false],
+            [520, false],
+            [540, false],
+            [3, true],
+            [13, false],
+        ]);
+        await rerender(providers(h(MeterDetailDialog, { meter: await load(meterId), onClose() {}, onAddReading() {} })));
+        expect(document.body.textContent).not.toContain("wurde der Zähler getauscht?");
+    });
+
+    it("U11: Einstellungen – ungespeicherte Änderungen werden nicht still verworfen, Einheit ändern fragt nach", async () => {
+        const meterId = await repo.addMeter(1, { type: "ELECTRICITY", unit: "kWh", monthlyPayment: 85 });
+        await repo.addReading(meterId, { value: 100, date: ago(10), isReplacement: false });
+        let closed = 0;
+        await mount(providers(h(MeterDetailDialog, { meter: await load(meterId), onClose: () => closed++, onAddReading() {} })));
+        await act(() => sleep(50));
+        await click(buttons("Einstellungen & Kosten")[0]);
+        await typeInto("#meter-settings-payment", "999");
+
+        // Schließen mit ungespeicherter Änderung → Rückfrage; „Abbrechen“ lässt alles stehen
+        await click(buttons("Schließen")[0]);
+        await act(() => sleep(50));
+        expect(document.body.textContent).toContain("Änderungen verwerfen?");
+        await click(buttons("Abbrechen").at(-1)!);
+        await act(() => sleep(50));
+        expect(closed).toBe(0);
+        expect(document.querySelector<HTMLInputElement>("#meter-settings-payment")!.value).toBe("999");
+
+        // Einheit bei vorhandenen Ablesungen ändern → Rückfrage
+        await click(buttons("m³")[0]);
+        await click(buttons("Einstellungen speichern")[0]);
+        await act(() => sleep(50));
+        expect(document.body.textContent).toContain("Einheit ändern?");
+        await click(buttons("Ändern")[0]);
+        await act(() => sleep(50));
+        const meter = (await db.meters.get(meterId))!;
+        expect([meter.unit, meter.monthlyPayment]).toEqual(["m³", 999]);
     });
 });
